@@ -40,7 +40,7 @@ const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 53 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 54 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
         refs: &[
             SkillRef { rel_path: "references/commands-observation.md", body: SKILL_DESKTOP_REF_OBSERVATION },

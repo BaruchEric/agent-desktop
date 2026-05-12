@@ -22,6 +22,9 @@ pub struct AccessibilityNode {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub states: Vec<String>,
 
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub available_actions: Vec<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<Rect>,
 
@@ -125,6 +128,7 @@ mod tests {
             description: None,
             hint: None,
             states: vec![],
+            available_actions: vec![],
             bounds: None,
             children_count: None,
             children: vec![],
@@ -143,6 +147,7 @@ mod tests {
             description: None,
             hint: None,
             states: vec![],
+            available_actions: vec![],
             bounds: None,
             children_count: Some(47),
             children: vec![],

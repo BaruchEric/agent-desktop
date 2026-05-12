@@ -67,6 +67,13 @@ enum AdMouseEventKind {
 };
 typedef int32_t AdMouseEventKind;
 
+enum AdPolicyKind {
+  AD_POLICY_KIND_HEADLESS = 0,
+  AD_POLICY_KIND_FOCUS_FALLBACK = 1,
+  AD_POLICY_KIND_PHYSICAL = 2,
+};
+typedef int32_t AdPolicyKind;
+
 enum AdResult {
   AD_RESULT_OK = 0,
   AD_RESULT_ERR_PERM_DENIED = -1,
@@ -81,6 +88,8 @@ enum AdResult {
   AD_RESULT_ERR_INVALID_ARGS = -10,
   AD_RESULT_ERR_NOTIFICATION_NOT_FOUND = -11,
   AD_RESULT_ERR_INTERNAL = -12,
+  AD_RESULT_ERR_SNAPSHOT_NOT_FOUND = -13,
+  AD_RESULT_ERR_POLICY_DENIED = -14,
 };
 typedef int32_t AdResult;
 
@@ -374,6 +383,20 @@ AdResult ad_execute_action(const struct AdAdapter *adapter,
                            const struct AdNativeHandle *handle,
                            const struct AdAction *action,
                            struct AdActionResult *out);
+
+/**
+ * # Safety
+ *
+ * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+ * `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+ * `action` must be a non-null pointer to a valid `AdAction`.
+ * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+ */
+AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
+                                       const struct AdNativeHandle *handle,
+                                       const struct AdAction *action,
+                                       int32_t policy,
+                                       struct AdActionResult *out);
 
 /**
  * Releases a handle previously returned by `ad_resolve_element` and

@@ -126,6 +126,7 @@ mod tests {
             description: None,
             hint: None,
             states: vec![],
+            available_actions: vec![],
             bounds: None,
             children: vec![],
             children_count: None,

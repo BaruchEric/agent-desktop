@@ -1,5 +1,5 @@
 use crate::{
-    action::{Action, Direction},
+    action::{Action, ActionRequest, Direction},
     adapter::PlatformAdapter,
     commands::helpers::resolve_ref,
     error::AppError,
@@ -8,12 +8,16 @@ use serde_json::Value;
 
 pub struct ScrollArgs {
     pub ref_id: String,
+    pub snapshot_id: Option<String>,
     pub direction: Direction,
     pub amount: u32,
 }
 
 pub fn execute(args: ScrollArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (_entry, handle) = resolve_ref(&args.ref_id, adapter)?;
-    let result = adapter.execute_action(&handle, Action::Scroll(args.direction, args.amount))?;
+    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    let result = adapter.execute_action(
+        handle.handle(),
+        ActionRequest::headless(Action::Scroll(args.direction, args.amount)),
+    )?;
     Ok(serde_json::to_value(result)?)
 }

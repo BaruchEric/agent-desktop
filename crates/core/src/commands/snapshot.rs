@@ -16,6 +16,7 @@ pub struct SnapshotArgs {
     pub surface: SnapshotSurface,
     pub skeleton: bool,
     pub root_ref: Option<String>,
+    pub snapshot_id: Option<String>,
 }
 
 fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
@@ -55,7 +56,12 @@ pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
             ));
         }
         validate_ref_id(root)?;
-        return format_result(snapshot_ref::run_from_ref(adapter, &opts, root)?);
+        return format_result(snapshot_ref::run_from_ref(
+            adapter,
+            &opts,
+            root,
+            args.snapshot_id.as_deref(),
+        )?);
     }
 
     let result = snapshot::run(
@@ -87,6 +93,7 @@ fn format_result(result: snapshot::SnapshotResult) -> Result<Value, AppError> {
             "title": win.title
         },
         "ref_count": ref_count,
+        "snapshot_id": result.snapshot_id,
         "tree": tree
     }))
 }
@@ -110,6 +117,7 @@ mod tests {
             surface: SnapshotSurface::Window,
             skeleton: false,
             root_ref: None,
+            snapshot_id: None,
         }
     }
 

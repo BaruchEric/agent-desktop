@@ -297,14 +297,20 @@ pub(crate) fn find_pid_by_name(app_name: &str) -> Result<i32, AdapterError> {
         focused_only: false,
         app: Some(app_name.to_string()),
     };
-    let windows = crate::adapter::list_windows_impl(&filter)?;
-    windows.first().map(|w| w.pid).ok_or_else(|| {
-        AdapterError::new(
-            agent_desktop_core::error::ErrorCode::AppNotFound,
-            format!("App '{app_name}' not found"),
-        )
-        .with_suggestion("Verify the app is running. Use 'list-apps' to see running applications.")
-    })
+    let windows = crate::system::window_list::list_windows_impl(&filter)?;
+    windows
+        .first()
+        .map(|w| w.pid)
+        .or_else(|| crate::system::app_list::pid_for_app_name(app_name))
+        .ok_or_else(|| {
+            AdapterError::new(
+                agent_desktop_core::error::ErrorCode::AppNotFound,
+                format!("App '{app_name}' not found"),
+            )
+            .with_suggestion(
+                "Verify the app is running. Use 'list-apps' to see running applications.",
+            )
+        })
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -4,7 +4,7 @@ macOS-specific details for agent-desktop. Covers permissions, accessibility API 
 
 ## Prerequisites
 
-### Accessibility Permission (TCC)
+### Permission Report (TCC)
 
 macOS requires explicit Accessibility permission for any process that reads or controls UI elements across applications.
 
@@ -16,13 +16,23 @@ agent-desktop permissions
 agent-desktop permissions --request
 ```
 
+The report contains:
+
+| Field | Meaning |
+|-------|---------|
+| `accessibility` | Required for accessibility tree reads and most commands |
+| `screen_recording` | Required for screenshots |
+| `automation` | Reserved for future Apple Event automation paths; `{ "state": "not_required" }` for the current macOS command set |
+
+Each field is an object: `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording, and `not_required` for Automation.
+
 **To grant manually:**
 1. Open System Settings > Privacy & Security > Accessibility
 2. Click the lock to make changes
-3. Add your terminal application (Terminal.app, iTerm2, Warp, VS Code, etc.)
+3. Add the app that launches agent-desktop (Terminal.app, iTerm2, Warp, VS Code, Codex, etc.)
 4. Toggle it ON
 
-**Important:** The permission is granted to the **terminal application**, not to agent-desktop itself. If you run agent-desktop from a different terminal, you need to grant that terminal too.
+**Important:** The permission is granted to the launching app. If macOS lists the built `agent-desktop` binary separately, grant that binary too. If you run agent-desktop from a different launcher, grant that launcher as well.
 
 After granting, restart the terminal for the permission to take effect.
 
@@ -56,12 +66,25 @@ When you run `click @ref`, agent-desktop doesn't just do a simple click. It runs
 8. **AXSelected** — set selected attribute
 9. **Select via parent** — set parent's selected rows (for tables/lists)
 10. **Custom actions** — AXPerformCustomAction
-11. **Focus + activate** — set focus then press/confirm
-12. **Keyboard activate** — focus + synthesize space key
-13. **Parent activation** — try pressing ancestor elements
-14. **Coordinate click** — final fallback: CGEvent click at element bounds center
+11. **Ancestor activation** — try pressing ancestor elements
+12. **Explicit physical path** — coordinate click only when the caller selected a policy that allows focus stealing and cursor movement
 
-For `right-click`, the chain tries AXShowMenu first, then various focus/select combinations before falling back to a coordinate-based right-click.
+For `right-click`, AXShowMenu and related semantic menu paths include a `menu` tree only after a real menu surface appears. If the action succeeds but the menu probe cannot verify a surface, the command still returns success with `menu_probe.ok: false`; callers should inspect that field instead of retrying blindly. Combo boxes and menu buttons use the same AX menu mechanism for their primary dropdown; use `select` for those controls. Coordinate right-click is blocked by the default headless policy.
+
+Menu verification intentionally requires a closed-to-open transition. If a menu is already open for the target app, `right-click` and `select` refuse to treat that existing menu as proof of success; dismiss the old menu and retry. This avoids acting on a stale sibling menu opened by a prior command.
+
+The default activation-chain deadline is 10 seconds. Set `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` to a positive millisecond value when diagnosing unusually slow AX targets; values are capped at 300000 ms. Menu verification waits use `AGENT_DESKTOP_MENU_TIMEOUT_MS` with a default of 750 ms and a 10000 ms cap. Toggle verification uses `AGENT_DESKTOP_TOGGLE_TIMEOUT_MS` with a default of 600 ms and a 10000 ms cap; changed toggle values must remain stable for `AGENT_DESKTOP_TOGGLE_STABLE_MS`, default 200 ms and cap 2000 ms.
+
+### Headless Interaction Policy
+
+Ref commands use `ActionRequest { action, policy }`. The default policy forbids focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. macOS actions split semantic AX steps from explicit physical/headed paths:
+
+- `click`, `right-click`, `scroll`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, and `scroll-to` try AX-first semantics and fail clearly when the headless path is unavailable.
+- `type` mutates a settable AX text value in headless mode. It does not call `ensure_app_focused` or use the pasteboard in the default CLI path.
+- `focus`, `press`, `hover`, `drag`, and `mouse-*` are explicit physical/focus/cursor commands.
+- FFI callers can opt into focus-only or physical policy explicitly; CLI ref commands do not do that implicitly.
+- Explicit focus/physical policy can use the clipboard briefly for non-ASCII text insertion. Keep the default headless path or use `set-value` for sensitive text when possible.
+- If a command would need a forbidden physical path, it returns a structured error with a recovery hint.
 
 ### Surfaces
 
@@ -71,7 +94,7 @@ macOS apps can have multiple accessibility surfaces:
 |---------|-------------|-------------|
 | `window` | Main application window (default) | General UI interaction |
 | `focused` | Currently focused element's context | Inspecting active element |
-| `menu` | Open dropdown or context menu | After click/right-click on menu triggers |
+| `menu` | Open dropdown or context menu | After `select`, verified `right-click`, or explicit menu trigger |
 | `menubar` | Application menu bar | Navigating File/Edit/View menus |
 | `sheet` | Modal sheet (Save dialog, etc.) | After triggering sheet dialogs |
 | `popover` | Popover/popup content | Inspecting tooltips, popovers |
@@ -111,7 +134,7 @@ agent-desktop interacts with macOS Notification Center via the accessibility API
 
 ### Dismiss Strategy
 
-Headless-first approach (no cursor movement unless needed):
+Headless approach (no cursor movement from the default ref command path):
 
 1. **AXDismiss** / **AXRemoveFromParent** — native accessibility actions
 2. **Close button** — find and press AXButton named "close", "clear", or "dismiss"
@@ -160,14 +183,22 @@ Some apps don't expose full accessibility trees:
 - Increase `--max-depth` to explore deeper
 - Use `screenshot` as a visual fallback
 
-### STALE_REF
+### STALE_REF / SNAPSHOT_NOT_FOUND
 
 ```
 "code": "STALE_REF",
-"message": "RefMap is from a previous snapshot"
+"message": "Element not found: role=..., name=..."
 ```
 
-The UI changed between your snapshot and action. Run `snapshot` again and use the new refs.
+The UI changed between your snapshot and action, or the element could not be re-identified. Run `snapshot` again and use the new refs. If the requested `snapshot_id` does not exist, the command returns `SNAPSHOT_NOT_FOUND`.
+
+### POLICY_DENIED
+
+```
+"code": "POLICY_DENIED"
+```
+
+The semantic AX path could not complete and a physical/headed path was blocked by policy. Use an explicit physical command only when that is intended, for example `focus`, `press`, `hover`, `drag`, or `mouse-click`.
 
 ### ACTION_FAILED
 
@@ -182,8 +213,8 @@ The accessibility action was rejected. This can happen when:
 
 **Try:**
 1. Check `is @ref --property enabled` first
-2. Try coordinate-based click: get bounds with `get @ref --property bounds`, then `mouse-click --xy x,y`
-3. Use keyboard: `focus @ref` then `press return`
+2. If physical interaction is intended, get bounds with `get @ref --property bounds`, then use `mouse-click --xy x,y`
+3. Use keyboard explicitly: `focus @ref` then `press return`
 
 ### APP_NOT_FOUND
 
@@ -200,15 +231,17 @@ Large apps (Xcode, Safari with many tabs) can have deep trees.
 - Use `-i` to filter to interactive elements only
 - Use `--max-depth 5` to limit depth
 - Use `--compact` to remove empty structural nodes
+- Use `--skeleton` for dense apps, then `snapshot --root @ref --snapshot <id>` to drill down
 - Target a specific window with `--window-id`
 - Use `find` instead of full snapshot when you know what you're looking for
 
 ### Context Menu Doesn't Appear
 
-After `right-click @ref`, if no menu appears:
+After `right-click @ref`, inspect `menu` first. If it is absent and `menu_probe.ok` is `false`:
 1. The element may not support context menus
-2. The app may need to be focused first: `focus-window --app "App"` before right-clicking
-3. Try `mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
+2. If the target is a combo box or menu button, use `select @ref "Option"` instead
+3. Run `list-surfaces --app "App"` to confirm whether a menu surface exists
+4. If physical interaction is intended, try `mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
 
 ## macOS-Specific Behavior
 

@@ -171,6 +171,7 @@ mod tests {
             description: None,
             hint: None,
             states: states.iter().map(|s| s.to_string()).collect(),
+            available_actions: vec![],
             bounds: None,
             children: vec![],
             children_count: None,

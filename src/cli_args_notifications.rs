@@ -1,6 +1,8 @@
 use clap::Parser;
+use serde::Deserialize;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListNotificationsCliArgs {
     #[arg(long, help = "Filter to notifications from this app")]
     pub app: Option<String>,
@@ -10,7 +12,8 @@ pub struct ListNotificationsCliArgs {
     pub limit: Option<usize>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DismissNotificationCliArgs {
     #[arg(value_name = "INDEX", help = "1-based notification index from list-notifications",
           value_parser = clap::value_parser!(u64).range(1..))]
@@ -19,13 +22,15 @@ pub struct DismissNotificationCliArgs {
     pub app: Option<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DismissAllNotificationsCliArgs {
     #[arg(long, help = "Only dismiss notifications from this app")]
     pub app: Option<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NotificationActionCliArgs {
     #[arg(value_name = "INDEX", help = "1-based notification index from list-notifications",
           value_parser = clap::value_parser!(u64).range(1..))]

@@ -1,5 +1,5 @@
 use crate::{
-    action::{Action, KeyCombo, Modifier},
+    action::{Action, ActionRequest, KeyCombo, Modifier},
     adapter::PlatformAdapter,
     error::AppError,
 };
@@ -35,7 +35,8 @@ pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
     }
 
     let handle = crate::adapter::NativeHandle::null();
-    let result = adapter.execute_action(&handle, Action::PressKey(combo))?;
+    let result =
+        adapter.execute_action(&handle, ActionRequest::physical(Action::PressKey(combo)))?;
     Ok(serde_json::to_value(result)?)
 }
 

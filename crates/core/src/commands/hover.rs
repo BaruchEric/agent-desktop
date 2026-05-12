@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 pub struct HoverArgs {
     pub ref_id: Option<String>,
+    pub snapshot_id: Option<String>,
     pub xy: Option<(f64, f64)>,
     pub duration_ms: Option<u64>,
 }
@@ -27,9 +28,9 @@ pub fn execute(args: HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
 
 fn resolve_hover_point(args: &HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Point, AppError> {
     if let Some(ref_id) = &args.ref_id {
-        let (_entry, handle) = resolve_ref(ref_id, adapter)?;
+        let (_entry, handle) = resolve_ref(ref_id, args.snapshot_id.as_deref(), adapter)?;
         let bounds = adapter
-            .get_element_bounds(&handle)?
+            .get_element_bounds(handle.handle())?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
         Ok(Point {
             x: bounds.x + bounds.width / 2.0,

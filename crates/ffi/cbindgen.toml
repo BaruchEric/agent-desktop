@@ -19,6 +19,7 @@ include = [
     "AdModifier",
     "AdMouseButton",
     "AdMouseEventKind",
+    "AdPolicyKind",
     "AdScreenshotKind",
     "AdSnapshotSurface",
     "AdWindowOpKind",

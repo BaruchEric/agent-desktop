@@ -1,24 +1,7 @@
 use crate::node::AccessibilityNode;
 use crate::refs::{RefEntry, RefMap};
 
-pub(crate) const INTERACTIVE_ROLES: &[&str] = &[
-    "button",
-    "textfield",
-    "checkbox",
-    "link",
-    "menuitem",
-    "tab",
-    "slider",
-    "combobox",
-    "treeitem",
-    "cell",
-    "radiobutton",
-    "incrementor",
-    "menubutton",
-    "switch",
-    "colorwell",
-    "dockitem",
-];
+pub(crate) use crate::roles::INTERACTIVE_ROLES;
 
 pub(crate) fn actions_for_role(role: &str) -> Vec<String> {
     match role {
@@ -37,7 +20,9 @@ pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
     pid: i32,
     source_app: Option<&str>,
+    source_window_title: Option<&str>,
     root_ref: Option<String>,
+    path: &[usize],
 ) -> RefEntry {
     RefEntry {
         pid,
@@ -47,9 +32,15 @@ pub(crate) fn ref_entry_from_node(
         states: node.states.clone(),
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
-        available_actions: actions_for_role(&node.role),
+        available_actions: if node.available_actions.is_empty() {
+            actions_for_role(&node.role)
+        } else {
+            node.available_actions.clone()
+        },
         source_app: source_app.map(str::to_string),
+        source_window_title: source_window_title.map(str::to_string),
         root_ref,
+        path: path.to_vec(),
     }
 }
 
@@ -113,20 +104,36 @@ pub(crate) struct RefAllocConfig<'a> {
     pub compact: bool,
     pub pid: i32,
     pub source_app: Option<&'a str>,
+    pub source_window_title: Option<&'a str>,
     pub root_ref_id: Option<&'a str>,
 }
 
 pub(crate) fn allocate_refs(
+    node: AccessibilityNode,
+    refmap: &mut RefMap,
+    config: &RefAllocConfig,
+) -> AccessibilityNode {
+    allocate_refs_at_path(node, refmap, config, &mut Vec::new())
+}
+
+fn allocate_refs_at_path(
     mut node: AccessibilityNode,
     refmap: &mut RefMap,
     config: &RefAllocConfig,
+    path: &mut Vec<usize>,
 ) -> AccessibilityNode {
     let root_ref_owned = config.root_ref_id.map(str::to_string);
     let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
 
     if is_interactive {
-        let entry =
-            ref_entry_from_node(&node, config.pid, config.source_app, root_ref_owned.clone());
+        let entry = ref_entry_from_node(
+            &node,
+            config.pid,
+            config.source_app,
+            config.source_window_title,
+            root_ref_owned.clone(),
+            path,
+        );
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -138,7 +145,14 @@ pub(crate) fn allocate_refs(
         && config.root_ref_id.is_none();
 
     if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, None);
+        let mut entry = ref_entry_from_node(
+            &node,
+            config.pid,
+            config.source_app,
+            config.source_window_title,
+            None,
+            path,
+        );
         entry.available_actions = vec![];
         node.ref_id = Some(refmap.allocate(entry));
     }
@@ -150,8 +164,12 @@ pub(crate) fn allocate_refs(
     node.children = node
         .children
         .into_iter()
+        .enumerate()
         .filter_map(|child| {
-            let child = allocate_refs(child, refmap, config);
+            let (idx, child) = child;
+            path.push(idx);
+            let child = allocate_refs_at_path(child, refmap, config, path);
+            path.pop();
             if config.compact && is_collapsible(&child) {
                 return child.children.into_iter().next();
             }
@@ -184,6 +202,7 @@ mod tests {
             description: None,
             hint: None,
             states: vec![],
+            available_actions: vec![],
             bounds: Some(Rect {
                 x: 0.0,
                 y: 0.0,
@@ -252,5 +271,40 @@ mod tests {
         assert_eq!(out.children.len(), 1);
         assert_eq!(out.children[0].role, "group");
         assert_eq!(out.children[0].name.as_deref(), Some("Toolbar"));
+    }
+
+    #[test]
+    fn ref_entry_prefers_platform_actions() {
+        let mut button = node("button", Some("Save"));
+        button.available_actions = vec!["SetFocus".into()];
+
+        let entry = ref_entry_from_node(&button, 7, None, None, None, &[0]);
+
+        assert_eq!(entry.available_actions, vec!["SetFocus"]);
+    }
+
+    #[test]
+    fn allocate_refs_records_structural_paths() {
+        let mut root = node("window", Some("w"));
+        let mut group = node("group", Some("List"));
+        group.children = vec![node("button", Some("Open"))];
+        root.children = vec![node("button", Some("Save")), group];
+
+        let mut refmap = RefMap::new();
+        let config = RefAllocConfig {
+            include_bounds: true,
+            interactive_only: false,
+            compact: false,
+            pid: 7,
+            source_app: Some("Finder"),
+            source_window_title: Some("Documents"),
+            root_ref_id: None,
+        };
+        let out = allocate_refs(root, &mut refmap, &config);
+
+        let save_ref = out.children[0].ref_id.as_deref().unwrap();
+        let open_ref = out.children[1].children[0].ref_id.as_deref().unwrap();
+        assert_eq!(refmap.get(save_ref).unwrap().path, vec![0]);
+        assert_eq!(refmap.get(open_ref).unwrap().path, vec![1, 0]);
     }
 }

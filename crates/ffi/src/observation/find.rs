@@ -100,7 +100,9 @@ pub unsafe extern "C" fn ad_find(
             bounds_hash,
             available_actions: Vec::new(),
             source_app: None,
+            source_window_title: Some(core_win.title.clone()),
             root_ref: None,
+            path: Vec::new(),
         };
         match adapter.inner.resolve_element(&ref_entry) {
             Ok(handle) => {

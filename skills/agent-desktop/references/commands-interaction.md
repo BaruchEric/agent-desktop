@@ -2,33 +2,38 @@
 
 Commands for modifying UI state — clicking, typing, selecting, scrolling, and input synthesis.
 
+Ref-based actions are headless by default. They try semantic accessibility operations and do not silently steal focus, move the cursor, synthesize keyboard input, or use the pasteboard. Physical/headed interaction is reserved for explicit `focus`, `press`, `hover`, `drag`, and `mouse-*` commands or an explicit FFI policy. The `type` command has an explicit focus-fallback tier for callers that opt into focus changes while still forbidding cursor movement; the default CLI path remains AX-value-first and headless.
+
+All ref-based interaction commands accept `--snapshot <id>`. Omit it for the latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed.
+
 ## Click Actions
 
-All click commands use a smart activation chain (AX-first) that tries accessibility actions before falling back to coordinate-based clicks.
+Click commands use semantic AX activation first. In the default headless policy, coordinate click fallback is blocked; use `mouse-click` only when physical cursor movement is intended.
 
 ### click
 ```bash
 agent-desktop click @e5
+agent-desktop click @e5 --snapshot s...
 ```
-Primary activation. Tries AXPress > AXConfirm > AXOpen > AXPick > child activation > focus+activate > coordinate click.
+Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child activation > selection/value relays > custom actions > ancestor activation. Focus-stealing and coordinate fallback steps are not used by the default ref command path.
 
 ### double-click
 ```bash
 agent-desktop double-click @e3
 ```
-Tries AXOpen first, then two smart activations with 50ms gap, then CGEvent double-click.
+Tries AXOpen. Physical double-click fallback is blocked by default policy; use `mouse-click --xy X,Y --count 2` when a headed physical double-click is intended.
 
 ### triple-click
 ```bash
 agent-desktop triple-click @e2
 ```
-Three smart activations with 30ms gaps, then CGEvent triple-click. Useful for select-all in text fields.
+Physical triple-click requires cursor/focus side effects and is blocked by default policy; use `mouse-click --xy X,Y --count 3` when a headed physical triple-click is intended.
 
 ### right-click
 ```bash
 agent-desktop right-click @e5
 ```
-Opens context menu. Tries AXShowMenu > focus+AXShowMenu > parent/child AXShowMenu > coordinate right-click. Use `wait --menu` after to capture the menu, then `snapshot --surface menu` to read it.
+Performs a semantic right-click/context-menu action and includes the menu tree when a menu surface can be verified. If the right-click action succeeds but menu probing fails, the command still returns the action result with `menu_probe.ok: false` so callers do not retry and double-open context menus. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked by default policy.
 
 ## Text Input
 
@@ -37,7 +42,9 @@ Opens context menu. Tries AXShowMenu > focus+AXShowMenu > parent/child AXShowMen
 agent-desktop type @e2 "hello@example.com"
 agent-desktop type @e2 "multi line\ntext"
 ```
-Focuses the element then types each character via keyboard synthesis. Handles special characters.
+In the default headless policy, inserts text by mutating the element's AX value when the target has a settable text value. If a target cannot be updated headlessly, the command returns a structured error instead of stealing focus. Physical keyboard synthesis and pasteboard-based insertion are reserved for explicit policy paths.
+
+When an explicit focus/physical policy is used for non-ASCII text on macOS, the adapter may briefly place the text on the clipboard to paste it. Do not use that path for secrets; prefer the default headless value path or `set-value` when the target supports it.
 
 ### set-value
 ```bash
@@ -56,6 +63,7 @@ Clears the element's value to an empty string. Equivalent to `set-value @e2 ""`.
 agent-desktop focus @e2
 ```
 Sets keyboard focus on the element without clicking it.
+This is an explicit focus-changing command. It uses accessibility focus and does not move the cursor.
 
 ## Selection & Toggle
 
@@ -63,7 +71,7 @@ Sets keyboard focus on the element without clicking it.
 ```bash
 agent-desktop select @e4 "Option B"
 ```
-Selects an option in a list, dropdown, or combobox by its display text.
+Selects an option in a list, dropdown, or combobox by display text. For menu-backed controls it opens the AX menu, presses the matching menu item, and verifies `AXValue` when the control exposes it. It returns a structured error when the matching item is missing or the exposed value does not change.
 
 ### toggle
 ```bash
@@ -112,6 +120,8 @@ agent-desktop scroll @e1 --direction right --amount 2
 | `--direction` | down | `up`, `down`, `left`, `right` |
 | `--amount` | 3 | Number of scroll units |
 
+Uses AX scroll actions, scroll bars, and state-setting paths. If those are unavailable, the command returns a structured error instead of stealing focus or sending wheel events.
+
 ### scroll-to
 ```bash
 agent-desktop scroll-to @e8
@@ -159,6 +169,7 @@ agent-desktop hover --xy 500,300
 agent-desktop hover @e5 --duration 2000
 ```
 Moves cursor to element center or absolute coordinates. Optional `--duration` holds position for N ms.
+This is an explicit cursor-moving command.
 
 ### drag
 ```bash
@@ -213,11 +224,11 @@ Low-level press/release for custom drag or hold interactions.
 | Goal | Preferred | Alternative |
 |------|-----------|-------------|
 | Click a button | `click @ref` | `mouse-click --xy` if AX fails |
-| Fill a text field | `type @ref "text"` | `set-value @ref "text"` for direct set |
-| Clear then type | `clear @ref` then `type @ref "new"` | `triple-click @ref` then `type @ref "new"` |
+| Fill a text field | `clear @ref` then `type @ref "text"` | `set-value @ref "text"` for direct replacement |
+| Clear then type | `clear @ref` then `type @ref "new"` | `mouse-click --xy X,Y --count 3` only when physical selection is intended |
 | Toggle a checkbox | `check @ref` / `uncheck @ref` | `toggle @ref` if you don't know current state |
-| Open context menu | `right-click @ref` then `wait --menu` | `mouse-click --xy --button right` |
-| Select dropdown option | `select @ref "Option"` | `click @ref` then `find` the option |
+| Open context menu | `right-click @ref` | `mouse-click --xy --button right` when physical interaction is intended |
+| Select dropdown option | `select @ref "Option"` | `snapshot --surface menu` after an explicitly opened menu |
 | Navigate a form | `press tab` between fields | `focus @ref` to jump directly |
 | Copy text | `press cmd+c --app "App"` | `clipboard-set` to set directly |
 | Scroll to find elements | `scroll @ref --direction down` | `scroll-to @ref` if you have the ref |

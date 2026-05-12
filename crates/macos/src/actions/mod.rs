@@ -1,9 +1,21 @@
-pub mod ax_helpers;
-pub mod chain;
-pub mod chain_defs;
-pub mod chain_steps;
-pub mod discovery;
-pub mod dispatch;
-pub mod extras;
+pub(crate) mod ax_helpers;
+pub(crate) mod chain;
+mod chain_context;
+mod chain_def;
+pub(crate) mod chain_defs;
+pub(crate) mod chain_menu_steps;
+mod chain_step;
+pub(crate) mod chain_steps;
+pub(crate) mod chain_web_steps;
+pub(crate) mod discovery;
+pub(crate) mod dispatch;
+pub(crate) mod extras;
+pub(crate) mod post_state;
+pub(crate) mod scroll;
+pub(crate) mod toggle_state;
+pub(crate) mod type_text;
 
-pub use dispatch::perform_action;
+#[cfg(test)]
+mod chain_steps_tests;
+
+pub(crate) use dispatch::perform_action;

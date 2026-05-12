@@ -12,6 +12,8 @@ agent-desktop snapshot --app "Finder" --max-depth 5 --include-bounds
 agent-desktop snapshot --app "App" --surface menu
 agent-desktop snapshot --app "App" --window-id "w-1234"
 agent-desktop snapshot --app "App" -i --compact
+agent-desktop snapshot --app "App" --skeleton -i
+agent-desktop snapshot --root @e12 --snapshot s8f3k2p9 -i
 ```
 
 | Flag | Default | Description |
@@ -22,20 +24,22 @@ agent-desktop snapshot --app "App" -i --compact
 | `--max-depth` | 10 | Maximum tree traversal depth |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
-| `--skeleton` | false | Shallow overview: clamps depth to min(max_depth, 3), adds `children_count` on truncated containers |
-| `--root <REF>` | | Start traversal from this ref instead of window root. Cannot be combined with `--surface` |
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
+| `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
+| `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
+| `--snapshot <ID>` | latest | Snapshot ID to use when resolving `--root` |
 
 **Output structure:**
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": true,
   "command": "snapshot",
   "data": {
     "app": "System Settings",
     "window": { "id": "w-4521", "title": "General" },
     "ref_count": 14,
+    "snapshot_id": "s8f3k2p9",
     "tree": {
       "role": "window",
       "name": "General",
@@ -74,6 +78,7 @@ agent-desktop snapshot --app "App" -i --compact
 - Starts tree traversal from the given ref instead of the window root
 - Merges new refs into the existing refmap with scoped invalidation: only refs from the previous drill of the same root are replaced, leaving all other refs intact
 - Cannot be combined with `--surface`
+- Use `--snapshot <ID>` when drilling from a specific snapshot rather than the latest snapshot pointer
 
 **Progressive drill-down workflow:**
 ```bash
@@ -81,10 +86,10 @@ agent-desktop snapshot --app "App" -i --compact
 agent-desktop snapshot --skeleton --app Slack -i
 
 # Step 2: Drill into a discovered region
-agent-desktop snapshot --root @e3 -i
+agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i
 
 # Step 3: Re-drill same region (scoped invalidation replaces @e3's refs)
-agent-desktop snapshot --root @e3 -i
+agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i
 ```
 
 **Tips:**
@@ -95,6 +100,7 @@ agent-desktop snapshot --root @e3 -i
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
 - Combine `--skeleton` with `-i` and `--compact` for the most token-efficient initial overview
+- Keep `snapshot_id` when commands must resolve against a specific snapshot instead of the latest snapshot pointer
 
 ## find
 
@@ -106,6 +112,7 @@ agent-desktop find --app "TextEdit" --role textfield
 agent-desktop find --app "Safari" --text "Sign In" --first
 agent-desktop find --app "App" --role checkbox --count
 agent-desktop find --app "App" --role button --nth 2
+agent-desktop find --app "App" --role button --limit 20
 ```
 
 | Flag | Description |
@@ -119,6 +126,7 @@ agent-desktop find --app "App" --role button --nth 2
 | `--last` | Return last match only |
 | `--nth N` | Return Nth match (0-indexed) |
 | `--count` | Return match count only |
+| `--limit N` | Return at most N matches; defaults to 50 for match lists, use 0 for all |
 
 **Output (matches):**
 ```json
@@ -138,6 +146,7 @@ Read a specific property from an element.
 
 ```bash
 agent-desktop get @e1 --property text
+agent-desktop get @e1 --snapshot s8f3k2p9 --property text
 agent-desktop get @e2 --property value
 agent-desktop get @e3 --property bounds
 agent-desktop get @e4 --property role
@@ -160,6 +169,7 @@ Check a boolean state on an element.
 
 ```bash
 agent-desktop is @e1 --property visible
+agent-desktop is @e1 --snapshot s8f3k2p9 --property visible
 agent-desktop is @e2 --property enabled
 agent-desktop is @e3 --property checked
 agent-desktop is @e4 --property focused
@@ -196,6 +206,8 @@ agent-desktop screenshot --window-id "w-1234" capture.png
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
 When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field.
+
+Screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
 
 ## list-surfaces
 

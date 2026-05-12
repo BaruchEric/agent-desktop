@@ -66,7 +66,9 @@ pub unsafe extern "C" fn ad_resolve_element(
             bounds_hash,
             available_actions: vec![],
             source_app: None,
+            source_window_title: None,
             root_ref: None,
+            path: Vec::new(),
         };
         match adapter.inner.resolve_element(&core_entry) {
             Ok(handle) => {

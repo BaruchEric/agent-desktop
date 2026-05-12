@@ -37,11 +37,13 @@ pub mod notification_action;
 pub mod permissions;
 pub mod press;
 pub mod resize_window;
+pub mod resolved_element;
 pub mod restore;
 pub mod right_click;
 pub mod screenshot;
 pub mod scroll;
 pub mod scroll_to;
+pub(crate) mod search_text;
 pub mod select;
 pub mod set_value;
 pub mod skills;
@@ -53,3 +55,6 @@ pub mod type_text;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
+
+#[cfg(test)]
+mod ref_policy_tests;

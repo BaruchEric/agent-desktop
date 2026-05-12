@@ -1,9 +1,12 @@
 use crate::{
-    action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
+    action::{
+        ActionRequest, ActionResult, DragParams, ElementState, KeyCombo, MouseEvent, WindowOp,
+    },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
     notification::{NotificationFilter, NotificationIdentity, NotificationInfo},
     refs::RefEntry,
+    PermissionReport, PermissionState,
 };
 use std::marker::PhantomData;
 
@@ -53,11 +56,6 @@ pub enum ScreenshotTarget {
     FullScreen,
 }
 
-pub enum PermissionStatus {
-    Granted,
-    Denied { suggestion: String },
-}
-
 pub struct NativeHandle {
     pub(crate) ptr: *const std::ffi::c_void,
     _not_send_sync: PhantomData<*const ()>,
@@ -86,12 +84,6 @@ impl NativeHandle {
         self.ptr
     }
 }
-
-// SAFETY: Phase 1 is single-threaded CLI. NativeHandle is never sent across thread
-// boundaries. The unsafe impls are required for use with dyn PlatformAdapter (which
-// is Send + Sync). Remove in Phase 4 when async daemon is introduced.
-unsafe impl Send for NativeHandle {}
-unsafe impl Sync for NativeHandle {}
 
 pub struct ImageBuffer {
     pub data: Vec<u8>,
@@ -134,7 +126,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
-        _action: Action,
+        _request: ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
         Err(AdapterError::not_supported("execute_action"))
     }
@@ -144,18 +136,31 @@ pub trait PlatformAdapter: Send + Sync {
     }
 
     /// Releases a platform-specific element handle returned from
-    /// `resolve_element`. macOS implementations must `CFRelease` the
-    /// underlying `AXUIElementRef` to balance the `CFRetain` that
-    /// happened during resolve. Windows/Linux consumers can leave this
-    /// as the default `not_supported` no-op.
+    /// `resolve_element`. Adapter methods that receive `&NativeHandle`
+    /// borrow it only; they must not consume or release it. macOS
+    /// implementations must `CFRelease` here to balance the `CFRetain`
+    /// that happened during resolve. Windows/Linux consumers can leave
+    /// this as the default no-op.
     fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-        Err(AdapterError::not_supported("release_handle"))
+        Ok(())
     }
 
-    fn check_permissions(&self) -> PermissionStatus {
-        PermissionStatus::Denied {
-            suggestion: "Platform adapter not available".into(),
+    fn permission_report(&self) -> PermissionReport {
+        PermissionReport {
+            accessibility: PermissionState::Denied {
+                suggestion: "Platform adapter not available".into(),
+            },
+            screen_recording: PermissionState::Unknown,
+            automation: PermissionState::NotRequired,
         }
+    }
+
+    fn unknown_accessibility_means_unsupported(&self) -> bool {
+        true
+    }
+
+    fn request_permissions(&self) -> PermissionReport {
+        self.permission_report()
     }
 
     fn focus_window(&self, _win: &WindowInfo) -> Result<(), AdapterError> {
@@ -190,6 +195,10 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("get_live_value"))
     }
 
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Err(AdapterError::not_supported("get_live_state"))
+    }
+
     fn press_key_for_app(
         &self,
         _app_name: &str,
@@ -216,6 +225,10 @@ pub trait PlatformAdapter: Send + Sync {
 
     fn mouse_event(&self, _event: MouseEvent) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))
+    }
+
+    fn key_event(&self, _combo: &KeyCombo, _down: bool) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("key_event"))
     }
 
     fn drag(&self, _params: DragParams) -> Result<(), AdapterError> {

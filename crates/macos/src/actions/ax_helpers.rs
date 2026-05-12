@@ -1,13 +1,13 @@
-use agent_desktop_core::error::AdapterError;
+use agent_desktop_core::error::{AdapterError, ErrorCode};
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use crate::tree::AXElement;
     use accessibility_sys::{
-        kAXErrorCannotComplete, kAXErrorSuccess, kAXFocusedAttribute, kAXValueAttribute,
-        AXUIElementCopyActionNames, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
-        AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout,
+        kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorSuccess, kAXFocusedAttribute,
+        kAXValueAttribute, AXUIElementCopyActionNames, AXUIElementIsAttributeSettable,
+        AXUIElementPerformAction, AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout,
     };
     use core_foundation::{
         array::CFArray,
@@ -24,20 +24,37 @@ mod imp {
     }
 
     pub fn try_ax_action_retried(el: &AXElement, name: &str) -> bool {
+        try_ax_action_retried_or_err(el, name).unwrap_or(false)
+    }
+
+    pub fn try_ax_action_retried_or_err(el: &AXElement, name: &str) -> Result<bool, AdapterError> {
         let action = CFString::new(name);
         let err = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
         if err == kAXErrorSuccess {
-            return true;
+            return Ok(true);
         }
         if err == kAXErrorCannotComplete {
             std::thread::sleep(std::time::Duration::from_millis(100));
             let retry = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
-            return retry == kAXErrorSuccess;
+            if retry == kAXErrorSuccess {
+                return Ok(true);
+            }
+            ax_error_result(name, retry)?;
+            return Ok(false);
         }
-        false
+        ax_error_result(name, err)?;
+        Ok(false)
     }
 
     pub fn set_ax_bool(el: &AXElement, attr: &str, value: bool) -> bool {
+        set_ax_bool_or_err(el, attr, value).unwrap_or(false)
+    }
+
+    pub fn set_ax_bool_or_err(
+        el: &AXElement,
+        attr: &str,
+        value: bool,
+    ) -> Result<bool, AdapterError> {
         let cf_attr = CFString::new(attr);
         let cf_val = if value {
             CFBoolean::true_value()
@@ -47,7 +64,11 @@ mod imp {
         let err = unsafe {
             AXUIElementSetAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), cf_val.as_CFTypeRef())
         };
-        err == kAXErrorSuccess
+        if err == kAXErrorSuccess {
+            return Ok(true);
+        }
+        ax_error_result(attr, err)?;
+        Ok(false)
     }
 
     pub fn set_ax_string_or_err(
@@ -61,8 +82,9 @@ mod imp {
             AXUIElementSetAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), cf_val.as_CFTypeRef())
         };
         if err != kAXErrorSuccess {
+            ax_error_result(attr, err)?;
             return Err(AdapterError::new(
-                agent_desktop_core::error::ErrorCode::ActionFailed,
+                ErrorCode::ActionFailed,
                 format!("AXSetAttributeValue({attr}) failed (err={err})"),
             )
             .with_suggestion("Attribute may be read-only. Try 'click' or 'type' instead."));
@@ -142,8 +164,8 @@ mod imp {
         unsafe { AXUIElementSetMessagingTimeout(el.0, seconds) };
     }
 
-    pub fn ax_focus(el: &AXElement) -> bool {
-        set_ax_bool(el, kAXFocusedAttribute, true)
+    pub fn ax_focus_or_err(el: &AXElement) -> Result<bool, AdapterError> {
+        set_ax_bool_or_err(el, kAXFocusedAttribute, true)
     }
 
     pub fn ax_set_value(el: &AXElement, val: &str) -> Result<(), AdapterError> {
@@ -159,6 +181,14 @@ mod imp {
         crate::tree::copy_string_attr(el, kAXRoleAttribute)
             .map(|r| crate::tree::roles::ax_role_to_str(&r).to_string())
     }
+
+    fn ax_error_result(operation: &str, err: i32) -> Result<(), AdapterError> {
+        if err == kAXErrorAPIDisabled {
+            return Err(AdapterError::permission_denied()
+                .with_platform_detail(format!("{operation} failed with kAXErrorAPIDisabled")));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -172,8 +202,21 @@ mod imp {
     pub fn try_ax_action_retried(_el: &AXElement, _name: &str) -> bool {
         false
     }
+    pub fn try_ax_action_retried_or_err(
+        _el: &AXElement,
+        _name: &str,
+    ) -> Result<bool, AdapterError> {
+        Ok(false)
+    }
     pub fn set_ax_bool(_el: &AXElement, _attr: &str, _value: bool) -> bool {
         false
+    }
+    pub fn set_ax_bool_or_err(
+        _el: &AXElement,
+        _attr: &str,
+        _value: bool,
+    ) -> Result<bool, AdapterError> {
+        Ok(false)
     }
     pub fn set_ax_string_or_err(
         _el: &AXElement,
@@ -206,8 +249,8 @@ mod imp {
     }
     pub fn ensure_visible(_el: &AXElement) {}
     pub fn set_messaging_timeout(_el: &AXElement, _seconds: f32) {}
-    pub fn ax_focus(_el: &AXElement) -> bool {
-        false
+    pub fn ax_focus_or_err(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
     pub fn ax_set_value(_el: &AXElement, _val: &str) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("ax_set_value"))
@@ -221,7 +264,8 @@ mod imp {
 }
 
 pub(crate) use imp::{
-    ax_focus, ax_press, ax_set_value, element_role, ensure_visible, has_ax_action,
-    is_attr_settable, list_ax_actions, set_ax_bool, set_ax_string_or_err, set_messaging_timeout,
-    try_action_from_list, try_ax_action, try_ax_action_retried, try_each_ancestor, try_each_child,
+    ax_focus_or_err, ax_press, ax_set_value, element_role, ensure_visible, has_ax_action,
+    is_attr_settable, list_ax_actions, set_ax_bool, set_ax_bool_or_err, set_ax_string_or_err,
+    set_messaging_timeout, try_action_from_list, try_ax_action, try_ax_action_retried,
+    try_ax_action_retried_or_err, try_each_ancestor, try_each_child,
 };

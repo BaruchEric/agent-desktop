@@ -10,7 +10,7 @@
 
 use crate::types::{
     AdActionKind, AdDirection, AdImageFormat, AdModifier, AdMouseButton, AdMouseEventKind,
-    AdScreenshotKind, AdSnapshotSurface, AdWindowOpKind,
+    AdPolicyKind, AdScreenshotKind, AdSnapshotSurface, AdWindowOpKind,
 };
 
 macro_rules! try_from_c_enum {
@@ -34,6 +34,12 @@ try_from_c_enum! {
         Select = 8, Toggle = 9, Check = 10, Uncheck = 11,
         Scroll = 12, ScrollTo = 13, PressKey = 14, KeyDown = 15,
         KeyUp = 16, TypeText = 17, Clear = 18, Hover = 19, Drag = 20,
+    }
+}
+
+try_from_c_enum! {
+    AdPolicyKind {
+        Headless = 0, FocusFallback = 1, Physical = 2,
     }
 }
 
@@ -115,6 +121,14 @@ mod tests {
     }
 
     #[test]
+    fn test_policy_kind_valid_range() {
+        for raw in 0..=2 {
+            assert!(AdPolicyKind::from_c(raw).is_some());
+        }
+        assert!(AdPolicyKind::from_c(3).is_none());
+    }
+
+    #[test]
     fn test_modifier_valid_range() {
         for raw in 0..=3 {
             assert!(AdModifier::from_c(raw).is_some());
@@ -170,6 +184,7 @@ mod tests {
         for raw in [-1_000_000_i32, -1, 0, 1, 20, 21, 999, i32::MAX, i32::MIN] {
             let _ = AdActionKind::from_c(raw);
             let _ = AdDirection::from_c(raw);
+            let _ = AdPolicyKind::from_c(raw);
             let _ = AdModifier::from_c(raw);
             let _ = AdMouseButton::from_c(raw);
             let _ = AdMouseEventKind::from_c(raw);

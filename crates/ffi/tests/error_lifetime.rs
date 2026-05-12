@@ -13,7 +13,6 @@ extern "C" {
     ) -> AdResult;
     fn ad_last_error_message() -> *const std::os::raw::c_char;
     fn ad_last_error_code() -> AdResult;
-    fn ad_check_permissions(adapter: *const agent_desktop_ffi::AdAdapter) -> AdResult;
 }
 
 #[test]
@@ -39,7 +38,9 @@ fn last_error_pointer_survives_across_successful_calls() {
         let first_msg = CStr::from_ptr(first_msg_ptr).to_string_lossy().into_owned();
 
         for _ in 0..10 {
-            let _rc = ad_check_permissions(adapter);
+            let next = ad_adapter_create();
+            assert!(!next.is_null());
+            ad_adapter_destroy(next);
         }
 
         let later_msg_ptr = ad_last_error_message();
