@@ -467,7 +467,7 @@ Current `.github/workflows/ci.yml` on every PR:
   - `cargo test -p agent-desktop-ffi --tests` (c_abi_harness + c_header_compile + error_lifetime integration suites)
   - `cargo build --profile ci` (fast CLI binary) + 15 MB size check
   - `cargo build --profile release-ffi -p agent-desktop-ffi` (the shipped cdylib profile)
-  - FFI header drift check — diffs `crates/ffi/include/agent_desktop.h` against the build-stamped `target/ffi-header-path.txt`
+  - FFI header contract check — compiles `crates/ffi/include/agent_desktop.h` from C tests and keeps header regeneration out of the default build graph
 
 ### Dependencies
 
@@ -504,7 +504,7 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 
 | ID | Objective | Metric |
 |----|-----------|--------|
-| P1.5-O1 | Stable C-ABI surface | `crates/ffi/include/agent_desktop.h` drift-checked in CI via a deterministic `ffi-header-path.txt` stamp |
+| P1.5-O1 | Stable C-ABI surface | `crates/ffi/include/agent_desktop.h` compiled in CI as the committed ABI contract |
 | P1.5-O2 | 5-platform release | Tarballs for aarch64/x86_64 apple-darwin, aarch64/x86_64 unknown-linux-gnu, and x86_64 pc-windows-msvc on every tagged release |
 | P1.5-O3 | Panic safety | Dedicated `release-ffi` profile overrides `panic = "abort"` → `"unwind"`; `catch_unwind` wraps every `extern "C"` boundary via `trap_panic` / `trap_panic_ptr` / `trap_panic_const_ptr` / `trap_panic_void` |
 | P1.5-O4 | Main-thread safety (macOS) | `require_main_thread()` guard in every build profile; worker-thread call returns `AD_RESULT_ERR_INTERNAL` with a static `'static CStr` message |
@@ -519,8 +519,8 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 ```
 crates/ffi/
 ├── Cargo.toml           # crate-type = ["cdylib", "rlib"]
-├── cbindgen.toml        # [export].include forces emission of AdActionKind / AdDirection / AdModifier / AdMouseButton / AdMouseEventKind / AdScreenshotKind / AdSnapshotSurface / AdWindowOpKind even though the public ABI stores raw i32
-├── build.rs             # runs cbindgen into $OUT_DIR, stamps target/ffi-header-path.txt, bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS
+├── cbindgen.toml        # maintainer-only header regeneration config
+├── build.rs             # bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS
 ├── include/
 │   └── agent_desktop.h  # committed, drift-checked against the OUT_DIR output
 ├── src/                 # ad_* extern "C" entrypoints, organized by domain
@@ -569,13 +569,13 @@ Regular `release` profile keeps `panic = "abort"` for the CLI binary, so a panic
 
 - `cargo build --profile release-ffi -p agent-desktop-ffi` on every PR
 - `cargo test -p agent-desktop-ffi --tests` runs the 3 integration suites
-- FFI header drift check diffs the committed header against the OUT_DIR output discovered via `target/ffi-header-path.txt` (deterministic even with warm caches and multiple `agent-desktop-ffi-<hash>/` directories)
+- FFI header contract check compiles the committed header from C tests. Header regeneration is an explicit maintainer action via `scripts/update-ffi-header.sh`, not part of ordinary builds.
 
 ### New Dependencies
 
 | Crate | Version | Scope | Purpose |
 |-------|---------|-------|---------|
-| `cbindgen` | = 0.27.0 (pinned) | `crates/ffi` build-dep | C header generation |
+| `cbindgen` | maintainer-installed tool, denied in Cargo graph | `scripts/update-ffi-header.sh` only | C header regeneration |
 | `libc` | 0.2+ | `crates/ffi` macOS target | `pthread_main_np` for main-thread check |
 
 ### Forward Compatibility
@@ -1892,7 +1892,7 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | `clap` 4.x, `serde` 1.x, `thiserror` 2.x, `tracing` 0.1+, `base64` 0.22+ | Phase 1 | Core: CLI, JSON, errors, logging, encoding |
 | `tracing-subscriber` 0.3, `rustc-hash` 2.1 | Phase 1 | Log formatter + fast hashing |
 | `accessibility-sys` 0.1+, `core-foundation` 0.10+, `core-graphics` 0.24+ | Phase 1 | macOS AX API FFI |
-| `cbindgen` = 0.27.0 (pinned), `libc` 0.2+ | Phase 1.5 | C header generation + macOS `pthread_main_np` for FFI main-thread guard |
+| `cbindgen` maintainer tool, `libc` 0.2+ | Phase 1.5 | explicit C header regeneration + macOS `pthread_main_np` for FFI main-thread guard |
 | `uiautomation` 0.24+ | Phase 2 | Windows UIA wrapper |
 | `windows` 0.62.2 | Phase 2 | Win32 / WinRT bindings (pinned to match `windows-capture 1.5` pin) |
 | `windows-capture` 1.5.4 | Phase 2 | Modern `Windows.Graphics.Capture` screenshot |

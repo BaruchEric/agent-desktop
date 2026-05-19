@@ -18,6 +18,9 @@ allow = [
 multiple-versions = "allow"
 wildcards = "allow"
 highlight = "all"
+deny = [
+  { name = "cbindgen", reason = "Keep header generation out of the default Cargo build graph; use the explicit maintainer script only." },
+]
 
 [sources]
 unknown-registry = "deny"

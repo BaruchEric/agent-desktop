@@ -74,7 +74,7 @@ agent-desktop/
 │   ├── macos/              # agent-desktop-macos (Phase 1)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
 │   ├── linux/              # agent-desktop-linux (stub → Phase 2)
-│   └── ffi/                # agent-desktop-ffi (cdylib + cbindgen C ABI)
+│   └── ffi/                # agent-desktop-ffi (cdylib + committed C ABI header)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs             # entry point, permission check, JSON envelope
 │   ├── cli.rs              # clap derive enum (Commands)
