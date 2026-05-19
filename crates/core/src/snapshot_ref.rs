@@ -4,6 +4,7 @@ use crate::{
     node::WindowInfo,
     ref_alloc::{self, RefAllocConfig},
     refs_store::RefStore,
+    resolved_element::ResolvedElement,
     snapshot::SnapshotResult,
 };
 
@@ -24,9 +25,9 @@ pub fn run_from_ref(
         .ok_or_else(|| AppError::stale_ref(root_ref_id))?
         .clone();
 
-    let handle = adapter.resolve_element(&entry)?;
+    let handle = ResolvedElement::new(adapter, adapter.resolve_element(&entry)?);
 
-    let raw_tree = adapter.get_subtree(&handle, opts)?;
+    let raw_tree = adapter.get_subtree(handle.handle(), opts)?;
 
     refmap.remove_by_root_ref(root_ref_id);
 

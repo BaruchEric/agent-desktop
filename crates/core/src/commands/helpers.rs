@@ -1,11 +1,11 @@
 use crate::{
     action::{ActionRequest, WindowOp},
     adapter::{PlatformAdapter, WindowFilter},
-    commands::resolved_element::ResolvedElement,
     error::AppError,
     node::WindowInfo,
     refs::RefEntry,
     refs_store::RefStore,
+    resolved_element::ResolvedElement,
     window_lookup,
 };
 use serde_json::{Value, json};
@@ -19,7 +19,7 @@ pub struct RefArgs {
     pub snapshot_id: Option<String>,
 }
 
-pub fn resolve_ref<'a>(
+pub(crate) fn resolve_ref<'a>(
     ref_id: &str,
     snapshot_id: Option<&str>,
     adapter: &'a dyn PlatformAdapter,
@@ -46,7 +46,7 @@ pub fn resolve_ref<'a>(
     Ok((entry, ResolvedElement::new(adapter, handle)))
 }
 
-pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
+pub(crate) fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
     let valid = ref_id.starts_with("@e")
         && ref_id.len() >= 3
         && ref_id.len() <= 12
@@ -60,7 +60,10 @@ pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Result<i32, AppError> {
+pub(crate) fn resolve_app_pid(
+    app: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+) -> Result<i32, AppError> {
     if let Some(name) = app {
         let apps = adapter.list_apps()?;
         apps.into_iter()
@@ -80,7 +83,7 @@ pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Resu
     }
 }
 
-pub fn execute_ref_action(
+pub(crate) fn execute_ref_action(
     args: RefArgs,
     adapter: &dyn PlatformAdapter,
     request: ActionRequest,
@@ -90,7 +93,7 @@ pub fn execute_ref_action(
     Ok(serde_json::to_value(result)?)
 }
 
-pub fn window_op_command(
+pub(crate) fn window_op_command(
     args: AppArgs,
     adapter: &dyn PlatformAdapter,
     op: WindowOp,
@@ -113,14 +116,14 @@ pub fn window_op_command(
     Ok(json!({ response_key: true }))
 }
 
-pub fn find_window_for_pid(
+pub(crate) fn find_window_for_pid(
     pid: i32,
     adapter: &dyn PlatformAdapter,
 ) -> Result<WindowInfo, AppError> {
     window_lookup::find_window_for_pid(pid, adapter)
 }
 
-pub fn resolve_window_for_app(
+pub(crate) fn resolve_window_for_app(
     app: Option<&str>,
     adapter: &dyn PlatformAdapter,
 ) -> Result<WindowInfo, AppError> {
@@ -129,171 +132,5 @@ pub fn resolve_window_for_app(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::action::{Action, ActionResult, InteractionPolicy};
-    use crate::adapter::NativeHandle;
-    use crate::error::{AdapterError, ErrorCode};
-    use crate::node::AppInfo;
-    use crate::refs::RefMap;
-    use crate::refs_test_support::HomeGuard;
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    struct ReleaseCountingAdapter {
-        releases: AtomicU32,
-    }
-
-    impl PlatformAdapter for ReleaseCountingAdapter {
-        fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-            Ok(NativeHandle::null())
-        }
-
-        fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
-            self.releases.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }
-    }
-
-    struct RecordingAdapter {
-        request: Mutex<Option<ActionRequest>>,
-    }
-
-    impl PlatformAdapter for RecordingAdapter {
-        fn resolve_element(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-            Ok(NativeHandle::null())
-        }
-
-        fn execute_action(
-            &self,
-            _handle: &NativeHandle,
-            request: ActionRequest,
-        ) -> Result<ActionResult, AdapterError> {
-            *self.request.lock().unwrap() = Some(request);
-            Ok(ActionResult::new("ok"))
-        }
-    }
-
-    struct RestoreWithoutWindowAdapter {
-        op_count: AtomicU32,
-    }
-
-    impl PlatformAdapter for RestoreWithoutWindowAdapter {
-        fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
-            Ok(vec![AppInfo {
-                name: "TextEdit".into(),
-                pid: 42,
-                bundle_id: None,
-            }])
-        }
-
-        fn list_windows(
-            &self,
-            _filter: &crate::adapter::WindowFilter,
-        ) -> Result<Vec<WindowInfo>, AdapterError> {
-            Err(AdapterError::new(ErrorCode::WindowNotFound, "no windows"))
-        }
-
-        fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError> {
-            assert_eq!(win.pid, 42);
-            assert!(matches!(op, WindowOp::Restore));
-            self.op_count.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }
-    }
-
-    fn entry() -> RefEntry {
-        RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: Some("OK".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec!["Click".into()],
-            source_app: None,
-            source_window_title: None,
-            root_ref: None,
-            path: smallvec::SmallVec::new(),
-        }
-    }
-
-    #[test]
-    fn resolved_element_releases_handle_once_on_drop() {
-        let _guard = HomeGuard::new();
-        let mut refmap = RefMap::new();
-        refmap.allocate(entry());
-        let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-        let adapter = ReleaseCountingAdapter {
-            releases: AtomicU32::new(0),
-        };
-
-        {
-            let (_entry, resolved) = resolve_ref("@e1", Some(&snapshot_id), &adapter).unwrap();
-            let _handle = resolved.handle();
-            assert_eq!(adapter.releases.load(Ordering::SeqCst), 0);
-        }
-
-        assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn execute_ref_action_preserves_action_and_policy() {
-        let _guard = HomeGuard::new();
-        let mut refmap = RefMap::new();
-        refmap.allocate(entry());
-        let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-        let adapter = RecordingAdapter {
-            request: Mutex::new(None),
-        };
-        let args = RefArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
-        };
-
-        execute_ref_action(args, &adapter, ActionRequest::headless(Action::Clear)).unwrap();
-
-        let request = adapter.request.lock().unwrap().clone().unwrap();
-        assert!(matches!(request.action, Action::Clear));
-        assert_eq!(request.policy, InteractionPolicy::headless());
-    }
-
-    #[test]
-    fn restore_can_run_when_no_window_is_currently_listed() {
-        let adapter = RestoreWithoutWindowAdapter {
-            op_count: AtomicU32::new(0),
-        };
-
-        let value = window_op_command(
-            AppArgs {
-                app: Some("TextEdit".into()),
-            },
-            &adapter,
-            WindowOp::Restore,
-            "restored",
-        )
-        .unwrap();
-
-        assert_eq!(value["restored"], true);
-        assert_eq!(adapter.op_count.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn test_valid_refs() {
-        assert!(validate_ref_id("@e1").is_ok());
-        assert!(validate_ref_id("@e14").is_ok());
-        assert!(validate_ref_id("@e999").is_ok());
-    }
-
-    #[test]
-    fn test_invalid_refs() {
-        assert!(validate_ref_id("@").is_err());
-        assert!(validate_ref_id("e1").is_err());
-        assert!(validate_ref_id("@e").is_err());
-        assert!(validate_ref_id("@e0").is_err());
-        assert!(validate_ref_id("@e0abc").is_err());
-        assert!(validate_ref_id("1").is_err());
-        assert!(validate_ref_id("").is_err());
-    }
-}
+#[path = "helpers_tests.rs"]
+mod tests;

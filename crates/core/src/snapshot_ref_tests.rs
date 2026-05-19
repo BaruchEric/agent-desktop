@@ -32,14 +32,27 @@ fn named(role: &str, name: &str) -> AccessibilityNode {
 
 struct StubAdapter {
     subtree: AccessibilityNode,
+    subtree_error: Option<AdapterError>,
     resolve_calls: AtomicU32,
+    release_calls: AtomicU32,
 }
 
 impl StubAdapter {
     fn new(subtree: AccessibilityNode) -> Self {
         Self {
             subtree,
+            subtree_error: None,
             resolve_calls: AtomicU32::new(0),
+            release_calls: AtomicU32::new(0),
+        }
+    }
+
+    fn with_subtree_error(error: AdapterError) -> Self {
+        Self {
+            subtree: node("group"),
+            subtree_error: Some(error),
+            resolve_calls: AtomicU32::new(0),
+            release_calls: AtomicU32::new(0),
         }
     }
 }
@@ -58,7 +71,15 @@ impl PlatformAdapter for StubAdapter {
         _handle: &NativeHandle,
         _opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
+        if let Some(error) = &self.subtree_error {
+            return Err(error.clone());
+        }
         Ok(self.subtree.clone())
+    }
+
+    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
+        self.release_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn execute_action(
@@ -145,6 +166,23 @@ fn test_run_from_ref_returns_subtree_and_persists_refs() {
     let drill_entry = on_disk.get(drill_ref).expect("entry persisted");
     assert_eq!(drill_entry.root_ref.as_deref(), Some("@e1"));
     assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn test_run_from_ref_releases_handle_when_subtree_read_fails() {
+    let _guard = HomeGuard::new();
+    save_latest(seed_skeleton_refmap());
+
+    let adapter = StubAdapter::with_subtree_error(AdapterError::new(
+        crate::error::ErrorCode::ActionFailed,
+        "subtree failed",
+    ));
+    let result = run_from_ref(&adapter, &drill_opts(), "@e1", None);
+
+    assert!(result.is_err());
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]

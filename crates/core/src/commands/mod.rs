@@ -37,7 +37,6 @@ pub mod notification_action;
 pub mod permissions;
 pub mod press;
 pub mod resize_window;
-pub mod resolved_element;
 pub mod restore;
 pub mod right_click;
 pub mod screenshot;

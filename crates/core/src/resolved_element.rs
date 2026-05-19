@@ -1,16 +1,16 @@
 use crate::adapter::{NativeHandle, PlatformAdapter};
 
-pub struct ResolvedElement<'a> {
+pub(crate) struct ResolvedElement<'a> {
     adapter: &'a dyn PlatformAdapter,
     handle: NativeHandle,
 }
 
 impl<'a> ResolvedElement<'a> {
-    pub fn new(adapter: &'a dyn PlatformAdapter, handle: NativeHandle) -> Self {
+    pub(crate) fn new(adapter: &'a dyn PlatformAdapter, handle: NativeHandle) -> Self {
         Self { adapter, handle }
     }
 
-    pub fn handle(&self) -> &NativeHandle {
+    pub(crate) fn handle(&self) -> &NativeHandle {
         &self.handle
     }
 }

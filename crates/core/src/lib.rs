@@ -14,6 +14,7 @@ mod refs_lock;
 pub mod refs_store;
 #[cfg(test)]
 mod refs_test_support;
+pub(crate) mod resolved_element;
 pub mod roles;
 pub mod snapshot;
 pub mod snapshot_ref;
