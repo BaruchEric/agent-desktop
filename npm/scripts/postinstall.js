@@ -4,7 +4,7 @@ const { existsSync, mkdirSync, chmodSync, unlinkSync, renameSync, writeFileSync,
 const { readFileSync } = require('fs');
 const { join } = require('path');
 const { platform, arch } = require('os');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
 
 const projectRoot = join(__dirname, '..');
@@ -43,7 +43,7 @@ function getPlatformKey() {
 function download(url, dest) {
   const tmpDest = dest + '.tmp';
   try {
-    execSync(`curl -fsSL --retry 3 --retry-delay 2 -o "${tmpDest}" "${url}"`, {
+    execFileSync('curl', ['-fsSL', '--retry', '3', '--retry-delay', '2', '-o', tmpDest, url], {
       stdio: 'pipe',
       timeout: 60000,
     });
@@ -65,7 +65,7 @@ function fixGlobalInstallBin() {
 
   let npmBinDir;
   try {
-    const prefix = execSync('npm prefix -g', { encoding: 'utf8', timeout: 5000 }).trim();
+    const prefix = execFileSync('npm', ['prefix', '-g'], { encoding: 'utf8', timeout: 5000 }).trim();
     npmBinDir = join(prefix, 'bin');
   } catch {
     return;
@@ -169,27 +169,20 @@ function main() {
 
   try {
     download(tarballUrl, tarballPath);
-
-    try {
-      download(checksumsUrl, checksumsPath);
-      const checksums = readFileSync(checksumsPath, 'utf8');
-      const expectedLine = checksums.split('\n').find((line) => line.includes(tarball));
-      if (expectedLine) {
-        const expectedHash = expectedLine.split(/\s+/)[0];
-        if (!verifyChecksum(tarballPath, expectedHash)) {
-          log('WARNING: Checksum verification failed.');
-          unlinkSync(tarballPath);
-          unlinkSync(checksumsPath);
-          return;
-        }
-        log('Checksum verified');
-      }
-      unlinkSync(checksumsPath);
-    } catch {
-      log('Checksum verification skipped');
+    download(checksumsUrl, checksumsPath);
+    const checksums = readFileSync(checksumsPath, 'utf8');
+    const expectedLine = checksums.split('\n').find((line) => line.includes(tarball));
+    if (!expectedLine) {
+      throw new Error(`Checksum entry missing for ${tarball}`);
     }
+    const expectedHash = expectedLine.split(/\s+/)[0];
+    if (!verifyChecksum(tarballPath, expectedHash)) {
+      throw new Error('Checksum verification failed');
+    }
+    unlinkSync(checksumsPath);
+    log('Checksum verified');
 
-    execSync(`tar -xzf "${tarballPath}" -C "${binDir}"`, { stdio: 'pipe' });
+    execFileSync('tar', ['-xzf', tarballPath, '-C', binDir], { stdio: 'pipe' });
 
     const extractedBinary = join(binDir, 'agent-desktop');
     if (existsSync(extractedBinary) && extractedBinary !== binaryPath) {
@@ -208,6 +201,7 @@ function main() {
 
     try { if (existsSync(tarballPath)) unlinkSync(tarballPath); } catch {}
     try { if (existsSync(checksumsPath)) unlinkSync(checksumsPath); } catch {}
+    process.exitCode = 1;
     return;
   }
 
