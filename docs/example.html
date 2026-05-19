@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>agent-desktop · real example</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #08090c;
+        --ink: #f0ece1;
+        --ink-2: #b4b1a5;
+        --ink-dim: #6b6d76;
+        --muted: #3d3f48;
+        --line: #2a2d36;
+        --amber: #f5a623;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        padding: 44px 56px;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        background-image:
+          radial-gradient(ellipse 60% 40% at 50% 0%, rgba(245, 166, 35, 0.05), transparent 70%);
+      }
+
+      .wrap { max-width: 1400px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 26px; }
+
+      .head {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      @media (max-width: 720px) {
+        .stats { grid-template-columns: 1fr !important; }
+        body { padding: 28px 24px; }
+      }
+      .kicker {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--amber);
+        font-weight: 600;
+      }
+      h1 {
+        margin: 8px 0 10px;
+        font-size: 38px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .tag {
+        margin: 0;
+        font-size: 15.5px;
+        font-weight: 400;
+        color: var(--ink-2);
+        line-height: 1.55;
+        max-width: none;
+      }
+      .tag strong { color: var(--ink); font-weight: 600; }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .s {
+        background: linear-gradient(180deg, #14171e, #0b0d12);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .s.amber { border-color: rgba(245, 166, 35, 0.45); }
+      .s.green { border-color: rgba(127, 198, 164, 0.45); }
+      .s .k {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+        font-weight: 600;
+      }
+      .s .v {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+        line-height: 1;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .s.amber .v { color: var(--amber); }
+      .s.green .v { color: #7fc6a4; }
+      .s .v .u {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--ink-dim);
+        letter-spacing: 0.08em;
+      }
+      .s .t {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--ink-dim);
+        letter-spacing: 0.1em;
+        margin-top: 2px;
+      }
+
+      .card {
+        background: linear-gradient(180deg, #14171e, #0b0d12);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 20px 50px -20px rgba(0,0,0,0.8);
+      }
+      .card .h {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 22px;
+        background: rgba(255,255,255,0.02);
+        border-bottom: 1px solid var(--line);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--ink-2);
+        font-weight: 500;
+      }
+      .card .h .sid {
+        font-size: 10px;
+        color: var(--amber);
+        padding: 3px 9px;
+        border: 1px solid rgba(245, 166, 35, 0.4);
+        border-radius: 99px;
+        background: rgba(245, 166, 35, 0.06);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      pre.tree {
+        margin: 0;
+        padding: 22px 26px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        line-height: 1.95;
+        color: var(--ink-2);
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+      pre.tree .c { color: var(--muted); }
+      pre.tree .r { color: var(--ink); font-weight: 600; }
+      pre.tree .n { color: var(--ink-dim); font-weight: 400; }
+      pre.tree .ref {
+        color: var(--amber);
+        padding: 1px 7px;
+        border: 1px solid rgba(245, 166, 35, 0.4);
+        border-radius: 4px;
+        background: rgba(245, 166, 35, 0.06);
+        font-size: 11.5px;
+      }
+      pre.tree .ref.active {
+        background: var(--amber);
+        color: #0a0b0f;
+        border-color: var(--amber);
+        font-weight: 700;
+      }
+      pre.tree .trunc {
+        color: #7fc6a4;
+        font-size: 11.5px;
+        letter-spacing: 0.04em;
+      }
+      pre.tree .dim { color: var(--muted); font-size: 12px; }
+
+      .foot {
+        padding: 16px 22px;
+        background: rgba(255,255,255,0.015);
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        font-family: "Manrope", sans-serif;
+        font-size: 13px;
+        color: var(--ink-2);
+      }
+      .foot strong { color: var(--ink); font-weight: 600; }
+      .foot code {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11.5px;
+        color: var(--amber);
+        background: rgba(245, 166, 35, 0.08);
+        padding: 2px 7px;
+        border-radius: 3px;
+      }
+      .foot .ms {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+      }
+
+      footer.brand {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+      }
+      footer.brand strong { color: var(--ink); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="head">
+        <span class="kicker">real example · dense desktop app</span>
+        <h1>Slack — a window with 1,432 nodes.</h1>
+        <p class="tag">A full snapshot of Slack's main window is a wall of text. Skeleton mode (depth&nbsp;3) returns the same actionable refs at <strong>~3% of the token cost</strong>. Same approach works for VS&nbsp;Code, Figma, Notion, Excel — anything with an accessibility tree.</p>
+      </header>
+
+      <section class="stats">
+        <div class="s">
+          <span class="k">full tree</span>
+          <span class="v">1,432<span class="u">nodes</span></span>
+          <span class="t">~28,000 tokens</span>
+        </div>
+        <div class="s amber">
+          <span class="k">skeleton · depth 3</span>
+          <span class="v">41<span class="u">nodes</span></span>
+          <span class="t">~900 tokens</span>
+        </div>
+        <div class="s green">
+          <span class="k">savings</span>
+          <span class="v">97<span class="u">%</span></span>
+          <span class="t">same refs · same actions</span>
+        </div>
+      </section>
+
+      <div class="card">
+        <div class="h">
+          <span>$ agent-desktop snapshot --skeleton --app Slack</span>
+          <span class="sid">snapshot k3p9w2x4</span>
+        </div>
+        <pre class="tree"><span class="c">▾</span> <span class="r">Window</span> <span class="n">"Slack | #engineering"</span>
+  <span class="c">▾</span> <span class="r">Toolbar</span>
+    <span class="c">·</span> <span class="r">Button</span> <span class="n">"Workspace switcher"</span>                        <span class="ref">@e1</span>
+    <span class="c">·</span> <span class="r">SearchField</span> <span class="n">"Search Acme"</span>                          <span class="ref">@e3</span>
+  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"sidebar"</span>                                          <span class="trunc">children_count: 247</span>
+    <span class="dim">  [+247 more · drill <span class="ref">@e5</span>]</span>
+  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"active channel"</span>                                  <span class="ref">@e9</span>
+    <span class="c">▾</span> <span class="r">Group</span> <span class="n">"messages"</span>                                    <span class="trunc">children_count: 1,043 · virtualized</span>
+    <span class="c">▾</span> <span class="r">Group</span> <span class="n">"compose"</span>
+      <span class="c">·</span> <span class="r">TextField</span> <span class="n">"Message #engineering"</span>                <span class="ref active">@e12</span>
+      <span class="c">·</span> <span class="r">Button</span> <span class="n">"Send"</span>                                       <span class="ref">@e15</span>
+  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"thread pane"</span>                                     <span class="trunc">children_count: 89</span>
+  <span class="c">·</span> <span class="r">StatusBar</span> <span class="n">"connected"</span></pre>
+        <div class="foot">
+          <span><strong>Then act:</strong> <code>agent-desktop type @e12 "ship it"</code> → <code>agent-desktop click @e15</code>.</span>
+          <span class="ms">native AX · no cursor · no screenshot</span>
+        </div>
+      </div>
+
+      <footer class="brand">
+        <span><strong>agent-desktop</strong> · computer use for AI agents</span>
+        <span>macOS active · windows + linux planned</span>
+      </footer>
+    </div>
+  </body>
+</html>

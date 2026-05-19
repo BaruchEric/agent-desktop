@@ -22,7 +22,11 @@
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="800" />
+  <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/example.png" alt="agent-desktop real-world example — Slack accessibility tree with 97% token savings" width="900" />
 </p>
 
 <a href="https://star-history.com/#lahfir/agent-desktop&Date">
