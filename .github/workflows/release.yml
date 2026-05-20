@@ -370,6 +370,7 @@ jobs:
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - name: Verify GitHub Release assets
         env:
@@ -400,10 +401,8 @@ jobs:
           cp ../CHANGELOG.md CHANGELOG.md 2>/dev/null || true
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
         working-directory: npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-skills:
     name: Publish Skills to ClawHub
