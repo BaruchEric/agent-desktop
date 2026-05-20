@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+pub const ENVELOPE_VERSION: &str = "2.0";
+
 /// Structured output envelope used by the Phase 3 MCP server transport layer.
 /// CLI commands currently build responses via inline `serde_json::json!` calls in `main.rs`;
 /// this type provides the typed equivalent for programmatic consumers.
@@ -45,7 +47,7 @@ pub struct ErrorPayload {
 impl Response {
     pub fn ok(command: impl Into<String>, data: Value) -> Self {
         Self {
-            version: "1.0",
+            version: ENVELOPE_VERSION,
             ok: true,
             command: command.into(),
             app: None,
@@ -56,7 +58,7 @@ impl Response {
 
     pub fn err(command: impl Into<String>, payload: ErrorPayload) -> Self {
         Self {
-            version: "1.0",
+            version: ENVELOPE_VERSION,
             ok: false,
             command: command.into(),
             app: None,

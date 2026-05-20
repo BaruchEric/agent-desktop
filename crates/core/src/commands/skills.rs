@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const SKILL_DESKTOP_MAIN: &str = include_str!("../../../../skills/agent-desktop/SKILL.md");
 const SKILL_DESKTOP_REF_OBSERVATION: &str =
@@ -40,14 +40,29 @@ const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 53 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 54 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
         refs: &[
-            SkillRef { rel_path: "references/commands-observation.md", body: SKILL_DESKTOP_REF_OBSERVATION },
-            SkillRef { rel_path: "references/commands-interaction.md", body: SKILL_DESKTOP_REF_INTERACTION },
-            SkillRef { rel_path: "references/commands-system.md", body: SKILL_DESKTOP_REF_SYSTEM },
-            SkillRef { rel_path: "references/workflows.md", body: SKILL_DESKTOP_REF_WORKFLOWS },
-            SkillRef { rel_path: "references/macos.md", body: SKILL_DESKTOP_REF_MACOS },
+            SkillRef {
+                rel_path: "references/commands-observation.md",
+                body: SKILL_DESKTOP_REF_OBSERVATION,
+            },
+            SkillRef {
+                rel_path: "references/commands-interaction.md",
+                body: SKILL_DESKTOP_REF_INTERACTION,
+            },
+            SkillRef {
+                rel_path: "references/commands-system.md",
+                body: SKILL_DESKTOP_REF_SYSTEM,
+            },
+            SkillRef {
+                rel_path: "references/workflows.md",
+                body: SKILL_DESKTOP_REF_WORKFLOWS,
+            },
+            SkillRef {
+                rel_path: "references/macos.md",
+                body: SKILL_DESKTOP_REF_MACOS,
+            },
         ],
     },
     Skill {
@@ -56,10 +71,22 @@ const SKILLS: &[Skill] = &[
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
         main: SKILL_FFI_MAIN,
         refs: &[
-            SkillRef { rel_path: "references/build-and-link.md", body: SKILL_FFI_REF_BUILD },
-            SkillRef { rel_path: "references/error-handling.md", body: SKILL_FFI_REF_ERRORS },
-            SkillRef { rel_path: "references/ownership.md", body: SKILL_FFI_REF_OWNERSHIP },
-            SkillRef { rel_path: "references/threading.md", body: SKILL_FFI_REF_THREADING },
+            SkillRef {
+                rel_path: "references/build-and-link.md",
+                body: SKILL_FFI_REF_BUILD,
+            },
+            SkillRef {
+                rel_path: "references/error-handling.md",
+                body: SKILL_FFI_REF_ERRORS,
+            },
+            SkillRef {
+                rel_path: "references/ownership.md",
+                body: SKILL_FFI_REF_OWNERSHIP,
+            },
+            SkillRef {
+                rel_path: "references/threading.md",
+                body: SKILL_FFI_REF_THREADING,
+            },
         ],
     },
 ];
@@ -176,69 +203,5 @@ fn render_full(skill: &Skill) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn list_returns_known_skills() {
-        let v = list().expect("list");
-        let arr = v["skills"].as_array().expect("array");
-        assert!(arr.iter().any(|s| s["name"] == "agent-desktop"));
-        assert!(arr.iter().any(|s| s["name"] == "agent-desktop-ffi"));
-    }
-
-    #[test]
-    fn get_resolves_alias() {
-        let v = get(GetArgs {
-            name: "desktop".into(),
-            full: false,
-            reference: None,
-        })
-        .expect("get");
-        assert_eq!(v["skill"], "agent-desktop");
-        assert!(v["content"].as_str().unwrap().contains("agent-desktop"));
-    }
-
-    #[test]
-    fn get_full_inlines_references() {
-        let v = get(GetArgs {
-            name: "desktop".into(),
-            full: true,
-            reference: None,
-        })
-        .expect("get full");
-        let content = v["content"].as_str().expect("string");
-        assert!(content.contains("--- references/workflows.md ---"));
-        assert!(content.contains("--- references/macos.md ---"));
-    }
-
-    #[test]
-    fn get_specific_reference() {
-        let v = get(GetArgs {
-            name: "desktop".into(),
-            full: false,
-            reference: Some("workflows".into()),
-        })
-        .expect("get ref");
-        assert_eq!(v["reference"], "references/workflows.md");
-    }
-
-    #[test]
-    fn unknown_skill_errors() {
-        let err = get(GetArgs {
-            name: "nope".into(),
-            full: false,
-            reference: None,
-        })
-        .expect_err("should error");
-        assert!(format!("{err}").contains("Unknown skill"));
-    }
-
-    #[test]
-    fn path_lists_canonical_names() {
-        let v = path().expect("path");
-        assert_eq!(v["location"], "embedded");
-        let avail = v["available"].as_array().expect("arr");
-        assert!(avail.iter().any(|s| s == "agent-desktop"));
-    }
-}
+#[path = "skills_tests.rs"]
+mod tests;

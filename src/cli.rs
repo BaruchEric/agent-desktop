@@ -1,8 +1,22 @@
 use clap::{Parser, Subcommand};
 
-pub use crate::cli_args::*;
-pub use crate::cli_args_notifications::*;
-pub use crate::cli_args_skills::*;
+use crate::cli_args::{
+    FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
+};
+use crate::cli_args_actions::{
+    DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs,
+    ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
+};
+use crate::cli_args_notifications::{
+    DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
+    NotificationActionCliArgs,
+};
+use crate::cli_args_skills::SkillsArgs;
+use crate::cli_args_system::{
+    AppRefArgs, BatchArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
+    ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
+    VersionArgs, WaitArgs,
+};
 
 const BEFORE_HELP: &str = include_str!("help_before.txt");
 const AFTER_HELP: &str = include_str!("help_after.txt");
@@ -15,7 +29,7 @@ const AFTER_HELP: &str = include_str!("help_after.txt");
     before_help = BEFORE_HELP,
     after_help = AFTER_HELP,
 )]
-pub struct Cli {
+pub(crate) struct Cli {
     #[arg(
         long,
         short = 'v',
@@ -29,7 +43,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Commands {
+pub(crate) enum Commands {
     #[command(about = "Capture accessibility tree as structured JSON with @ref IDs")]
     Snapshot(SnapshotArgs),
     #[command(about = "Search elements by role, name, value, or text content")]
@@ -42,13 +56,15 @@ pub enum Commands {
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
     Click(RefArgs),
-    #[command(about = "Double-click element")]
+    #[command(about = "Open element via AXOpen; physical double-click uses mouse-click")]
     DoubleClick(RefArgs),
-    #[command(about = "Triple-click element to select line or paragraph")]
+    #[command(
+        about = "Triple-click element; returns POLICY_DENIED when physical input is disabled"
+    )]
     TripleClick(RefArgs),
-    #[command(about = "Right-click element to open context menu")]
+    #[command(about = "Right-click and include menu/menu_probe details when available")]
     RightClick(RefArgs),
-    #[command(about = "Focus element and type text")]
+    #[command(about = "Insert text into a text target")]
     Type(TypeArgs),
     #[command(about = "Set element value directly via accessibility attribute")]
     SetValue(SetValueArgs),
@@ -96,9 +112,9 @@ pub enum Commands {
     CloseApp(CloseAppArgs),
     #[command(about = "List all visible windows (--app to filter by application)")]
     ListWindows(ListWindowsArgs),
-    #[command(about = "List all running GUI applications")]
-    ListApps,
-    #[command(about = "Bring a window to front (--app, --title, or --window-id)")]
+    #[command(about = "List all running GUI applications (--app to filter)")]
+    ListApps(ListAppsArgs),
+    #[command(about = "Bring a window to front and confirm OS focus")]
     FocusWindow(FocusWindowArgs),
     #[command(about = "Resize application window")]
     ResizeWindow(ResizeWindowCliArgs),
@@ -130,7 +146,9 @@ pub enum Commands {
     Wait(WaitArgs),
     #[command(about = "Show adapter health, platform info, and permission state")]
     Status,
-    #[command(about = "Check accessibility permission status (--request to prompt system dialog)")]
+    #[command(
+        about = "Check nested permission states: accessibility/screen_recording/automation each return {state,...}"
+    )]
     Permissions(PermissionsArgs),
     #[command(about = "Show version (--json for machine-readable output)")]
     Version(VersionArgs),
@@ -141,7 +159,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self {
             Self::Snapshot(_) => "snapshot",
             Self::Find(_) => "find",
@@ -176,7 +194,7 @@ impl Commands {
             Self::Launch(_) => "launch",
             Self::CloseApp(_) => "close-app",
             Self::ListWindows(_) => "list-windows",
-            Self::ListApps => "list-apps",
+            Self::ListApps(_) => "list-apps",
             Self::FocusWindow(_) => "focus-window",
             Self::ResizeWindow(_) => "resize-window",
             Self::MoveWindow(_) => "move-window",

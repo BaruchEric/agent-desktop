@@ -1,5 +1,5 @@
 use crate::{
-    action::{Action, KeyCombo, Modifier},
+    action::{Action, ActionRequest, KeyCombo, Modifier},
     adapter::PlatformAdapter,
     error::AppError,
 };
@@ -35,7 +35,8 @@ pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
     }
 
     let handle = crate::adapter::NativeHandle::null();
-    let result = adapter.execute_action(&handle, Action::PressKey(combo))?;
+    let result =
+        adapter.execute_action(&handle, ActionRequest::physical(Action::PressKey(combo)))?;
     Ok(serde_json::to_value(result)?)
 }
 
@@ -58,7 +59,7 @@ pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
             other => {
                 return Err(AppError::invalid_input(format!(
                     "Unknown modifier: '{other}'"
-                )))
+                )));
             }
         };
         modifiers.push(modifier);

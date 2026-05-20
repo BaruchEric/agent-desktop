@@ -1,10 +1,10 @@
-use agent_desktop_core::node::Rect;
-
 pub const ABSOLUTE_MAX_DEPTH: u8 = 50;
 
 pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str] {
     if ax_role == Some("AXBrowser") {
         &["AXColumns", "AXContents"]
+    } else if ax_role == Some("AXApplication") {
+        &["AXWindows", "AXFocusedWindow", "AXMainWindow", "AXChildren"]
     } else {
         &["AXChildren", "AXContents", "AXChildrenInNavigationOrder"]
     }
@@ -13,38 +13,21 @@ pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str]
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
+    use crate::tree::ax_element::AXElement;
     use accessibility_sys::{
-        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXFocusedAttribute,
-        kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute, AXUIElementCopyAttributeValue,
-        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication, AXUIElementRef,
-        AXUIElementSetMessagingTimeout,
+        AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
+        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication,
+        AXUIElementGetAttributeValueCount, AXUIElementRef, AXUIElementSetMessagingTimeout,
+        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute,
+        kAXTitleAttribute, kAXValueAttribute,
     };
     use core_foundation::{
         array::CFArray,
-        base::{CFRelease, CFRetain, CFType, CFTypeRef, TCFType},
+        base::{CFRetain, CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
         number::CFNumber,
         string::CFString,
     };
-
-    pub struct AXElement(pub(crate) AXUIElementRef);
-
-    impl Drop for AXElement {
-        fn drop(&mut self) {
-            if !self.0.is_null() {
-                unsafe { CFRelease(self.0 as CFTypeRef) }
-            }
-        }
-    }
-
-    impl Clone for AXElement {
-        fn clone(&self) -> Self {
-            if !self.0.is_null() {
-                unsafe { CFRetain(self.0 as CFTypeRef) };
-            }
-            AXElement(self.0)
-        }
-    }
 
     pub fn element_for_pid(pid: i32) -> AXElement {
         let el = AXElement(unsafe { AXUIElementCreateApplication(pid) });
@@ -62,7 +45,6 @@ mod imp {
         Option<String>,
         Option<String>,
         bool,
-        bool,
     ) {
         let attr_names = [
             kAXRoleAttribute,
@@ -70,7 +52,6 @@ mod imp {
             kAXDescriptionAttribute,
             kAXValueAttribute,
             kAXEnabledAttribute,
-            kAXFocusedAttribute,
         ];
         let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
         let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
@@ -92,8 +73,7 @@ mod imp {
             let desc = copy_string_attr(el, kAXDescriptionAttribute);
             let val = copy_value_typed(el);
             let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
-            let focused = copy_bool_attr(el, kAXFocusedAttribute).unwrap_or(false);
-            return (role, title, desc, val, enabled, focused);
+            return (role, title, desc, val, enabled);
         }
 
         let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(result_ref as _) };
@@ -119,7 +99,7 @@ mod imp {
                         }
                         None
                     }
-                    4 | 5 => item
+                    4 => item
                         .downcast::<CFBoolean>()
                         .map(|b| bool::from(b).to_string()),
                     _ => None,
@@ -133,9 +113,8 @@ mod imp {
         let desc = get(2);
         let val = get(3);
         let enabled = get(4).map(|s| s == "true").unwrap_or(true);
-        let focused = get(5).map(|s| s == "true").unwrap_or(false);
 
-        (role, title, desc, val, enabled, focused)
+        (role, title, desc, val, enabled)
     }
 
     pub fn resolve_element_name(el: &AXElement) -> Option<String> {
@@ -212,6 +191,19 @@ mod imp {
         cf_type.downcast::<CFBoolean>().map(|b| b.into())
     }
 
+    pub fn copy_i64_attr(el: &AXElement, attr: &str) -> Option<i64> {
+        let cf_attr = CFString::new(attr);
+        let mut value: CFTypeRef = std::ptr::null_mut();
+        let err = unsafe {
+            AXUIElementCopyAttributeValue(el.0, cf_attr.as_concrete_TypeRef(), &mut value)
+        };
+        if err != kAXErrorSuccess || value.is_null() {
+            return None;
+        }
+        let cf_type = unsafe { CFType::wrap_under_create_rule(value) };
+        cf_type.downcast::<CFNumber>().and_then(|n| n.to_i64())
+    }
+
     pub fn copy_ax_array(el: &AXElement, attr: &str) -> Option<Vec<AXElement>> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
@@ -236,6 +228,32 @@ mod imp {
         Some(children)
     }
 
+    pub fn copy_ax_array_prefix(
+        el: &AXElement,
+        attr: &str,
+        max_values: usize,
+    ) -> Option<Vec<AXElement>> {
+        if max_values == 0 {
+            return Some(Vec::new());
+        }
+        let cf_attr = CFString::new(attr);
+        let mut value: core_foundation_sys::array::CFArrayRef = std::ptr::null();
+        let err = unsafe {
+            AXUIElementCopyAttributeValues(
+                el.0,
+                cf_attr.as_concrete_TypeRef(),
+                0,
+                max_values as core_foundation_sys::base::CFIndex,
+                &mut value,
+            )
+        };
+        if err != kAXErrorSuccess || value.is_null() {
+            return None;
+        }
+        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
+        Some(ax_array_items(arr))
+    }
+
     pub fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
@@ -252,18 +270,16 @@ mod imp {
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         unsafe {
             for attr_name in child_attributes(ax_role) {
-                let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
+                let mut count: core_foundation_sys::base::CFIndex = 0;
                 let attr = CFString::from_static_string(attr_name);
-                let err = AXUIElementCopyAttributeValue(
+                let err = AXUIElementGetAttributeValueCount(
                     element.0,
                     attr.as_concrete_TypeRef(),
-                    &mut value,
+                    &mut count,
                 );
-                if err != kAXErrorSuccess || value.is_null() {
+                if err != kAXErrorSuccess {
                     continue;
                 }
-                let count = core_foundation_sys::array::CFArrayGetCount(value as _);
-                CFRelease(value);
                 if count > 0 {
                     return count as u32;
                 }
@@ -272,117 +288,68 @@ mod imp {
         }
     }
 
-    pub fn read_bounds(el: &AXElement) -> Option<Rect> {
-        use accessibility_sys::{
-            kAXPositionAttribute, kAXSizeAttribute, kAXValueTypeCGPoint, kAXValueTypeCGSize,
-            AXValueGetValue,
-        };
-        use core_graphics::geometry::{CGPoint, CGSize};
-        use std::ffi::c_void;
-
-        let pos_cf = CFString::new(kAXPositionAttribute);
-        let mut pos_ref: CFTypeRef = std::ptr::null_mut();
-        let pos_ok = unsafe {
-            AXUIElementCopyAttributeValue(el.0, pos_cf.as_concrete_TypeRef(), &mut pos_ref)
-        };
-        if pos_ok != kAXErrorSuccess || pos_ref.is_null() {
-            return None;
-        }
-
-        let mut point = CGPoint::new(0.0, 0.0);
-        let got_pos = unsafe {
-            AXValueGetValue(
-                pos_ref as _,
-                kAXValueTypeCGPoint,
-                &mut point as *mut _ as *mut c_void,
-            )
-        };
-        unsafe { CFRelease(pos_ref) };
-        if !got_pos {
-            return None;
-        }
-
-        let size_cf = CFString::new(kAXSizeAttribute);
-        let mut size_ref: CFTypeRef = std::ptr::null_mut();
-        let size_ok = unsafe {
-            AXUIElementCopyAttributeValue(el.0, size_cf.as_concrete_TypeRef(), &mut size_ref)
-        };
-        if size_ok != kAXErrorSuccess || size_ref.is_null() {
-            return None;
-        }
-
-        let mut size = CGSize::new(0.0, 0.0);
-        let got_size = unsafe {
-            AXValueGetValue(
-                size_ref as _,
-                kAXValueTypeCGSize,
-                &mut size as *mut _ as *mut c_void,
-            )
-        };
-        unsafe { CFRelease(size_ref) };
-        if !got_size {
-            return None;
-        }
-
-        if !point.x.is_finite()
-            || !point.y.is_finite()
-            || !size.width.is_finite()
-            || !size.height.is_finite()
-        {
-            return None;
-        }
-
-        Some(Rect {
-            x: point.x,
-            y: point.y,
-            width: size.width,
-            height: size.height,
-        })
+    fn ax_array_items(arr: CFArray<CFType>) -> Vec<AXElement> {
+        arr.into_iter()
+            .filter_map(|item| {
+                let ptr = item.as_concrete_TypeRef() as AXUIElementRef;
+                if ptr.is_null() {
+                    return None;
+                }
+                unsafe { CFRetain(ptr as CFTypeRef) };
+                Some(AXElement(ptr))
+            })
+            .collect()
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    use super::*;
-
-    pub struct AXElement(pub(crate) *const std::ffi::c_void);
-
-    impl Drop for AXElement {
-        fn drop(&mut self) {}
-    }
-    impl Clone for AXElement {
-        fn clone(&self) -> Self {
-            AXElement(self.0)
-        }
-    }
+    use crate::tree::ax_element::AXElement;
 
     pub fn element_for_pid(_pid: i32) -> AXElement {
         AXElement(std::ptr::null())
     }
+
     pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> {
         None
     }
+
+    pub fn copy_ax_array_prefix(
+        _el: &AXElement,
+        _attr: &str,
+        _max_values: usize,
+    ) -> Option<Vec<AXElement>> {
+        None
+    }
+
     pub fn copy_string_attr(_el: &AXElement, _attr: &str) -> Option<String> {
         None
     }
+
     pub fn copy_bool_attr(_el: &AXElement, _attr: &str) -> Option<bool> {
         None
     }
+
+    pub fn copy_i64_attr(_el: &AXElement, _attr: &str) -> Option<i64> {
+        None
+    }
+
     pub fn copy_element_attr(_el: &AXElement, _attr: &str) -> Option<AXElement> {
         None
     }
+
     pub fn count_children(_element: &AXElement, _ax_role: Option<&str>) -> u32 {
         0
     }
-    pub fn read_bounds(_el: &AXElement) -> Option<Rect> {
-        None
-    }
+
     pub fn resolve_element_name(_el: &AXElement) -> Option<String> {
         None
     }
+
     pub fn copy_value_typed(_el: &AXElement) -> Option<String> {
         None
     }
+
     pub fn fetch_node_attrs(
         _el: &AXElement,
     ) -> (
@@ -391,14 +358,13 @@ mod imp {
         Option<String>,
         Option<String>,
         bool,
-        bool,
     ) {
-        (None, None, None, None, true, false)
+        (None, None, None, None, true)
     }
 }
 
 pub use imp::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, copy_value_typed,
-    count_children, element_for_pid, fetch_node_attrs, read_bounds, resolve_element_name,
-    AXElement,
+    copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr, copy_i64_attr,
+    copy_string_attr, copy_value_typed, count_children, element_for_pid, fetch_node_attrs,
+    resolve_element_name,
 };

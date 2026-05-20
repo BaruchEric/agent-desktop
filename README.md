@@ -22,7 +22,11 @@
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="800" />
+  <img src="docs/architecture.png" alt="agent-desktop architecture diagram" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/example.png" alt="agent-desktop real-world example — Slack accessibility tree with 97% token savings" width="900" />
 </p>
 
 <a href="https://star-history.com/#lahfir/agent-desktop&Date">
@@ -39,8 +43,8 @@
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
 - **54 commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, plus a bundled `skills` doc loader
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
-- **Snapshot & refs**: AI-optimized workflow using deterministic element references (`@e1`, `@e2`)
-- **AX-first interactions**: Every action exhausts pure accessibility API strategies before falling back to mouse events
+- **Snapshot & refs**: AI-optimized workflow using compact snapshot IDs and deterministic element references (`@e1`, `@e2`)
+- **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
 - **Structured JSON output**: Machine-readable responses with error codes and recovery hints
 - **Works with any app**: Finder, Safari, System Settings, Xcode, Slack — anything with an accessibility tree
 
@@ -71,10 +75,20 @@ Requires Rust 1.78+ and macOS 13.0+.
 
 ### Permissions
 
-macOS requires Accessibility permission. Grant it in **System Settings > Privacy & Security > Accessibility** by adding your terminal app, or:
+macOS requires Accessibility permission. Screenshots also require Screen Recording permission. Grant them in **System Settings > Privacy & Security** by adding the app that launches agent-desktop, or:
 
 ```bash
-agent-desktop permissions --request   # trigger system dialog
+agent-desktop permissions --request   # trigger platform permission request path
+```
+
+Permission fields are explicit objects, for example:
+
+```json
+{
+  "accessibility": { "state": "granted" },
+  "screen_recording": { "state": "denied", "suggestion": "Grant Screen Recording permission" },
+  "automation": { "state": "not_required" }
+}
 ```
 
 ## Language bindings (FFI)
@@ -116,23 +130,24 @@ For dense apps (Slack, VS Code, Notion), use **progressive skeleton traversal** 
 ```bash
 # 1. Shallow overview — depth-3 map, truncated containers show children_count
 agent-desktop snapshot --skeleton --app Slack -i --compact
+# Keep snapshot_id, for example s8f3k2p9
 
 # 2. Drill into a region of interest (named containers get refs as drill targets)
-agent-desktop snapshot --root @e3 -i --compact
+agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i --compact
 
 # 3. Act on an element found in the drill-down
-agent-desktop click @e12
+agent-desktop click @e12 --snapshot s8f3k2p9
 
 # 4. Re-drill the same region to verify the state change
-agent-desktop snapshot --root @e3 -i --compact
+agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i --compact
 ```
 
 For simple apps, a full snapshot is fine:
 
 ```bash
-agent-desktop snapshot --app Finder -i   # get interactive elements with refs
-agent-desktop click @e3                  # click a button by ref
-agent-desktop type @e5 "quarterly report"  # type into a text field
+agent-desktop snapshot --app Finder -i   # get interactive elements with refs and snapshot_id
+agent-desktop click @e3 --snapshot s8f3k2p9  # click a button by ref
+agent-desktop type @e5 --snapshot s8f3k2p9 "quarterly report"  # insert text into a field
 agent-desktop press cmd+s               # keyboard shortcut
 agent-desktop snapshot -i               # re-observe after UI changes
 ```
@@ -150,29 +165,29 @@ agent-desktop snapshot --app Safari -i           # accessibility tree with refs
 agent-desktop snapshot --surface menu            # capture open menu
 agent-desktop screenshot --app Finder            # PNG screenshot
 agent-desktop find --role button --app TextEdit  # search by role, name, value, text
-agent-desktop get @e3 value                      # read element property
-agent-desktop is @e7 checked                     # check boolean state
+agent-desktop get @e3 --snapshot s8f3k2p9 --property value  # read element property
+agent-desktop is @e7 --snapshot s8f3k2p9 --property checked # check boolean state
 agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers, alerts
 ```
 
 ### Interaction
 
 ```bash
-agent-desktop click @e3                  # smart AX-first click (15-step chain)
-agent-desktop double-click @e3           # open files, select words
-agent-desktop triple-click @e3           # select lines/paragraphs
-agent-desktop right-click @e3            # context menu (returns menu tree inline)
-agent-desktop type @e5 "hello world"     # type text into element
+agent-desktop click @e3                  # semantic AX-first click
+agent-desktop double-click @e3           # AXOpen; physical double-click uses mouse-click --count 2
+agent-desktop triple-click @e3           # POLICY_DENIED if physical input is disabled
+agent-desktop right-click @e3            # open verified context menu
+agent-desktop type @e5 "hello world"     # insert text into element
 agent-desktop set-value @e5 "new value"  # set value directly via AX
 agent-desktop clear @e5                  # clear element value
 agent-desktop focus @e5                  # set keyboard focus
-agent-desktop select @e9 "Option B"      # select option in dropdown/list
+agent-desktop select @e9 "Option B"      # select verified dropdown/list option
 agent-desktop toggle @e12                # flip checkbox or switch
 agent-desktop check @e12                 # idempotent check
 agent-desktop uncheck @e12               # idempotent uncheck
 agent-desktop expand @e15                # expand disclosure/tree item
 agent-desktop collapse @e15              # collapse disclosure/tree item
-agent-desktop scroll @e1 down 3          # scroll (AX-first, 10-step chain)
+agent-desktop scroll @e1 --direction down --amount 3  # scroll (AX-first)
 agent-desktop scroll-to @e20             # scroll element into view
 ```
 
@@ -250,8 +265,8 @@ agent-desktop wait --menu --timeout 3000                     # wait for menu
 
 ```bash
 agent-desktop batch '[
-  {"command": "click", "args": {"ref_id": "@e2"}},
-  {"command": "type", "args": {"ref_id": "@e5", "text": "hello"}},
+  {"command": "click", "args": {"ref_id": "@e2", "snapshot": "s8f3k2p9"}},
+  {"command": "type", "args": {"ref_id": "@e5", "snapshot": "s8f3k2p9", "text": "hello"}},
   {"command": "press", "args": {"combo": "return"}}
 ]' --stop-on-error
 ```
@@ -259,9 +274,9 @@ agent-desktop batch '[
 ### System
 
 ```bash
-agent-desktop status                     # platform, permission state
-agent-desktop permissions                # check accessibility permission
-agent-desktop permissions --request      # trigger system dialog
+agent-desktop status                     # platform, permission report, latest snapshot
+agent-desktop permissions                # check accessibility/screen-recording/automation
+agent-desktop permissions --request      # invoke platform request path
 agent-desktop version                    # version string
 ```
 
@@ -281,6 +296,7 @@ agent-desktop snapshot [OPTIONS]
 | `--max-depth <N>` | 10 | Maximum tree depth |
 | `--skeleton` | off | Shallow 3-level overview; truncated containers show `children_count` and get refs as drill targets |
 | `--root <REF>` | - | Start traversal from this ref; merges into existing refmap with scoped invalidation |
+| `--snapshot <ID>` | latest | Snapshot ID to use when resolving `--root` |
 | `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
 
 ## JSON Output
@@ -289,7 +305,7 @@ Every command returns structured JSON:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": true,
   "command": "click",
   "data": { "action": "click" }
@@ -300,7 +316,7 @@ Errors include machine-readable codes and recovery hints:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": false,
   "command": "click",
   "error": {
@@ -319,7 +335,10 @@ Errors include machine-readable codes and recovery hints:
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
 | `APP_NOT_FOUND` | Application not running or no windows |
 | `STALE_REF` | Ref is from a previous snapshot |
+| `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |
+| `POLICY_DENIED` | Physical/headed path blocked by policy |
 | `ACTION_FAILED` | The OS rejected the action |
+| `PLATFORM_NOT_SUPPORTED` | Adapter method not implemented on this platform |
 | `TIMEOUT` | Wait condition expired |
 | `INVALID_ARGS` | Invalid argument values |
 
@@ -329,7 +348,7 @@ Errors include machine-readable codes and recovery hints:
 
 ## Ref System
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are valid until the next snapshot replaces them.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the latest snapshot pointer, but passing the ID is more deterministic in multi-step flows.
 
 Interactive roles that receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `incrementor`, `menubutton`, `switch`, `colorwell`, `dockitem`.
 

@@ -1,6 +1,6 @@
 ---
 
-## title: Harden progressive snapshot after review (skeleton reset, drill window, validation, depth)
+## title: Progressive snapshot contract fixes after review (skeleton reset, drill window, validation, depth)
 date: 2026-04-16
 category: logic-errors
 module: agent-desktop-core
@@ -23,7 +23,7 @@ tags:
   - macos
   - agent-contract
 
-# Harden progressive snapshot after review (skeleton reset, drill window, validation, depth)
+# Progressive snapshot contract fixes after review (skeleton reset, drill window, validation, depth)
 
 ## Problem
 

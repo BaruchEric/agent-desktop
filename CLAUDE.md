@@ -74,13 +74,15 @@ agent-desktop/
 │   ├── macos/              # agent-desktop-macos (Phase 1)
 │   ├── windows/            # agent-desktop-windows (stub → Phase 2)
 │   ├── linux/              # agent-desktop-linux (stub → Phase 2)
-│   └── ffi/                # agent-desktop-ffi (cdylib + cbindgen C ABI)
+│   └── ffi/                # agent-desktop-ffi (cdylib + committed C ABI header)
 ├── src/                    # agent-desktop binary (entry point)
 │   ├── main.rs             # entry point, permission check, JSON envelope
 │   ├── cli.rs              # clap derive enum (Commands)
 │   ├── cli_args.rs         # all command argument structs
+│   ├── batch.rs            # batch JSON → typed Commands
+│   ├── command_policy.rs   # command permission/ref/side-effect policy
 │   ├── dispatch.rs         # command dispatcher + parse helpers
-│   └── batch_dispatch.rs   # batch command execution
+│   └── dispatch_notifications.rs
 ├── docs/
 │   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
 └── tests/
@@ -135,7 +137,11 @@ agent-desktop-linux = { path = "crates/linux" }
 Direct `match` in the binary crate. No `Command` trait, no `CommandRegistry`. Each command is a standalone `execute()` function under `crates/core/src/commands/`.
 
 ```rust
-pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<serde_json::Value, AppError> {
+pub fn dispatch(
+    cmd: Commands,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+) -> Result<serde_json::Value, AppError> {
     match cmd {
         Commands::Snapshot(args) => commands::snapshot::execute(args, adapter),
         Commands::Click(args) => commands::click::execute(args, adapter),
@@ -144,14 +150,16 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<serde_js
 }
 ```
 
+Batch is not a second dispatcher. `src/batch.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
+
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (30 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (54 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
 
-Phases 2–4 add adapters/transports/hardening. Nothing in core is rebuilt.
+Phases 2–4 add adapters, transports, and production readiness work. Nothing in core is rebuilt.
 
 ## Coding Standards
 
@@ -211,6 +219,7 @@ crates/{macos,windows,linux}/src/
 ├── tree/               # Reading & understanding the UI
 │   ├── mod.rs          # re-exports
 │   ├── element.rs      # AXElement struct + attribute readers
+│   ├── capabilities.rs # AX-supported actions and settable attributes
 │   ├── builder.rs      # build_subtree, tree traversal
 │   ├── roles.rs        # Role mapping
 │   ├── resolve.rs      # Element re-identification
@@ -219,7 +228,9 @@ crates/{macos,windows,linux}/src/
 │   ├── mod.rs          # re-exports
 │   ├── dispatch.rs     # perform_action match arms
 │   ├── activate.rs     # Smart AX-first activation chain
-│   └── extras.rs       # select_value, ax_scroll
+│   ├── extras.rs       # select_value helpers
+│   ├── scroll.rs       # scroll semantics and gated physical fallback
+│   └── type_text.rs    # headless text insertion and physical typing
 ├── input/              # Low-level OS input synthesis
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # Key synthesis, text typing
@@ -281,7 +292,7 @@ Error responses:
   "command": "click",
   "error": {
     "code": "STALE_REF",
-    "message": "RefMap is from a previous snapshot",
+    "message": "Element could not be resolved from the requested snapshot",
     "suggestion": "Run 'snapshot' to refresh, then retry with updated ref"
   }
 }
@@ -300,8 +311,8 @@ Error responses:
 - Only interactive roles receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`
 - Static text, groups, containers do NOT get refs (they remain in tree for context)
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- RefMap stored at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`
-- Each snapshot REPLACES the refmap file entirely (atomic write via temp + rename)
+- Snapshot refs are stored by snapshot ID under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`
+- `~/.agent-desktop/last_refmap.json` is written only as a latest-snapshot inspection artifact; command code must use `RefStore`
 - Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
 - Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
 - Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
@@ -309,17 +320,18 @@ Error responses:
 
 ## PlatformAdapter Trait
 
-13 methods with default implementations returning `not_supported()`:
+Platform-facing methods default to `not_supported()` unless implemented by an adapter:
 
 ```rust
-pub trait PlatformAdapter: Send + Sync {
+pub trait PlatformAdapter {
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
     fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
     fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
+    fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
-    fn check_permissions(&self) -> PermissionStatus;
+    fn permission_report(&self) -> PermissionReport;
+    fn request_permissions(&self) -> PermissionReport;
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
     fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo, AdapterError>;
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
@@ -331,12 +343,14 @@ pub trait PlatformAdapter: Send + Sync {
 
 ## Key Types
 
-- `AccessibilityNode` — platform-agnostic tree node: `ref`, `role`, `name`, `value`, `description`, `states`, `bounds`, `children`
+- `AccessibilityNode` — platform-agnostic tree node: `ref`, `role`, `name`, `value`, `description`, `states`, `available_actions`, `bounds`, `children`
 - `Action` — Click, DoubleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Scroll(Direction, Amount), PressKey(KeyCombo)
+- `ActionRequest` — `{ action, policy }`, where the default `InteractionPolicy` forbids focus stealing and cursor movement
 - `NativeHandle` — opaque platform pointer with `PhantomData<*const ()>` to prevent auto-Send/Sync. Inner field is `pub(crate)`.
 - `RefEntry` — `{ pid, role, name, bounds_hash, available_actions }`
 - `WindowInfo` — `{ id, title, app_name, pid, bounds }`
-- `ErrorCode` — 11-variant enum with `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]`
+- `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, or `{ "state": "unknown" }`
+- `ErrorCode` — machine-readable enum with `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]`
 - `AdapterError` — struct with `code`, `message`, `suggestion`, `platform_detail`
 - `AppError` — enum with `#[from]` impls for `AdapterError`, `std::io::Error`, `serde_json::Error`
 
@@ -355,7 +369,7 @@ pub trait PlatformAdapter: Send + Sync {
 - SetFocus: `AXUIElementSetAttributeValue(kAXFocusedAttribute, true)`
 - Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent`
 - Clipboard: `NSPasteboard.generalPasteboard` via Cocoa FFI
-- Screenshot: `CGWindowListCreateImage`
+- Screenshot: `ScreenshotBackend` boundary with secure `screencapture` temp files
 
 ### Permission Detection
 - Call `AXIsProcessTrusted()` on startup

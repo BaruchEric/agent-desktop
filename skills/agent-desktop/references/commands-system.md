@@ -25,8 +25,9 @@ Quits an application gracefully. Use `--force` to kill the process.
 ### list-apps
 ```bash
 agent-desktop list-apps
+agent-desktop list-apps --app "Text"
 ```
-Lists all running GUI applications. Returns array of `{ name, pid, bundle_id }`.
+Lists running GUI applications, optionally filtered by a case-insensitive name substring. Returns array of `{ name, pid, bundle_id }`.
 
 ## Window Management
 
@@ -35,7 +36,7 @@ Lists all running GUI applications. Returns array of `{ name, pid, bundle_id }`.
 agent-desktop list-windows
 agent-desktop list-windows --app "Finder"
 ```
-Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds }`.
+Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order.
 
 ### focus-window
 ```bash
@@ -43,7 +44,7 @@ agent-desktop focus-window --app "Finder"
 agent-desktop focus-window --title "Documents"
 agent-desktop focus-window --window-id "w-4521"
 ```
-Brings a window to the front. At least one identifier required.
+Brings a window to the front and confirms the OS reports that same window as focused. At least one identifier is required. If focus does not settle before the deadline, the command returns `ACTION_FAILED` instead of fabricating a focused result.
 
 ### resize-window
 ```bash
@@ -167,7 +168,7 @@ Pauses for N milliseconds. Use between actions that need time to settle.
 
 ### wait (element)
 ```bash
-agent-desktop wait --element @e5 --timeout 5000 --app "App"
+agent-desktop wait --element @e5 --snapshot s... --timeout 5000 --app "App"
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
 
@@ -187,22 +188,24 @@ Blocks until the specified text appears anywhere in the app's accessibility tree
 ```bash
 agent-desktop wait --menu --app "Finder" --timeout 3000
 ```
-Blocks until a context menu is detected as open.
+Blocks until a menu surface is detected as open.
 
 ### wait (menu-closed)
 ```bash
 agent-desktop wait --menu-closed --app "Finder" --timeout 3000
 ```
-Blocks until the context menu is dismissed.
+Blocks until the menu surface is dismissed.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | (positional) | | Milliseconds to pause |
 | `--element` | | Ref to wait for |
+| `--snapshot` | latest | Snapshot ID for `--element` waits |
 | `--window` | | Window title to wait for |
-| `--text` | | Text to wait for |
-| `--menu` | false | Wait for context menu to open |
-| `--menu-closed` | false | Wait for context menu to close |
+| `--text` | | Text to wait for; with `--notification`, filters notification title/body |
+| `--menu` | false | Wait for menu surface to open |
+| `--menu-closed` | false | Wait for menu surface to close |
+| `--notification` | false | Wait for a new notification |
 | `--timeout` | 30000 | Timeout in ms (for element/window/text/menu waits) |
 | `--app` | | Scope the wait to a specific application |
 
@@ -215,6 +218,8 @@ agent-desktop batch '[...]' --stop-on-error
 ```
 Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object).
 
+Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--stop-on-error` | false | Halt on first failed command |
@@ -222,17 +227,31 @@ Execute multiple commands in sequence from a JSON array. Each entry has `command
 **Batch format:**
 ```json
 [
-  { "command": "click", "args": { "ref_id": "@e1" } },
+  { "command": "click", "args": { "ref_id": "@e1", "snapshot": "s8f3k2p9" } },
   { "command": "wait", "args": { "ms": 500 } },
-  { "command": "type", "args": { "ref_id": "@e2", "text": "hello" } }
+  { "command": "type", "args": { "ref_id": "@e2", "snapshot": "s8f3k2p9", "text": "hello" } }
 ]
+```
+
+**Per-entry failure shape:**
+```json
+{
+  "version": "2.0",
+  "ok": false,
+  "command": "click",
+  "error": {
+    "code": "STALE_REF",
+    "message": "Ref '@e1' is stale",
+    "suggestion": "Run snapshot again and retry with the new ref"
+  }
+}
 ```
 
 **Progressive snapshot in batch** — use `skeleton` and `root` fields inside `snapshot` args:
 ```json
 [
   { "command": "snapshot", "args": { "app": "Slack", "skeleton": true, "interactive_only": true } },
-  { "command": "snapshot", "args": { "app": "Slack", "root": "@e3", "interactive_only": true } }
+  { "command": "snapshot", "args": { "app": "Slack", "root": "@e3", "snapshot": "s8f3k2p9", "interactive_only": true } }
 ]
 ```
 
@@ -244,14 +263,16 @@ Execute multiple commands in sequence from a JSON array. Each entry has `command
 ```bash
 agent-desktop status
 ```
-Returns adapter health, platform info, and permission state.
+Returns adapter health, platform info, permission report, and latest snapshot metadata (`snapshot_id`, `ref_count`) when available.
 
 ### permissions
 ```bash
 agent-desktop permissions
 agent-desktop permissions --request
 ```
-Checks accessibility permission status. Use `--request` to trigger the macOS system dialog.
+Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording, and `not_required` for Automation because shipped commands use Accessibility, Screen Recording for screenshots, and explicit keyboard/mouse input rather than Apple Events. Use `--request` to invoke the platform request path.
+
+`status`, `permissions`, command preflight, and `batch` share one permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again.
 
 ### version
 ```bash

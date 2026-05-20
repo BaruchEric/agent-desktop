@@ -1,60 +1,98 @@
-use agent_desktop_core::{adapter::ImageBuffer, adapter::ImageFormat, error::AdapterError};
+use agent_desktop_core::{
+    adapter::{ImageBuffer, ImageFormat},
+    error::{AdapterError, ErrorCode},
+};
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use std::process::Command;
+    use std::os::unix::fs::DirBuilderExt;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Output};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    const SCREENCAPTURE: &str = "/usr/sbin/screencapture";
+    #[cfg(not(test))]
+    const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+    #[cfg(test)]
+    const SCREENSHOT_TIMEOUT: Duration = Duration::from_millis(20);
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn capture(window_id: Option<u32>) -> Result<ImageBuffer, AdapterError> {
+        let temp = TempPng::new()?;
+        let mut command = Command::new(SCREENCAPTURE);
+        command.args(["-x", "-t", "png"]);
+
+        if let Some(wid) = window_id {
+            command.args(["-l", &wid.to_string()]);
+        }
+
+        command.arg(temp.path());
+        let output = run_screencapture(&mut command)?;
+
+        if !output.status.success() {
+            return Err(map_screencapture_error(&output));
+        }
+
+        read_png(temp.path())
+    }
 
     pub fn capture_app(pid: i32) -> Result<ImageBuffer, AdapterError> {
         tracing::debug!("system: screenshot app pid={pid}");
-        let temp = temp_path();
-        let cg_id = find_cg_window_id_for_pid(pid);
-
-        let status = if let Some(wid) = cg_id {
-            Command::new("screencapture")
-                .args(["-x", "-t", "png", "-l"])
-                .arg(wid.to_string())
-                .arg(&temp)
-                .status()
-        } else {
-            Command::new("screencapture")
-                .args(["-x", "-t", "png"])
-                .arg(&temp)
-                .status()
-        }
-        .map_err(|e| AdapterError::internal(format!("screencapture: {e}")))?;
-
-        if !status.success() {
-            return Err(AdapterError::internal("screencapture exited with error"));
-        }
-
-        read_png(&temp)
+        capture(find_cg_window_id_for_pid(pid))
     }
 
     pub fn capture_screen(_idx: usize) -> Result<ImageBuffer, AdapterError> {
         tracing::debug!("system: screenshot screen");
-        let temp = temp_path();
-        let status = Command::new("screencapture")
-            .args(["-x", "-t", "png"])
-            .arg(&temp)
-            .status()
-            .map_err(|e| AdapterError::internal(format!("screencapture: {e}")))?;
+        capture(None)
+    }
 
-        if !status.success() {
-            return Err(AdapterError::internal("screencapture exited with error"));
+    struct TempPng {
+        dir: PathBuf,
+        path: PathBuf,
+    }
+
+    impl TempPng {
+        fn new() -> Result<Self, AdapterError> {
+            let mut dir = std::env::temp_dir();
+            dir.push(format!("agent-desktop-screenshot-{}", unique_suffix()));
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&dir)
+                .map_err(|e| AdapterError::internal(format!("create screenshot temp dir: {e}")))?;
+            let path = dir.join("capture.png");
+            Ok(Self { dir, path })
         }
 
-        read_png(&temp)
+        fn path(&self) -> &Path {
+            &self.path
+        }
     }
 
-    fn temp_path() -> String {
-        format!("/tmp/agent-desktop-ss-{}.png", std::process::id())
+    impl Drop for TempPng {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+            let _ = std::fs::remove_dir(&self.dir);
+        }
     }
 
-    fn read_png(path: &str) -> Result<ImageBuffer, AdapterError> {
+    fn unique_suffix() -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let seq = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+        format!("{}-{nanos}-{seq}", std::process::id())
+    }
+
+    fn run_screencapture(command: &mut Command) -> Result<Output, AdapterError> {
+        crate::system::process::run_with_timeout(command, "screencapture", SCREENSHOT_TIMEOUT)
+    }
+
+    fn read_png(path: &Path) -> Result<ImageBuffer, AdapterError> {
         let data = std::fs::read(path)
             .map_err(|e| AdapterError::internal(format!("read screenshot: {e}")))?;
-        let _ = std::fs::remove_file(path);
         let (width, height) = png_dimensions(&data);
         Ok(ImageBuffer {
             data,
@@ -62,6 +100,32 @@ mod imp {
             width,
             height,
         })
+    }
+
+    fn map_screencapture_error(output: &Output) -> AdapterError {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let combined = format!("{stderr}\n{stdout}");
+        let lower = combined.to_lowercase();
+        if lower.contains("screen recording")
+            || lower.contains("not authorized")
+            || lower.contains("permission")
+            || lower.contains("denied")
+        {
+            return AdapterError::new(ErrorCode::PermDenied, "Screen Recording permission denied")
+                .with_suggestion(
+                    "Open System Settings > Privacy & Security > Screen Recording and add the app that launches agent-desktop. If macOS lists the built binary separately, add that binary too.",
+                )
+                .with_platform_detail(combined.trim());
+        }
+
+        let detail = combined.trim();
+        let detail = if detail.is_empty() {
+            "screencapture produced no diagnostic output"
+        } else {
+            detail
+        };
+        AdapterError::internal("screencapture exited with error").with_platform_detail(detail)
     }
 
     fn png_dimensions(data: &[u8]) -> (u32, u32) {
@@ -82,7 +146,7 @@ mod imp {
             string::CFString,
         };
 
-        extern "C" {
+        unsafe extern "C" {
             fn CGWindowListCopyWindowInfo(option: u32, window_id: u32) -> CFTypeRef;
         }
 
@@ -150,6 +214,50 @@ mod imp {
         }
 
         best_id
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::ExitStatus;
+
+        fn output(stderr: &str) -> Output {
+            Output {
+                status: ExitStatus::from_raw(1 << 8),
+                stdout: Vec::new(),
+                stderr: stderr.as_bytes().to_vec(),
+            }
+        }
+
+        #[test]
+        fn maps_screen_recording_error_to_permission_denied() {
+            let err = map_screencapture_error(&output("Screen Recording is not authorized"));
+
+            assert_eq!(err.code, ErrorCode::PermDenied);
+            assert!(err.suggestion.is_some());
+        }
+
+        #[test]
+        fn maps_unknown_screencapture_error_to_internal() {
+            let err = map_screencapture_error(&output("display server unavailable"));
+
+            assert_eq!(err.code, ErrorCode::Internal);
+            assert_eq!(
+                err.platform_detail.as_deref(),
+                Some("display server unavailable")
+            );
+        }
+
+        #[test]
+        fn run_screencapture_kills_timed_out_process() {
+            let mut command = Command::new("/bin/sleep");
+            command.arg("10");
+
+            let err = run_screencapture(&mut command).unwrap_err();
+
+            assert_eq!(err.code, ErrorCode::Timeout);
+        }
     }
 }
 

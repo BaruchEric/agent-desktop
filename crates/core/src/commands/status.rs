@@ -1,25 +1,40 @@
 use crate::{
-    adapter::{PermissionStatus, PlatformAdapter},
+    PermissionReport,
+    adapter::PlatformAdapter,
+    commands::permissions::{self, PermissionsArgs},
     error::AppError,
-    refs::RefMap,
+    refs_store::RefStore,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn execute(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let permissions = match adapter.check_permissions() {
-        PermissionStatus::Granted => json!({ "granted": true }),
-        PermissionStatus::Denied { suggestion } => json!({
-            "granted": false,
-            "suggestion": suggestion
-        }),
-    };
+    let report = adapter.permission_report();
+    execute_with_report(adapter, &report)
+}
 
-    let ref_count = RefMap::load().ok().map(|m| m.len());
+pub fn execute_with_report(
+    adapter: &dyn PlatformAdapter,
+    report: &PermissionReport,
+) -> Result<Value, AppError> {
+    let permissions =
+        permissions::execute_with_report(PermissionsArgs { request: false }, adapter, report)?;
+
+    let store = RefStore::new().ok();
+    let ref_count = store
+        .as_ref()
+        .and_then(|s| s.load_latest().ok())
+        .map(|m| m.len());
+    let snapshot_id = store.and_then(|s| s.latest_snapshot_id());
 
     Ok(json!({
         "platform": std::env::consts::OS,
         "version": env!("CARGO_PKG_VERSION"),
         "permissions": permissions,
+        "snapshot_id": snapshot_id,
         "ref_count": ref_count
     }))
 }
+
+#[cfg(test)]
+#[path = "status_tests.rs"]
+mod tests;

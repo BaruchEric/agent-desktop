@@ -1,5 +1,6 @@
+use super::AXElement;
 use super::element::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, element_for_pid, AXElement,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_string_attr, element_for_pid,
 };
 use agent_desktop_core::node::SurfaceInfo;
 
@@ -37,20 +38,43 @@ mod imp {
 
     fn context_menu_from_app(pid: i32) -> Option<AXElement> {
         let app = element_for_pid(pid);
+        if let Some(menu) =
+            copy_ax_array(&app, "AXMenus").and_then(|menus| menus.into_iter().find(is_menu))
+        {
+            return Some(menu);
+        }
         if let Some(focused) = copy_element_attr(&app, "AXFocusedUIElement") {
-            if let Some(children) = copy_ax_array(&focused, "AXChildren") {
-                if let Some(menu) = children
-                    .into_iter()
-                    .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"))
-                {
-                    return Some(menu);
-                }
+            if let Some(menu) = find_menu_descendant(&focused, 0) {
+                return Some(menu);
             }
         }
         let children = copy_ax_array(&app, "AXChildren")?;
-        children
-            .into_iter()
-            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenu"))
+        for child in children {
+            if let Some(menu) = find_menu_descendant(&child, 0) {
+                return Some(menu);
+            }
+        }
+        None
+    }
+
+    fn is_menu(el: &AXElement) -> bool {
+        copy_string_attr(el, "AXRole").as_deref() == Some("AXMenu")
+            && copy_bool_attr(el, "AXVisible").unwrap_or(true)
+    }
+
+    fn find_menu_descendant(el: &AXElement, depth: usize) -> Option<AXElement> {
+        if depth > 8 {
+            return None;
+        }
+        if is_menu(el) {
+            return Some(el.clone());
+        }
+        for child in copy_ax_array(el, "AXChildren").unwrap_or_default() {
+            if let Some(menu) = find_menu_descendant(&child, depth + 1) {
+                return Some(menu);
+            }
+        }
+        None
     }
 
     pub fn menu_element_for_pid(pid: i32) -> Option<AXElement> {

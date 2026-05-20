@@ -1,8 +1,8 @@
 //! Verifies the committed FFI header compiles as C and that every named
 //! enum discriminant documented in the header is usable from C code. This
-//! guards against cbindgen configuration drift that would silently drop
-//! the `AdActionKind` / `AdDirection` / etc. enum blocks, forcing C
-//! consumers to hard-code numeric literals instead of AD_* constants.
+//! guards against header drift that would silently drop the `AdActionKind` /
+//! `AdDirection` / etc. enum blocks, forcing C consumers to hard-code numeric
+//! literals instead of AD_* constants.
 //!
 //! The test shells out to the system `cc`; it skips on platforms where
 //! that binary is not on PATH so cargo test still passes on bare CI
@@ -43,10 +43,8 @@ fn committed_header_compiles_with_every_public_enum_constant() {
 
     let tmp = std::env::temp_dir().join("agent_desktop_header_abi_test.c");
     let obj = std::env::temp_dir().join("agent_desktop_header_abi_test.o");
-    // Touch every named-constant family so a missing enum block in the
-    // header fails compilation with "undeclared identifier". Keeping the
-    // list close to cbindgen.toml's [export].include ensures they stay
-    // in sync: add an entry there, add its representative here.
+    // Touch every named-constant family so a missing enum block in the header
+    // fails compilation with "undeclared identifier".
     let src = r#"
 #include <stdint.h>
 #include <stdbool.h>
@@ -88,6 +86,6 @@ int main(void) {
     assert!(
         status.success(),
         "C compile of agent_desktop.h failed — a named enum constant is missing. \
-         Check crates/ffi/cbindgen.toml [export].include."
+         Check crates/ffi/include/agent_desktop.h."
     );
 }

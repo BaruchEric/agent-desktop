@@ -1,15 +1,25 @@
-mod batch_dispatch;
-mod batch_dispatch_ext;
+mod batch;
 mod cli;
 mod cli_args;
+mod cli_args_actions;
 mod cli_args_notifications;
 mod cli_args_skills;
+mod cli_args_system;
+#[cfg(test)]
+mod command_contract_tests;
+mod command_policy;
 mod dispatch;
 mod dispatch_notifications;
+mod dispatch_parse;
 
-use agent_desktop_core::adapter::PlatformAdapter;
+use agent_desktop_core::{
+    adapter::PlatformAdapter,
+    error::AppError,
+    output::{ENVELOPE_VERSION, ErrorPayload, Response},
+};
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
+use cli_args_skills::SkillsAction;
 use std::io::{BufWriter, Write};
 
 fn main() {
@@ -24,13 +34,10 @@ fn main() {
             }
             let msg = e.to_string();
             let first_line = msg.lines().next().unwrap_or("parse error");
-            let json = serde_json::json!({
-                "version": "1.0",
-                "ok": false,
-                "command": "unknown",
-                "error": { "code": "INVALID_ARGS", "message": first_line }
-            });
-            emit_json(&json);
+            emit_response(&Response::err(
+                "unknown",
+                ErrorPayload::new("INVALID_ARGS", first_line),
+            ));
             std::process::exit(2);
         }
     };
@@ -54,16 +61,11 @@ fn main() {
             );
             finish(cmd_name, result);
         }
-        Commands::Status => {
-            let adapter = build_adapter();
-            let result = agent_desktop_core::commands::status::execute(&adapter);
-            finish(cmd_name, result);
-        }
         Commands::Skills(a) => {
-            let result = match a.action.unwrap_or(cli::SkillsAction::List) {
-                cli::SkillsAction::List => agent_desktop_core::commands::skills::list(),
-                cli::SkillsAction::Path => agent_desktop_core::commands::skills::path(),
-                cli::SkillsAction::Get(g) => agent_desktop_core::commands::skills::get(
+            let result = match a.action.unwrap_or(SkillsAction::List) {
+                SkillsAction::List => agent_desktop_core::commands::skills::list(),
+                SkillsAction::Path => agent_desktop_core::commands::skills::path(),
+                SkillsAction::Get(g) => agent_desktop_core::commands::skills::get(
                     agent_desktop_core::commands::skills::GetArgs {
                         name: g.name,
                         full: g.full,
@@ -79,62 +81,48 @@ fn main() {
 
 fn run_with_adapter(cmd: Commands, cmd_name: &str) {
     let adapter = build_adapter();
-
-    if let agent_desktop_core::adapter::PermissionStatus::Denied { suggestion } =
-        adapter.check_permissions()
-    {
-        match &cmd {
-            Commands::Permissions(_) | Commands::Version(_) | Commands::Status => {}
-            _ => {
-                let json = serde_json::json!({
-                    "version": "1.0",
-                    "ok": false,
-                    "command": cmd_name,
-                    "error": {
-                        "code": "PERM_DENIED",
-                        "message": "Accessibility permission not granted",
-                        "suggestion": suggestion
-                    }
-                });
-                emit_json(&json);
-                std::process::exit(1);
-            }
-        }
+    let report = adapter.permission_report();
+    if let Err(err) = command_policy::preflight(&cmd, &report) {
+        finish(cmd_name, Err(err));
+        return;
     }
 
-    let result = dispatch::dispatch(cmd, &adapter);
+    let result = dispatch::dispatch(cmd, &adapter, &report);
     finish(cmd_name, result);
 }
 
 fn finish(cmd_name: &str, result: Result<serde_json::Value, agent_desktop_core::error::AppError>) {
     match result {
         Ok(data) => {
-            let response = serde_json::json!({
-                "version": "1.0",
-                "ok": true,
-                "command": cmd_name,
-                "data": data
-            });
-            emit_json(&response);
+            emit_response(&Response::ok(cmd_name, data));
             std::process::exit(0);
         }
         Err(e) => {
-            let mut error = serde_json::json!({
-                "code": e.code(),
-                "message": e.to_string(),
-            });
+            let mut payload = ErrorPayload::new(e.code(), e.to_string());
             if let Some(s) = e.suggestion() {
-                error["suggestion"] = serde_json::Value::String(s.to_string());
+                payload = payload.with_suggestion(s);
             }
-            let response = serde_json::json!({
-                "version": "1.0",
-                "ok": false,
-                "command": cmd_name,
-                "error": error
-            });
-            emit_json(&response);
+            if let AppError::Adapter(adapter_error) = &e {
+                payload.platform_detail = adapter_error.platform_detail.clone();
+            }
+            emit_response(&Response::err(cmd_name, payload));
             std::process::exit(1);
         }
+    }
+}
+
+fn emit_response(response: &Response) {
+    match serde_json::to_value(response) {
+        Ok(value) => emit_json(&value),
+        Err(err) => emit_json(&serde_json::json!({
+            "version": ENVELOPE_VERSION,
+            "ok": false,
+            "command": "internal",
+            "error": {
+                "code": "INTERNAL",
+                "message": format!("Failed to serialize response: {err}")
+            }
+        })),
     }
 }
 
@@ -169,7 +157,7 @@ fn build_adapter() -> impl agent_desktop_core::adapter::PlatformAdapter {
 }
 
 fn init_tracing(verbose: bool) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
     let filter = if verbose { "debug" } else { "warn" };
     fmt()
         .with_env_filter(

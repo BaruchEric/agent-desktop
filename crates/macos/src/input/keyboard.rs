@@ -1,11 +1,16 @@
-use agent_desktop_core::{action::KeyCombo, error::AdapterError};
+use agent_desktop_core::{
+    action::KeyCombo,
+    error::{AdapterError, ErrorCode},
+};
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use accessibility_sys::{
-        kAXErrorSuccess, AXUIElementCreateSystemWide, AXUIElementPostKeyboardEvent,
+        AXUIElementCreateSystemWide, AXUIElementPostKeyboardEvent, kAXErrorCannotComplete,
+        kAXErrorSuccess,
     };
+    use std::time::Duration;
 
     pub fn synthesize_key(combo: &KeyCombo) -> Result<(), AdapterError> {
         tracing::debug!(
@@ -48,8 +53,8 @@ mod imp {
             }
         }
 
-        let err_down = unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, key_code, true) };
-        let err_up = unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, key_code, false) };
+        let err_down = post_event(sys_wide, key_code, true);
+        let err_up = post_event(sys_wide, key_code, false);
 
         if !combo.modifiers.is_empty() {
             release_modifiers(sys_wide, &combo.modifiers);
@@ -70,8 +75,12 @@ mod imp {
         Ok(())
     }
 
-    pub fn synthesize_text(text: &str) -> Result<(), AdapterError> {
-        tracing::debug!("keyboard: synthesize_text {} chars", text.len());
+    pub fn synthesize_key_state(combo: &KeyCombo, down: bool) -> Result<(), AdapterError> {
+        tracing::debug!(
+            "keyboard: synthesize_key_state key={} down={down}",
+            combo.key
+        );
+        let key_code = key_name_to_code(&combo.key)?;
         let sys_wide = unsafe { AXUIElementCreateSystemWide() };
         if sys_wide.is_null() {
             return Err(AdapterError::internal(
@@ -79,31 +88,113 @@ mod imp {
             ));
         }
 
-        for ch in text.chars() {
-            if ch == '\n' {
-                let return_code = 36u16;
-                unsafe {
-                    AXUIElementPostKeyboardEvent(sys_wide, 0, return_code, true);
-                    AXUIElementPostKeyboardEvent(sys_wide, 0, return_code, false);
-                };
-            } else if let Some(code) = char_to_keycode(ch) {
-                let needs_shift = ch.is_ascii_uppercase() || is_shifted_char(ch);
-                if needs_shift {
-                    unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, 56, true) };
+        let result = (|| {
+            if down {
+                for m in &combo.modifiers {
+                    post_checked(sys_wide, modifier_keycode(m), true, 0, 1)?;
                 }
-                unsafe {
-                    AXUIElementPostKeyboardEvent(sys_wide, 0, code, true);
-                    AXUIElementPostKeyboardEvent(sys_wide, 0, code, false);
-                };
-                if needs_shift {
-                    unsafe { AXUIElementPostKeyboardEvent(sys_wide, 0, 56, false) };
+                post_checked(sys_wide, key_code, true, 0, 1)
+            } else {
+                let key_result = post_checked(sys_wide, key_code, false, 0, 1);
+                for m in combo.modifiers.iter().rev() {
+                    post_checked(sys_wide, modifier_keycode(m), false, 0, 1)?;
                 }
+                key_result
             }
-            std::thread::sleep(std::time::Duration::from_millis(4));
-        }
+        })();
 
         unsafe { core_foundation::base::CFRelease(sys_wide as _) };
-        Ok(())
+        result
+    }
+
+    pub fn synthesize_text(text: &str) -> Result<(), AdapterError> {
+        tracing::debug!("keyboard: synthesize_text {} chars", text.chars().count());
+        let sys_wide = unsafe { AXUIElementCreateSystemWide() };
+        if sys_wide.is_null() {
+            return Err(AdapterError::internal(
+                "Failed to create system-wide AX element",
+            ));
+        }
+
+        let total = text.chars().count();
+        let mut delivered = 0usize;
+        let result = (|| {
+            for ch in text.chars() {
+                if ch == '\n' {
+                    post_char_key(sys_wide, 36, delivered, total)?;
+                } else if let Some(code) = char_to_keycode(ch) {
+                    let needs_shift = ch.is_ascii_uppercase() || is_shifted_char(ch);
+                    if needs_shift {
+                        post_checked(sys_wide, 56, true, delivered, total)?;
+                    }
+                    let char_result = post_char_key(sys_wide, code, delivered, total);
+                    if needs_shift {
+                        let shift_up = post_checked(sys_wide, 56, false, delivered, total);
+                        char_result.and(shift_up)?;
+                    } else {
+                        char_result?;
+                    }
+                } else {
+                    return Err(AdapterError::new(
+                        ErrorCode::ActionNotSupported,
+                        format!("Cannot synthesize character '{ch}' with keyboard fallback"),
+                    )
+                    .with_suggestion("Use set-value for non-ASCII text when supported."));
+                }
+                delivered += 1;
+                std::thread::sleep(Duration::from_millis(4));
+            }
+            Ok(())
+        })();
+
+        unsafe { core_foundation::base::CFRelease(sys_wide as _) };
+        result
+    }
+
+    pub fn synthesize_keycode(key_code: u16, repeats: u32) -> Result<(), AdapterError> {
+        let sys_wide = unsafe { AXUIElementCreateSystemWide() };
+        if sys_wide.is_null() {
+            return Err(AdapterError::internal(
+                "Failed to create system-wide AX element",
+            ));
+        }
+        let result = (|| {
+            for i in 0..repeats {
+                post_char_key(sys_wide, key_code, i as usize, repeats as usize)?;
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
+        })();
+        unsafe { core_foundation::base::CFRelease(sys_wide as _) };
+        result
+    }
+
+    pub fn synthesize_key_for_element(
+        el: &crate::tree::AXElement,
+        combo: &KeyCombo,
+    ) -> Result<(), AdapterError> {
+        let key_code = key_name_to_code(&combo.key)?;
+        let mut pressed = Vec::new();
+        for m in &combo.modifiers {
+            if let Err(err) = post_checked(el.0, modifier_keycode(m), true, 0, 1) {
+                release_modifiers(el.0, &pressed);
+                return Err(err);
+            }
+            pressed.push(m.clone());
+        }
+        let key_result = post_char_key(el.0, key_code, 0, 1);
+        let mut release_result = Ok(());
+        for m in pressed.iter().rev() {
+            if let Err(err) = post_checked(el.0, modifier_keycode(m), false, 0, 1) {
+                if release_result.is_ok() {
+                    release_result = Err(err);
+                }
+            }
+        }
+        if key_result.is_err() || release_result.is_err() {
+            release_modifiers_system_wide(&pressed);
+        }
+        key_result.and(release_result)
     }
 
     fn release_modifiers(
@@ -116,171 +207,75 @@ mod imp {
         }
     }
 
-    fn modifier_keycode(m: &agent_desktop_core::action::Modifier) -> u16 {
-        use agent_desktop_core::action::Modifier;
-        match m {
-            Modifier::Cmd => 55,
-            Modifier::Shift => 56,
-            Modifier::Alt => 58,
-            Modifier::Ctrl => 59,
+    fn release_modifiers_system_wide(modifiers: &[agent_desktop_core::action::Modifier]) {
+        let sys_wide = unsafe { AXUIElementCreateSystemWide() };
+        if sys_wide.is_null() {
+            return;
         }
+        release_modifiers(sys_wide, modifiers);
+        unsafe { core_foundation::base::CFRelease(sys_wide as _) };
+    }
+
+    fn post_char_key(
+        el: accessibility_sys::AXUIElementRef,
+        code: u16,
+        delivered: usize,
+        total: usize,
+    ) -> Result<(), AdapterError> {
+        post_checked(el, code, true, delivered, total)?;
+        post_checked(el, code, false, delivered, total)
+    }
+
+    fn post_checked(
+        el: accessibility_sys::AXUIElementRef,
+        code: u16,
+        down: bool,
+        delivered: usize,
+        total: usize,
+    ) -> Result<(), AdapterError> {
+        let err = post_event(el, code, down);
+        if err == kAXErrorSuccess {
+            return Ok(());
+        }
+        if err == kAXErrorCannotComplete {
+            std::thread::sleep(Duration::from_millis(10));
+            let retry = post_event(el, code, down);
+            if retry == kAXErrorSuccess {
+                return Ok(());
+            }
+            return Err(post_error(retry, delivered, total));
+        }
+        Err(post_error(err, delivered, total))
+    }
+
+    fn post_event(el: accessibility_sys::AXUIElementRef, code: u16, down: bool) -> i32 {
+        unsafe { AXUIElementPostKeyboardEvent(el, 0, code, down) }
+    }
+
+    fn post_error(err: i32, delivered: usize, total: usize) -> AdapterError {
+        AdapterError::new(
+            ErrorCode::ActionFailed,
+            format!(
+                "Keyboard synthesis failed after {delivered}/{total} characters delivered (err={err})"
+            ),
+        )
+        .with_suggestion("Retry after refreshing the target snapshot and confirming focus.")
+    }
+
+    fn modifier_keycode(m: &agent_desktop_core::action::Modifier) -> u16 {
+        crate::input::keyboard_map::modifier_keycode(m)
     }
 
     fn is_shifted_char(ch: char) -> bool {
-        matches!(
-            ch,
-            '!' | '@'
-                | '#'
-                | '$'
-                | '%'
-                | '^'
-                | '&'
-                | '*'
-                | '('
-                | ')'
-                | '_'
-                | '+'
-                | '{'
-                | '}'
-                | '|'
-                | ':'
-                | '"'
-                | '<'
-                | '>'
-                | '?'
-                | '~'
-        )
+        crate::input::keyboard_map::is_shifted_char(ch)
     }
 
     fn char_to_keycode(ch: char) -> Option<u16> {
-        let lower = ch.to_ascii_lowercase();
-        Some(match lower {
-            'a' => 0,
-            'b' => 11,
-            'c' => 8,
-            'd' => 2,
-            'e' => 14,
-            'f' => 3,
-            'g' => 5,
-            'h' => 4,
-            'i' => 34,
-            'j' => 38,
-            'k' => 40,
-            'l' => 37,
-            'm' => 46,
-            'n' => 45,
-            'o' => 31,
-            'p' => 35,
-            'q' => 12,
-            'r' => 15,
-            's' => 1,
-            't' => 17,
-            'u' => 32,
-            'v' => 9,
-            'w' => 13,
-            'x' => 7,
-            'y' => 16,
-            'z' => 6,
-            '0' | ')' => 29,
-            '1' | '!' => 18,
-            '2' | '@' => 19,
-            '3' | '#' => 20,
-            '4' | '$' => 21,
-            '5' | '%' => 23,
-            '6' | '^' => 22,
-            '7' | '&' => 26,
-            '8' | '*' => 28,
-            '9' | '(' => 25,
-            ' ' => 49,
-            '-' | '_' => 27,
-            '=' | '+' => 24,
-            '[' | '{' => 33,
-            ']' | '}' => 30,
-            '\\' | '|' => 42,
-            ';' | ':' => 41,
-            '\'' | '"' => 39,
-            ',' | '<' => 43,
-            '.' | '>' => 47,
-            '/' | '?' => 44,
-            '`' | '~' => 50,
-            '\t' => 48,
-            _ => return None,
-        })
+        crate::input::keyboard_map::char_to_keycode(ch)
     }
 
     fn key_name_to_code(key: &str) -> Result<u16, AdapterError> {
-        let code = match key {
-            "a" => 0,
-            "b" => 11,
-            "c" => 8,
-            "d" => 2,
-            "e" => 14,
-            "f" => 3,
-            "g" => 5,
-            "h" => 4,
-            "i" => 34,
-            "j" => 38,
-            "k" => 40,
-            "l" => 37,
-            "m" => 46,
-            "n" => 45,
-            "o" => 31,
-            "p" => 35,
-            "q" => 12,
-            "r" => 15,
-            "s" => 1,
-            "t" => 17,
-            "u" => 32,
-            "v" => 9,
-            "w" => 13,
-            "x" => 7,
-            "y" => 16,
-            "z" => 6,
-            "0" => 29,
-            "1" => 18,
-            "2" => 19,
-            "3" => 20,
-            "4" => 21,
-            "5" => 23,
-            "6" => 22,
-            "7" => 26,
-            "8" => 28,
-            "9" => 25,
-            "return" | "enter" => 36,
-            "escape" | "esc" => 53,
-            "tab" => 48,
-            "space" => 49,
-            "delete" | "backspace" => 51,
-            "forwarddelete" => 117,
-            "home" => 115,
-            "end" => 119,
-            "pageup" => 116,
-            "pagedown" => 121,
-            "left" => 123,
-            "right" => 124,
-            "down" => 125,
-            "up" => 126,
-            "f1" => 122,
-            "f2" => 120,
-            "f3" => 99,
-            "f4" => 118,
-            "f5" => 96,
-            "f6" => 97,
-            "f7" => 98,
-            "f8" => 100,
-            "f9" => 101,
-            "f10" => 109,
-            "f11" => 103,
-            "f12" => 111,
-            other => {
-                return Err(AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    format!("Unknown key: '{other}'"),
-                )
-                .with_suggestion("Valid keys: a-z, 0-9, return, escape, tab, space, delete, left, right, up, down, f1-f12"))
-            }
-        };
-        Ok(code)
+        crate::input::keyboard_map::key_name_to_code(key)
     }
 }
 
@@ -292,9 +287,27 @@ mod imp {
         Err(AdapterError::not_supported("synthesize_key"))
     }
 
+    pub fn synthesize_key_state(_combo: &KeyCombo, _down: bool) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("synthesize_key_state"))
+    }
+
     pub fn synthesize_text(_text: &str) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("synthesize_text"))
     }
+
+    pub fn synthesize_keycode(_key_code: u16, _repeats: u32) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("synthesize_keycode"))
+    }
+
+    pub fn synthesize_key_for_element(
+        _el: &crate::tree::AXElement,
+        _combo: &KeyCombo,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("synthesize_key_for_element"))
+    }
 }
 
-pub use imp::{synthesize_key, synthesize_text};
+pub use imp::{
+    synthesize_key, synthesize_key_for_element, synthesize_key_state, synthesize_keycode,
+    synthesize_text,
+};

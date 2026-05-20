@@ -1,5 +1,8 @@
 use crate::{
-    action::Action, adapter::PlatformAdapter, commands::helpers::resolve_ref, error::AppError,
+    action::{Action, ActionRequest},
+    adapter::PlatformAdapter,
+    commands::helpers::resolve_ref,
+    error::AppError,
 };
 use serde_json::Value;
 
@@ -7,6 +10,7 @@ const MAX_TEXT_LEN: usize = 10_000;
 
 pub struct TypeArgs {
     pub ref_id: String,
+    pub snapshot_id: Option<String>,
     pub text: String,
 }
 
@@ -17,8 +21,10 @@ pub fn execute(args: TypeArgs, adapter: &dyn PlatformAdapter) -> Result<Value, A
         )));
     }
 
-    let (_entry, handle) = resolve_ref(&args.ref_id, adapter)?;
-    adapter.execute_action(&handle, Action::SetFocus)?;
-    let result = adapter.execute_action(&handle, Action::TypeText(args.text))?;
+    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    let result = adapter.execute_action(
+        handle.handle(),
+        ActionRequest::focus_fallback(Action::TypeText(args.text)),
+    )?;
     Ok(serde_json::to_value(result)?)
 }

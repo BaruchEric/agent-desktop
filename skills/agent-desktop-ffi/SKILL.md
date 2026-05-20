@@ -62,6 +62,17 @@ Four reference topics, loaded as needed:
   that produced it. On macOS this balances the internal `CFRetain`;
   on Windows/Linux the call is a no-op but safe to issue.
 
+- **Action policy.** `ad_execute_action` uses the headless policy by
+  default, matching CLI ref commands: no focus stealing and no cursor
+  movement. Use `ad_execute_action_with_policy(...,
+  AD_POLICY_KIND_FOCUS_FALLBACK, ...)` only when focus-changing behavior is
+  intended, and `AD_POLICY_KIND_PHYSICAL` only for explicit physical/headed
+  input semantics.
+
+- **Text input privacy.** On macOS, explicit focus/physical policy can use the
+  clipboard briefly for non-ASCII text insertion. Keep the default headless
+  policy or set values directly for sensitive text when the target supports it.
+
 - **Enum discriminants.** Every `#[repr(i32)]` enum field is validated
   at the C boundary — invalid discriminants return
   `AD_RESULT_ERR_INVALID_ARGS` instead of undefined behavior.

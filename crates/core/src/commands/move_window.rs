@@ -1,7 +1,8 @@
 use crate::{
-    action::WindowOp, adapter::PlatformAdapter, commands::helpers::resolve_app_pid, error::AppError,
+    action::WindowOp, adapter::PlatformAdapter, commands::helpers::resolve_window_for_app,
+    error::AppError,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub struct MoveWindowArgs {
     pub app: Option<String>,
@@ -10,8 +11,7 @@ pub struct MoveWindowArgs {
 }
 
 pub fn execute(args: MoveWindowArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
-    let win = find_window(pid, adapter)?;
+    let win = resolve_window_for_app(args.app.as_deref(), adapter)?;
     adapter.window_op(
         &win,
         WindowOp::Move {
@@ -20,19 +20,4 @@ pub fn execute(args: MoveWindowArgs, adapter: &dyn PlatformAdapter) -> Result<Va
         },
     )?;
     Ok(json!({ "moved": true, "x": args.x, "y": args.y }))
-}
-
-fn find_window(
-    pid: i32,
-    adapter: &dyn PlatformAdapter,
-) -> Result<crate::node::WindowInfo, AppError> {
-    let filter = crate::adapter::WindowFilter {
-        focused_only: false,
-        app: None,
-    };
-    let windows = adapter.list_windows(&filter)?;
-    windows
-        .into_iter()
-        .find(|w| w.pid == pid)
-        .ok_or_else(|| AppError::invalid_input("No window found for this application"))
 }

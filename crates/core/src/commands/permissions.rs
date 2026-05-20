@@ -1,26 +1,27 @@
-use crate::{
-    adapter::{PermissionStatus, PlatformAdapter},
-    error::AppError,
-};
-use serde_json::{json, Value};
+use crate::{PermissionReport, adapter::PlatformAdapter, error::AppError};
+use serde_json::{Value, json};
 
 pub struct PermissionsArgs {
     pub request: bool,
 }
 
-pub fn execute(args: PermissionsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    if args.request {
-        return Ok(json!({
-            "requested": true,
-            "note": "Permission dialog triggered via --request flag"
-        }));
-    }
+pub fn execute_with_report(
+    args: PermissionsArgs,
+    adapter: &dyn PlatformAdapter,
+    report: &PermissionReport,
+) -> Result<Value, AppError> {
+    let report = if args.request {
+        adapter.request_permissions()
+    } else {
+        report.clone()
+    };
+    Ok(render(report))
+}
 
-    match adapter.check_permissions() {
-        PermissionStatus::Granted => Ok(json!({ "granted": true })),
-        PermissionStatus::Denied { suggestion } => Ok(json!({
-            "granted": false,
-            "suggestion": suggestion
-        })),
-    }
+fn render(report: PermissionReport) -> Value {
+    json!({
+        "accessibility": report.accessibility,
+        "screen_recording": report.screen_recording,
+        "automation": report.automation
+    })
 }

@@ -10,14 +10,15 @@ Most recent shipments against this roadmap:
 
 | Version | Date       | What shipped |
 |---------|------------|--------------|
-| v0.1.13 | 2026-04-17 | FFI cdylib on 5 platforms (aarch64/x86_64 macOS + Linux, x86_64 Windows MSVC), Sigstore build-provenance attestations, FFI review hardening (#26 — 50 commits) |
+| v0.1.14 | 2026-05 | Phase 1 unified core: typed batch/CLI path, `CommandPolicy`, `PermissionReport`, snapshot-scoped `RefStore`, headless `ActionRequest`, macOS screenshot backend boundary |
+| v0.1.13 | 2026-04-17 | FFI cdylib on 5 platforms (aarch64/x86_64 macOS + Linux, x86_64 Windows MSVC), Sigstore build-provenance attestations, FFI review fixes (#26 — 50 commits) |
 | v0.1.12 | 2026-03–04 | Progressive skeleton traversal + ref-rooted drill-down (#20) |
 | v0.1.11 | 2026-02–03 | Skill-install prompt fix on all success paths |
 | v0.1.9  | 2026-01–02 | Scalable skill architecture + ClawHub auto-publish (#14) |
 | v0.1.8  | 2026-01    | `--compact` flag to collapse single-child unnamed nodes |
 | v0.1.7  | 2025-12    | Electron / web app accessibility-tree compatibility |
 
-- Phase 1 completion: incremental across v0.1.0 – v0.1.8 (macOS MVP, 53 commands, core engine).
+- Phase 1 completion: incremental across v0.1.0 – v0.1.14 (macOS MVP, 54 commands, unified core engine).
 - Phase 1.5 completion: v0.1.13 (FFI cdylib on 5 platforms).
 - Phase 2: planned. Full scope defined in `docs/plans/2026-04-18-001-feat-phase2-windows-crossplatform-plan.md` (superseding `docs/brainstorms/2026-02-25-windows-adapter-phase2-brainstorm.md` and `docs/plans/2026-02-25-feat-windows-adapter-phase2-plan.md`). Research-driven refinements to the brainstorm are captured in the plan's §Headless-First Invariant, §Key Technical Decisions, and §Review-Driven Refinements sections.
 - Phase 3+: planned. See Phase 2 plan for trait method defaults that Phase 3 backfills.
@@ -28,141 +29,62 @@ Most recent shipments against this roadmap:
 
 | Phase | Name | Status | Platforms |
 |-------|------|--------|-----------|
-| 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.12) | macOS |
+| 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.14) | macOS |
 | 1.5 | FFI Distribution (C-ABI cdylib) | **Completed** (v0.1.13) | macOS, Windows, Linux |
 | 2 | Windows Adapter | Planned | macOS, Windows |
 | 3 | Linux Adapter | Planned | macOS, Windows, Linux |
 | 4 | MCP Server Mode | Planned | All |
-| 5 | Production Hardening | Planned | All |
+| 5 | Production Readiness | Planned | All |
 
-Each phase is strictly additive. Core engine, CLI parser, JSON contract, error types, snapshot engine, and command registry are never modified — only new `PlatformAdapter` implementations, new transports, and new modes are added.
+Future platform phases are additive against the Phase 1 contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, `ActionRequest`, and the `PlatformAdapter` boundary. Core can still gain explicitly planned additive trait methods, but Windows/Linux should not fork command semantics or duplicate transport dispatch.
 
 ---
 
 ## Command Surface Architecture (DRY invariant)
 
-Every command in agent-desktop lives **exactly once** in `crates/core/src/commands/` and flows automatically to every transport (CLI, FFI, MCP) and every platform (macOS, Windows, Linux). No transport has per-platform code; no platform has per-transport code. The only place a new command branches is into the `PlatformAdapter` trait method calls it makes — and even those are written once per adapter in each platform crate, never per transport.
+Every command in agent-desktop has one shared semantic path. CLI and batch both parse into the same typed `Commands` enum, run the same `CommandPolicy` preflight, and enter the same `dispatch()` match. Platform crates implement primitives through `PlatformAdapter`; they do not own command semantics.
 
-### Layering
+### Current Layering
 
-```
-                          ┌─────────────────────────────────┐
-                          │   crates/core/src/commands/     │
-                          │   one file per command,         │
-                          │   operates on &dyn PlatformAdapter │
-                          └─────────┬───────────┬───────────┘
-                                    │           │
-                 ┌──────────────────┼───────────┼──────────────────┐
-                 │                  │           │                  │
-                 ▼                  ▼           ▼                  ▼
-    ┌─────────────────┐  ┌───────────────┐  ┌────────────┐  ┌─────────────────┐
-    │   src/cli.rs    │  │ crates/ffi/   │  │ crates/mcp/│  │   (future)      │
-    │   (clap derive) │  │ ad_* extern C │  │ #[tool]    │  │   HTTP / gRPC   │
-    └────────┬────────┘  └───────┬───────┘  └──────┬─────┘  └────────┬────────┘
-             │                   │                 │                 │
-             └───────────────────┴─────────────────┴─────────────────┘
-                                       │
-                                       ▼
-                          ┌─────────────────────────────────┐
-                          │   PlatformAdapter trait         │
-                          │   (defined in crates/core)      │
-                          └─────────┬──────────┬────────────┘
-                                    │          │
-                 ┌──────────────────┼──────────┼──────────────────┐
-                 ▼                  ▼          ▼                  ▼
-          crates/macos/     crates/windows/   crates/linux/   (future platforms)
-```
+| Layer | Scope | Invariant |
+|-------|-------|-----------|
+| `crates/core/src/commands/<name>.rs` | Platform-agnostic command behavior and args passed to `&dyn PlatformAdapter` | One command implementation |
+| `src/cli.rs` / `src/cli_args*.rs` | Clap command enum and transport args | CLI shape only, no platform behavior |
+| `src/command_policy.rs` | Permissions, ref usage, side-effect classification | One policy source of truth for CLI, batch, and tests |
+| `src/batch.rs` | JSON batch parser and executor | Deserializes into `Commands`; no separate command interpretation |
+| `src/dispatch.rs` | Direct command match | Shared CLI/batch execution path |
+| `crates/{macos,windows,linux}/` | Adapter method implementations | Same trait signatures across platforms |
+| `crates/ffi/` | C ABI wrappers around adapter/core types | ABI marshaling only |
 
-### What each layer contains
+### Add a Command
 
-| Layer | Scope | Per-command cost | Per-platform cost |
-|-------|-------|------------------|-------------------|
-| `crates/core/src/commands/<name>.rs` | Args struct + `execute(args, adapter)` function, platform-agnostic | **1 file** | 0 |
-| `crates/core/src/adapter.rs` (trait) | One method per distinct low-level operation (e.g. `watch_element`, `set_text_selection`) | 0 for most commands; ≤1 trait method when the command needs a new primitive | 0 |
-| `crates/macos/`, `crates/windows/`, `crates/linux/` | Trait method implementations, one file per operation domain | 0 | **1 implementation per new trait method, per adapter** (real per-platform work) |
-| `src/cli.rs` (clap enum) + `src/dispatch.rs` (match arm) | CLI transport | 2 lines (enum variant + match arm) | 0 |
-| `crates/ffi/src/<domain>/<name>.rs` | One `ad_*` extern "C" wrapper per command | ~30 lines of marshaling | 0 |
-| `crates/mcp/src/tools.rs` (registry) | One `#[tool]`-annotated wrapper per command | 1 annotation on the core `execute` function | 0 |
+1. Add `crates/core/src/commands/{name}.rs`.
+2. Register it in `crates/core/src/commands/mod.rs`.
+3. Add the CLI args/variant in `src/cli_args*.rs` and `src/cli.rs`.
+4. Add a single arm in `src/dispatch.rs`.
+5. Add a `CommandPolicy` arm.
+6. If needed, add one `PlatformAdapter` method with a `not_supported()` default, then implement it per adapter.
 
-**Concretely:** adding `text select-range` in Phase 2 means:
+Batch receives the command automatically once `src/batch.rs::parse_command` maps the JSON command name to that same CLI enum variant. There is no separate batch-only behavior.
 
-1. Write `crates/core/src/commands/text_select_range.rs` with `TextSelectRangeArgs` + `execute(args, adapter)`. Calls `adapter.set_text_selection(handle, range)`.
-2. Add one method `set_text_selection` to `PlatformAdapter` with a `not_supported` default.
-3. Implement it in `crates/macos/src/actions/text_ops.rs` via `kAXSelectedTextRangeAttribute`.
-4. Implement it in `crates/windows/src/actions/text_ops.rs` via `TextPattern.SetSelection`.
-5. Implement it in `crates/linux/src/actions/text_ops.rs` via `org.a11y.atspi.Text.AddSelection` (Phase 3).
-6. CLI: add 1 variant to `cli.rs` enum + 1 arm to `dispatch.rs`.
-7. FFI: add `crates/ffi/src/observation/text_select_range.rs` with `ad_text_select_range(adapter, ref, start, length)` — ~30 lines of marshaling.
-8. MCP: no file change. The `#[mcp_tool]` registry sees the new command automatically via the inventory submit below.
+### Headless Contract
 
-### Shared command registry pattern
+Ref actions use `ActionRequest { action, policy }`. The default `InteractionPolicy` forbids focus stealing and cursor movement. macOS is the reference adapter:
 
-Every command's `execute` function is annotated once; the registry is populated at link time via `inventory::submit!` (or `linkme`). Transports iterate the registry — they do not hand-maintain a list:
+- Semantic AX steps run first.
+- Physical fallbacks are explicit and policy-gated.
+- Non-mouse ref commands must not silently focus apps or move the cursor.
+- Expected OS denials return specific error codes such as `PERM_DENIED`, `SNAPSHOT_NOT_FOUND`, or `POLICY_DENIED`, not generic `INTERNAL`.
 
-```rust
-// crates/core/src/commands/click.rs  — the SINGLE source of truth for Click
-
-use schemars::JsonSchema;
-
-#[derive(Debug, clap::Parser, JsonSchema, serde::Deserialize)]
-pub struct ClickArgs {
-    /// The ref to click, e.g. @e5
-    #[arg(value_name = "REF")]
-    pub ref_id: String,
-}
-
-pub fn execute(args: ClickArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let entry = RefMap::load()?.resolve(&args.ref_id)?;
-    let handle = adapter.resolve_element(&entry)?;
-    let result = adapter.execute_action(&handle, Action::Click)?;
-    Ok(json!({ "action": result.action }))
-}
-
-// Registered once, visible to every transport.
-inventory::submit! {
-    CommandDescriptor {
-        cli_name: "click",
-        mcp_name: "desktop_click",
-        description: "Press the element identified by @ref (AXPress / UIA InvokePattern / AT-SPI Action.DoAction(0))",
-        args_schema: || schema_for!(ClickArgs),
-        invoke: invoke_typed::<ClickArgs>(execute),
-        annotations: ToolAnnotations {
-            read_only: false,
-            destructive: false,
-            idempotent: false,
-            ..Default::default()
-        },
-    }
-}
-```
-
-- `crates/core/src/command_registry.rs` defines `CommandDescriptor` and the `invoke_typed` generic helper (parse JSON → Args → execute → JSON back).
-- `src/dispatch.rs` walks `inventory::iter::<CommandDescriptor>` and matches on `cli_name` — replaces the hand-maintained match when Phase 2 lands the registry (today's dispatch is the bootstrap form).
-- `crates/ffi/src/...` walks the same registry to generate `ad_<name>` wrappers via a `build.rs` codegen step (Phase 2 work) — so adding a CLI command *also* emits the FFI entry automatically. Bespoke marshaling lives in per-type `convert/` helpers, not per-command.
-- `crates/mcp/src/server.rs` walks the same registry and registers each as an `rmcp` tool with the auto-generated JSON Schema. **Zero per-platform code in the MCP crate. Zero per-command MCP code beyond the one-line `inventory::submit!`.**
-
-### Why this works
-
-- **Rust has no runtime reflection**, but the `inventory` / `linkme` crates provide compile-time plugin registration with zero runtime overhead.
-- **`schemars` derives JSON Schema** from the same Args struct that clap derives CLI parsing from — one type, two bindings for free, a third for MCP.
-- **`rmcp` (the official MCP Rust SDK) accepts `JsonSchema`-derived types directly** via its `#[tool]` macro, so MCP registration is a trivial pass-through.
-- **`PlatformAdapter` is dyn-compatible** and passed as `&dyn PlatformAdapter` to every `execute` function; the binary crate's `build_adapter()` is the one-and-only place a concrete adapter is chosen per `#[cfg(target_os)]`.
-
-### What this means for the phases below
-
-- **Phase 2 ships the registry migration** as part of the core-extension work. After Phase 2, adding a new command is additive in exactly the places listed in the table above — never per-transport-per-platform.
-- **Phase 3's Linux adapter** implements the new trait methods from Phase 2 but writes zero command files, zero CLI dispatch, zero FFI wrappers, zero MCP tool code. Pure platform impl.
-- **Phase 4 (MCP)** is a new crate + stdio/HTTP transport + registry walker. It does not enumerate 53 tools by hand. The tool table in Phase 4 is a snapshot of what the registry produces, not a manual list.
-
-Every objective in Phases 2–5 below assumes this invariant. If any task description implies per-transport or per-platform command-surface duplication, it's a wording bug — the actual implementation follows the registry pattern.
+Windows and Linux should implement the same signatures rather than copying macOS-specific fallback decisions.
 
 ---
 
 ## Phase 1 — Foundation + macOS MVP
 
-**Status: Completed** — shipped incrementally across v0.1.0 – v0.1.12.
+**Status: Completed** — shipped incrementally across v0.1.0 – v0.1.14.
 
-Phase 1 is the load-bearing phase. It establishes every shared abstraction, every trait boundary, every output contract, every error type, the complete command trait and registry, and the full workspace structure. All subsequent phases build on top of this foundation without modifying core.
+Phase 1 is the load-bearing phase. It establishes the shared command path, trait boundaries, output contract, error types, permission model, ref lifecycle, and full workspace structure. All subsequent platform phases build on top of this foundation without duplicating command semantics.
 
 ### Objectives
 
@@ -173,9 +95,9 @@ Phase 1 is the load-bearing phase. It establishes every shared abstraction, ever
 | P1-O3 | Ref-based interaction | `click @e3` successfully invokes AXPress on the resolved element |
 | P1-O4 | Context efficiency | Typical Finder snapshot < 500 tokens (measured via tiktoken) |
 | P1-O5 | Typed JSON contract | Output envelope carries `version: "1.0"`. **Partial**: dedicated `schemas/` JSON-Schema files were never delivered — deferred to Phase 5 quality gates. |
-| P1-O6 | Permission detection | Missing Accessibility permission prints specific macOS setup instructions |
+| P1-O6 | Permission detection | Permission report covers Accessibility, Screen Recording, and Automation with recovery suggestions |
 | P1-O7 | Command extensibility | Adding a new command is ~4 registration points: `commands/{name}.rs` + `commands/mod.rs` + `src/cli.rs` variant + `src/dispatch.rs` match arm |
-| P1-O8 | 53 working commands | All commands pass integration tests |
+| P1-O8 | 54 working commands | All commands pass integration tests |
 | P1-O9 | CI pipeline | GitHub Actions macOS runner executes full test suite on every PR |
 | P1-O10 | Progressive skeleton traversal | Skeleton + drill-down workflow achieves 78%+ token savings on Electron apps |
 
@@ -193,8 +115,9 @@ agent-desktop/
 │   │       ├── lib.rs          # public re-exports only
 │   │       ├── node.rs         # AccessibilityNode, Rect, WindowInfo
 │   │       ├── adapter.rs      # PlatformAdapter trait
-│   │       ├── action.rs       # Action enum, ActionResult
-│   │       ├── refs.rs         # RefMap, RefEntry (persisted at ~/.agent-desktop/last_refmap.json)
+│   │       ├── action.rs       # Action enum, ActionRequest, ActionResult
+│   │       ├── refs.rs         # RefMap and RefEntry
+│   │       ├── refs_store.rs   # Snapshot-scoped ref persistence
 │   │       ├── ref_alloc.rs    # INTERACTIVE_ROLES, allocate_refs, is_collapsible, transform_tree
 │   │       ├── snapshot_ref.rs # Ref-rooted drill-down (run_from_ref)
 │   │       ├── snapshot.rs     # SnapshotEngine (filter, allocate, serialize)
@@ -209,8 +132,12 @@ agent-desktop/
 │   ├── main.rs
 │   ├── cli.rs
 │   ├── cli_args.rs
+│   ├── cli_args_actions.rs
+│   ├── cli_args_system.rs
+│   ├── command_policy.rs
+│   ├── batch.rs
 │   ├── dispatch.rs
-│   └── batch_dispatch.rs
+│   └── dispatch_parse.rs
 └── tests/
     ├── fixtures/
     └── integration/
@@ -230,7 +157,7 @@ pub trait PlatformAdapter: Send + Sync {
     fn list_surfaces(&self, pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError>;
 
     // Interaction
-    fn execute_action(&self, handle: &NativeHandle, action: Action) -> Result<ActionResult, AdapterError>;
+    fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
     fn release_handle(&self, handle: &NativeHandle) -> Result<(), AdapterError>;
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError>;
@@ -238,9 +165,9 @@ pub trait PlatformAdapter: Send + Sync {
     fn press_key_for_app(&self, pid: i32, combo: KeyCombo) -> Result<(), AdapterError>;
 
     // Lifecycle + windowing
-    fn check_permissions(&self) -> PermissionStatus;
+    fn permission_report(&self) -> PermissionReport;
+    fn request_permissions(&self) -> PermissionReport;
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
-    fn focused_window(&self) -> Result<Option<WindowInfo>, AdapterError>;
     fn launch_app(&self, id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError>;
     fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
     fn window_op(&self, win: &WindowInfo, op: WindowOp) -> Result<(), AdapterError>;
@@ -267,6 +194,8 @@ pub trait PlatformAdapter: Send + Sync {
 ### Key Supporting Types
 
 - `Action` — `#[non_exhaustive]` enum. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
+- `ActionRequest` — `{ action, policy }`; default policy forbids focus stealing and cursor movement
+- `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 - `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
 - `WindowOp` — Resize{w,h}, Move{x,y}, Minimize, Maximize, Restore, Close
 - `ScreenshotTarget` — FullScreen, Window(WindowInfo), Element(NativeHandle)
@@ -286,6 +215,7 @@ crates/macos/src/
 ├── tree/
 │   ├── mod.rs          # re-exports
 │   ├── element.rs      # AXElement struct + attribute readers
+│   ├── capabilities.rs # AX-supported actions and settable attributes
 │   ├── builder.rs      # build_subtree, tree traversal
 │   ├── roles.rs        # AXRole string → unified role enum mapping
 │   ├── resolve.rs      # Element re-identification for ref resolution
@@ -293,8 +223,10 @@ crates/macos/src/
 ├── actions/
 │   ├── mod.rs          # re-exports
 │   ├── dispatch.rs     # perform_action match arms
-│   ├── activate.rs     # Smart AX-first activation chain (15-step)
-│   └── extras.rs       # select_value, ax_scroll
+│   ├── chain.rs        # policy-aware AX-first activation chain
+│   ├── extras.rs       # select_value helpers
+│   ├── scroll.rs       # scroll semantics and explicit physical policy paths
+│   └── type_text.rs    # headless AX text insertion and physical typing
 ├── input/
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # CGEventCreateKeyboardEvent, key synthesis, text typing
@@ -310,8 +242,8 @@ crates/macos/src/
     ├── app_ops.rs      # launch, close, focus via NSWorkspace / AppleScript
     ├── window_ops.rs   # window resize, move, minimize, maximize, restore
     ├── key_dispatch.rs # app-targeted key press
-    ├── permissions.rs  # AXIsProcessTrusted(), AXIsProcessTrustedWithOptions(prompt: true)
-    ├── screenshot.rs   # CGWindowListCreateImage
+    ├── permissions.rs  # PermissionReport probe/request
+    ├── screenshot.rs   # ScreenshotBackend + secure screencapture path
     └── wait.rs         # wait utilities
 ```
 
@@ -325,19 +257,22 @@ crates/macos/src/
 - Bounds: `kAXPositionAttribute` + `kAXSizeAttribute` combined to Rect
 
 **Action execution:**
-- Click: `AXUIElementPerformAction(kAXPressAction)`
-- SetValue: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
-- SetFocus: `AXUIElementSetAttributeValue(kAXFocusedAttribute, true)`
-- Expand/Collapse: Toggle `kAXExpandedAttribute`
-- Select: `AXUIElementSetAttributeValue(kAXSelectedAttribute, true)` on child
+- Ref actions take `ActionRequest`, not bare `Action`
+- Default policy forbids focus stealing and cursor movement
+- Click/right-click/scroll chains run semantic AX steps first and return structured errors instead of silently using physical/headed paths
+- Type in headless mode mutates settable AX text values; physical keyboard typing is policy-gated
+- SetValue/Clear: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
+- SetFocus/Press/Hover/Drag/Mouse: explicit focus/cursor/physical commands
 - Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent` via CoreGraphics
 - Clipboard: `NSPasteboard.generalPasteboard` read/write via Cocoa FFI
-- Screenshot: `CGWindowListCreateImage` for window-specific or full-screen capture
+- Screenshot: `ScreenshotBackend` boundary with secure temporary files; Screen Recording denial maps to `PERM_DENIED`
 
 **Permission detection:**
-- Call `AXIsProcessTrusted()` on startup
-- If false, return `PERM_DENIED` with guidance: "Open System Settings > Privacy > Accessibility and add your terminal"
-- Optionally call `AXIsProcessTrustedWithOptions(prompt: true)` to trigger system dialog
+- Probe once per CLI process into `PermissionReport`
+- Accessibility: `AXIsProcessTrusted()` / `AXIsProcessTrustedWithOptions(prompt: true)`
+- Screen Recording: platform screen-capture preflight/request path
+- Automation: currently `{ "state": "not_required" }` because the shipped command set does not use Apple Events; future Apple Event paths must report a real granted/denied probe
+- `status`, `permissions`, preflight, and `batch` share the same report; `permissions --request` invokes the request path
 
 **Notification management:**
 - Open Notification Center via AX: target the `NotificationCenter` process (bundleId: `com.apple.notificationcenterui`)
@@ -369,11 +304,11 @@ Platform-agnostic, lives in `agent-desktop-core`:
 4. Serialize: Omit null fields. Omit empty arrays. Omit bounds in compact mode
 5. Estimate tokens: Optionally warn if exceeding threshold
 
-RefMap persisted at `~/.agent-desktop/last_refmap.json` with `0o600` permissions, directory at `0o700`. Each snapshot replaces the refmap file entirely (atomic write via temp + rename). Action commands use optimistic re-identification: `(pid, role, name, bounds_hash)`. Return `STALE_REF` on mismatch.
+Snapshot refs persist through `RefStore` under `~/.agent-desktop/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer for commands that omit `--snapshot`. `~/.agent-desktop/last_refmap.json` remains only as a latest-snapshot inspection artifact. Action commands resolve through `RefStore` and use `ResolvedElement` RAII so native handles are released after ref-consuming commands. Return `STALE_REF` on live re-identification mismatch and `SNAPSHOT_NOT_FOUND` when the requested snapshot does not exist.
 
 **Progressive Skeleton Traversal:**
 - `--skeleton` flag clamps depth to `min(max_depth, 3)`, annotates truncated containers with `children_count` for agent discovery
-- `--root <REF>` flag starts traversal from a previously-discovered ref instead of window root
+- `--root <REF>` flag starts traversal from a previously-discovered ref instead of window root; `--snapshot <id>` selects the ref namespace
 - Named or described containers at skeleton boundary receive refs as drill-down targets (with empty `available_actions`)
 - Scoped invalidation: re-drilling a ref replaces only that ref's subtree refs, preserving all others
 - Core modules: `ref_alloc.rs` (canonical `allocate_refs` + `RefAllocConfig`), `snapshot_ref.rs` (drill-down flow that delegates allocation to `ref_alloc`)
@@ -410,7 +345,7 @@ The `wait` command has been extended with notification and menu support:
 - `wait --notification --text "Download complete"` — Wait for a notification containing specific text
 - `wait --menu` / `wait --menu-closed` — Wait for context menu open/close
 
-### Commands Shipped (53)
+### Commands Shipped (54)
 
 | Category | Commands | Count |
 |----------|----------|-------|
@@ -423,7 +358,7 @@ The `wait` command has been extended with notification and menu support:
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | 3 |
 | Notification (macOS) | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | 4 |
 | Wait | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) | 1 |
-| System | `status`, `permissions`, `version` | 3 |
+| System | `status`, `permissions`, `version`, `skills` | 4 |
 | Batch | `batch` | 1 |
 
 > System Tray / Menu Bar Extras commands are listed under "Not Yet Implemented" above — they never shipped in Phase 1.
@@ -435,7 +370,7 @@ All commands produce a response envelope. Schema files versioned in `schemas/`.
 Success:
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -450,12 +385,12 @@ Success:
 Error:
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "ok": false,
   "command": "click",
   "error": {
     "code": "STALE_REF",
-    "message": "RefMap is from a previous snapshot",
+    "message": "Element could not be resolved from the requested snapshot",
     "suggestion": "Run 'snapshot' to refresh, then retry with updated ref"
   }
 }
@@ -465,21 +400,23 @@ Serialization rules: omit null/None fields (`skip_serializing_if`), omit empty a
 
 ### Error Taxonomy
 
-The `ErrorCode` enum in `crates/core/src/error.rs` exposes exactly 12 variants:
+The `ErrorCode` enum in `crates/core/src/error.rs` exposes these machine-readable variants:
 
 | Code | Category | Example | Recovery Suggestion |
 |------|----------|---------|---------------------|
-| `PERM_DENIED` | Permission | Accessibility not granted | Open System Settings > Privacy > Accessibility and add your terminal |
+| `PERM_DENIED` | Permission | Accessibility not granted | Open System Settings > Privacy > Accessibility and add the app that launches agent-desktop |
 | `ELEMENT_NOT_FOUND` | Ref | @e12 could not be resolved | Run 'snapshot' to refresh, then retry with updated ref |
 | `APP_NOT_FOUND` | Application | --app 'Photoshop' not running | Launch the application first |
 | `ACTION_FAILED` | Execution | AXPress returned error on disabled button | Element may be disabled. Check states before acting |
 | `ACTION_NOT_SUPPORTED` | Execution | Expand on a button | This element does not support the requested action |
-| `STALE_REF` | Ref | RefMap is from a previous snapshot | Run 'snapshot' (or `snapshot --skeleton`) to refresh |
+| `STALE_REF` | Ref | Element could not be re-identified from the requested snapshot | Run 'snapshot' (or `snapshot --skeleton`) to refresh |
 | `WINDOW_NOT_FOUND` | Window | --window w-999 does not exist | Run 'list-windows' to see available windows |
 | `PLATFORM_NOT_SUPPORTED` | Platform | Windows/Linux adapter not yet shipped | This platform ships in Phase 2/3 |
 | `TIMEOUT` | Wait / Traversal | wait --element exceeded timeout | Increase --timeout or check app state |
 | `INVALID_ARGS` | Input | Bad CLI argument or unknown ref format | Fix the argument per CLI help |
 | `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found / NC reordered | Run 'list-notifications' to see current notifications |
+| `SNAPSHOT_NOT_FOUND` | Ref | Requested snapshot ID is missing | Run 'snapshot' again and use the returned snapshot_id |
+| `POLICY_DENIED` | Action policy | Physical fallback blocked by headless policy | Use an explicit focus/cursor/mouse command if physical interaction is intended |
 | `INTERNAL` | Internal | Unexpected error or caught panic | Re-run with verbose logging |
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
@@ -530,7 +467,7 @@ Current `.github/workflows/ci.yml` on every PR:
   - `cargo test -p agent-desktop-ffi --tests` (c_abi_harness + c_header_compile + error_lifetime integration suites)
   - `cargo build --profile ci` (fast CLI binary) + 15 MB size check
   - `cargo build --profile release-ffi -p agent-desktop-ffi` (the shipped cdylib profile)
-  - FFI header drift check — diffs `crates/ffi/include/agent_desktop.h` against the build-stamped `target/ffi-header-path.txt`
+  - FFI header contract check — compiles `crates/ffi/include/agent_desktop.h` from C tests and keeps header regeneration out of the default build graph
 
 ### Dependencies
 
@@ -567,7 +504,7 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 
 | ID | Objective | Metric |
 |----|-----------|--------|
-| P1.5-O1 | Stable C-ABI surface | `crates/ffi/include/agent_desktop.h` drift-checked in CI via a deterministic `ffi-header-path.txt` stamp |
+| P1.5-O1 | Stable C-ABI surface | `crates/ffi/include/agent_desktop.h` compiled in CI as the committed ABI contract |
 | P1.5-O2 | 5-platform release | Tarballs for aarch64/x86_64 apple-darwin, aarch64/x86_64 unknown-linux-gnu, and x86_64 pc-windows-msvc on every tagged release |
 | P1.5-O3 | Panic safety | Dedicated `release-ffi` profile overrides `panic = "abort"` → `"unwind"`; `catch_unwind` wraps every `extern "C"` boundary via `trap_panic` / `trap_panic_ptr` / `trap_panic_const_ptr` / `trap_panic_void` |
 | P1.5-O4 | Main-thread safety (macOS) | `require_main_thread()` guard in every build profile; worker-thread call returns `AD_RESULT_ERR_INTERNAL` with a static `'static CStr` message |
@@ -582,8 +519,8 @@ Phase 1.5 ships `crates/ffi/` as a first-class distribution target. The CLI stay
 ```
 crates/ffi/
 ├── Cargo.toml           # crate-type = ["cdylib", "rlib"]
-├── cbindgen.toml        # [export].include forces emission of AdActionKind / AdDirection / AdModifier / AdMouseButton / AdMouseEventKind / AdScreenshotKind / AdSnapshotSurface / AdWindowOpKind even though the public ABI stores raw i32
-├── build.rs             # runs cbindgen into $OUT_DIR, stamps target/ffi-header-path.txt, bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS
+├── cbindgen.toml        # maintainer-only header regeneration config
+├── build.rs             # bakes install_name = @rpath/libagent_desktop_ffi.dylib on macOS
 ├── include/
 │   └── agent_desktop.h  # committed, drift-checked against the OUT_DIR output
 ├── src/                 # ad_* extern "C" entrypoints, organized by domain
@@ -632,13 +569,13 @@ Regular `release` profile keeps `panic = "abort"` for the CLI binary, so a panic
 
 - `cargo build --profile release-ffi -p agent-desktop-ffi` on every PR
 - `cargo test -p agent-desktop-ffi --tests` runs the 3 integration suites
-- FFI header drift check diffs the committed header against the OUT_DIR output discovered via `target/ffi-header-path.txt` (deterministic even with warm caches and multiple `agent-desktop-ffi-<hash>/` directories)
+- FFI header contract check compiles the committed header from C tests. Header regeneration is an explicit maintainer action via `scripts/update-ffi-header.sh`, not part of ordinary builds.
 
 ### New Dependencies
 
 | Crate | Version | Scope | Purpose |
 |-------|---------|-------|---------|
-| `cbindgen` | = 0.27.0 (pinned) | `crates/ffi` build-dep | C header generation |
+| `cbindgen` | maintainer-installed tool, denied in Cargo graph | `scripts/update-ffi-header.sh` only | C header regeneration |
 | `libc` | 0.2+ | `crates/ffi` macOS target | `pthread_main_np` for main-thread check |
 
 ### Forward Compatibility
@@ -668,7 +605,7 @@ These items are tracked in the Phase 2 plan (`docs/plans/2026-04-18-001-feat-pha
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
 3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
 4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The "one command per file" CLAUDE.md rule becomes the codegen contract.
-5. **v0.1.14 prep release.** Ships `#[non_exhaustive]` on `ErrorCode` + `ad_abi_version()` + `ad_init(expected_major)` + `AD_RESULT_UNKNOWN` sentinel before any ABI break, giving consumers time to adapt. v0.2.0 then ships only unavoidable breaks (`PermissionStatus` tri-state, MSRV 1.82, new variants).
+5. **FFI compatibility gates.** v0.1.14 adds explicit FFI result codes for snapshot-not-found and policy-denied paths. Phase 2 still owns `ad_abi_version()`, `ad_init(expected_major)`, and any broader ABI-version handshake before new cross-platform ABI surface ships.
 6. **`DeliverFiles` replaces `FileDrop`.** Headless-first forbids `NSDraggingSession` on macOS; the new action uses a 4-tier fallback (URL scheme → `NSWorkspace.open` with `activates: false` → pasteboard + `Cmd-V` → AppleScript). Windows keeps `IDataObject + DoDragDrop` (OLE drag is headless on Windows).
 
 ### Windows Engineering Invariants (from Phase 2 plan Unit 3)
@@ -692,7 +629,7 @@ Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cr
 
 Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every change is additive (`#[non_exhaustive]` already guards the enums) and every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
 
-Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, every new command added in Phase 2 (`watch`, `text select-range`, `text get-selection`, `text insert-at-caret`, etc.) lives in **exactly one file** under `crates/core/src/commands/` and auto-registers into the CLI, FFI, and MCP transports via `inventory::submit!`. The per-platform work is the three `PlatformAdapter` method implementations (one each in `crates/macos/`, `crates/windows/`, `crates/linux/`) — nothing repeats across transports.
+Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, every new command added in Phase 2 (`watch`, `text select-range`, `text get-selection`, `text insert-at-caret`, etc.) lives in **exactly one file** under `crates/core/src/commands/` and is wired through the shared typed command path. If Phase 2 adds codegen, it uses deterministic `build.rs` filesystem enumeration, not linker registries. The per-platform work is the three `PlatformAdapter` method implementations (one each in `crates/macos/`, `crates/windows/`, `crates/linux/`) — nothing repeats across transports.
 
 P2-O16 (FFI parity expansion) also migrates the FFI wrappers from hand-written to codegen: a `build.rs` step in `crates/ffi/` walks the registry and emits one `ad_<name>` extern "C" function per `CommandDescriptor`, using the per-type marshaling helpers in `crates/ffi/src/convert/`. After this migration, the FFI crate holds marshaling primitives, not command wrappers. The `crates/mcp/` crate follows the same walk-the-registry pattern with `rmcp`'s `#[tool]` shape — so Phase 4 can ship its MCP server without hand-maintaining the tool list.
 
@@ -723,7 +660,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | P2-O14 | Toolbar and missing surfaces | Both platforms add `SnapshotSurface::Toolbar`. macOS additionally adds `Spotlight` (pid of `/System/Library/CoreServices/Spotlight.app`), `Dock` (pid of `/System/Library/CoreServices/Dock.app`), and `MenuBarExtras` (enumerates `SystemUIServer`, `ControlCenter`, and per-app `AXExtrasMenuBar`). Windows adds `SystemTray` (as structured surface, not just tray commands) |
 | P2-O15 | Electron / WebView2 deep-tree toggles | macOS: `build_subtree` writes `AXEnhancedUserInterface = YES` on app root for known Electron bundle IDs (VS Code, Cursor, Slack post-Sept-2024, Teams, Discord, Figma Desktop, Notion). Windows: detect Edge WebView2 via UIA `ClassName = "Chrome_WidgetWin_1"` and the equivalent flag; apply same web-wrapper depth-skip. Both: new `--force-electron-a11y` CLI override |
 | P2-O16 | FFI registry migration + parity expansion | Migrate `crates/ffi/` from hand-written `ad_*` wrappers to a `build.rs` codegen step that walks the compile-time `CommandDescriptor` registry and emits one wrapper per command. After this, adding a CLI command automatically produces the FFI entry (plus its JSON Schema via `schemars` and its MCP tool in Phase 4). Marshaling helpers stay in `crates/ffi/src/convert/` — these are per-type, not per-command. In the same migration: backfill `ad_snapshot` (full refmap pipeline), `ad_execute_by_ref(adapter, "@e5", action, out)`, `ad_wait(…)`, `ad_version`, `ad_abi_version() -> u32` with `AD_ABI_VERSION_MAJOR` cbindgen `[defines]` export, `ad_status`, `ad_set_log_callback(fn(level, msg))` installing a `tracing_subscriber` layer so dlopen consumers see debug output |
-| P2-O17 | Screen Recording / Automation permission detection (macOS backfill) | `check_permissions()` returns a richer `PermissionStatus` with a tri-state for AX, Screen Recording (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`), and Automation (`AEDeterminePermissionToAutomateTarget`). Failures surface as `PermDenied` / `AutomationPermissionDenied` with concrete System Settings paths |
+| P2-O17 | Screen Recording / Automation permission detection | macOS Phase 1 already exposes `PermissionReport { accessibility, screen_recording, automation }`. Phase 2 decides whether a distinct `AutomationPermissionDenied` code is still needed once Apple Event automation paths exist |
 
 ### Cross-Platform Trait Extensions
 
@@ -761,7 +698,7 @@ New supporting types (land in `crates/core/src/`):
 - `TextRange` — `{ start: u32, length: u32 }` (UTF-16 code units to match both AX CFRange and UIA TextRange conventions)
 - `TextSelection` — `{ range: TextRange, caret_offset: u32, lines_in_view: Vec<TextRange> }`
 - `ScreenshotBackend` — `Modern` (ScreenCaptureKit / Windows.Graphics.Capture / PipeWire) or `Legacy` (preserves Phase 1 subprocess path as fallback for restricted environments)
-- `PermissionStatus` extends to `{ accessibility: TriState, screen_recording: TriState, automation: TriState }` where `TriState = Granted | Denied { suggestion } | NotDetermined`
+- `PermissionReport` is `{ accessibility, screen_recording, automation }` where each field is `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 
 ### Cross-platform capability map (P2-O8 through O17)
 
@@ -839,12 +776,12 @@ crates/windows/src/
 | Tree root | `IUIAutomation.ElementFromHandle()` | Via `uiautomation` crate (v0.24+) wrapping UIA COM APIs via `windows` crate |
 | Children | `IUIAutomationTreeWalker.GetFirstChild` / `GetNextSibling` | With `CacheRequest` for batch attribute retrieval (3-5x faster) |
 | Role mapping | `UIA ControlType` integers | Map to unified role enum in `tree/roles.rs` — e.g. `UIA_ButtonControlTypeId` → `button` |
-| Click | `InvokePattern.Invoke()` | Pattern-based, falls back to `TogglePattern.Toggle()`, then coordinate click via SendInput |
-| Set text | `ValuePattern.SetValue()` | Falls back to SelectAll + SendInput keystroke sequence |
+| Click | `InvokePattern.Invoke()` | Pattern-based; coordinate click via SendInput only under explicit physical policy |
+| Set text | `ValuePattern.SetValue()` | Headless value write by default; SendInput only under explicit focus/physical policy |
 | Expand/Collapse | `ExpandCollapsePattern.Expand()` / `.Collapse()` | Native UIA pattern |
 | Select | `SelectionItemPattern.Select()` | For combobox, listbox, tab items |
 | Toggle | `TogglePattern.Toggle()` | For checkboxes, switches |
-| Scroll | `ScrollPattern.Scroll()` / `ScrollPattern.SetScrollPercent()` | Native UIA scroll, falls back to mouse wheel |
+| Scroll | `ScrollPattern.Scroll()` / `ScrollPattern.SetScrollPercent()` | Native UIA scroll; mouse wheel only under explicit physical policy |
 | Keyboard | `SendInput` API | `INPUT_KEYBOARD` structs with virtual key codes and scan codes |
 | Mouse | `SendInput` API | `INPUT_MOUSE` structs with `MOUSEEVENTF_*` flags |
 | Clipboard | `OpenClipboard` / `GetClipboardData` / `SetClipboardData` | Win32 APIs, handle `CF_UNICODETEXT` format |
@@ -1337,7 +1274,7 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 Phase 4 adds a new I/O layer. Core engine and all three platform adapters are unchanged. The MCP server wraps existing command logic in JSON-RPC tool definitions, enabling agent-desktop to work as an MCP-native desktop automation server for Claude Desktop, Cursor, VS Code Copilot, Gemini CLI, Microsoft Agent Framework 1.0, and any other MCP-compatible host.
 
-By Phase 4 the CLI already covers 53+ commands on three platforms, the FFI ships as a shared library for in-process consumers, and the cross-platform event / text-range / stable-selector primitives from Phase 2 / 3 are in place. MCP mode is a **transport + discovery layer**, nothing more. Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant at the top of this document, the MCP crate contains zero per-tool and zero per-platform code — it walks the same compile-time `inventory` registry the CLI and FFI use, and dispatches to the same `execute(args, adapter)` functions. New commands added in Phase 2 or Phase 5 (e.g. `watch_element`, `text select-range`, `find --visual`) become MCP tools automatically with no changes to `crates/mcp/`.
+By Phase 4 the CLI already covers the shared command surface on three platforms, the FFI ships as a shared library for in-process consumers, and the cross-platform event / text-range / stable-selector primitives from Phase 2 / 3 are in place. MCP mode is a **transport + discovery layer**, nothing more. Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant at the top of this document, the MCP crate contains zero per-tool and zero per-platform code — it walks the same deterministic command descriptor registry the CLI and FFI use, and dispatches to the same `execute(args, adapter)` functions. New commands added in Phase 2 or Phase 5 (e.g. `watch_element`, `text select-range`, `find --visual`) become MCP tools automatically with no changes to `crates/mcp/`.
 
 ### Objectives
 
@@ -1366,7 +1303,7 @@ This is the invariant: every MCP tool maps 1:1 to a CLI command. `agent-desktop 
 
 ### New Crate: `agent-desktop-mcp` (platform-agnostic, no per-command code)
 
-The MCP crate is small and generic by design. It contains **zero per-tool files and zero per-platform code**. Per the Command Surface Architecture invariant at the top of this document, every CLI command auto-registers into a shared `inventory` registry; the MCP server iterates that registry at startup and exposes each entry as an MCP tool.
+The MCP crate is small and generic by design. It contains **zero per-tool files and zero per-platform code**. Per the Command Surface Architecture invariant at the top of this document, every CLI command is described through deterministic command metadata; the MCP server iterates those descriptors at startup and exposes each entry as an MCP tool.
 
 ```
 crates/mcp/src/
@@ -1379,7 +1316,7 @@ crates/mcp/src/
 └── schema.rs           # Translates CommandDescriptor → rmcp tool definition
 ```
 
-That's the whole crate. It doesn't know what `desktop_click` does — it reads the `CommandDescriptor` registered by `crates/core/src/commands/click.rs` and forwards invocations through the same `execute(args, adapter)` function the CLI uses. Adding a command in Phase 2 (`text select-range`, `watch_element`) or Phase 5 (`find --visual`, `audit tail`) means **zero lines of MCP code** — the new command shows up automatically in `tools/list`.
+That's the whole crate. It doesn't know what `desktop_click` does — it reads generated command descriptors and forwards invocations through the same command execution function the CLI uses. Adding a command in Phase 2 (`text select-range`, `watch_element`) or Phase 5 (`find --visual`, `audit tail`) should mean **zero lines of MCP-specific behavior** — only shared command metadata and adapter methods change.
 
 ### MCP tool registration — the one-time rewrite
 
@@ -1389,10 +1326,10 @@ That's the whole crate. It doesn't know what `desktop_click` does — it reads t
 pub async fn serve(adapter: Box<dyn PlatformAdapter>) -> Result<()> {
     let mut server = rmcp::ServerBuilder::new("agent-desktop", env!("CARGO_PKG_VERSION"));
 
-    // Walk the compile-time registry. No hand-maintained tool list.
-    for cmd in inventory::iter::<CommandDescriptor>() {
+    // Walk generated descriptors. No hand-maintained tool list.
+    for cmd in command_descriptors() {
         // Skip tools disallowed by current permission set (P4-O11).
-        if !cmd.available_under(&adapter.check_permissions()) { continue; }
+        if !cmd.available_under(&adapter.permission_report()) { continue; }
 
         server.tool(rmcp::Tool {
             name: cmd.mcp_name,
@@ -1508,7 +1445,7 @@ Each host gets a ~30-line config + a 60-second "hello agent" demo (launch Calcul
 
 On receiving MCP `initialize`:
 1. Detect platform (macOS / Windows / Linux)
-2. Check accessibility permissions (`check_permissions()`)
+2. Check permissions (`permission_report()`)
 3. Report capabilities: list of available tools, platform, permission status
 4. If permissions not granted, include guidance in capabilities response
 
@@ -1622,7 +1559,7 @@ Per [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 
 ---
 
-## Phase 5 — Production Hardening
+## Phase 5 — Production Readiness
 
 **Status: Planned**
 
@@ -1908,7 +1845,7 @@ The README is updated at the end of each phase to reflect the current state:
 
 | Phase | README Changes |
 |-------|---------------|
-| Phase 1 | Initial README: npm + source installation, core workflow, all 53 commands, JSON output, ref system, error codes, platform support table (macOS only) |
+| Phase 1 | Initial README: npm + source installation, core workflow, all 54 commands, JSON output, ref system, error codes, platform support table (macOS only) |
 | Phase 1.5 | Add "Language bindings (FFI)" section: platform→artifact table, 5-line Python dlopen snippet, `shasum -a 256 -c checksums.txt` + `gh attestation verify` verification, link to `skills/agent-desktop-ffi/` |
 | Phase 2 | Add Windows: `.exe` installation, Windows permissions, update platform table, Windows build instructions |
 | Phase 3 | Add Linux: binary installation, AT-SPI2 setup, update platform table, Linux build instructions, minimum OS versions |
@@ -1930,8 +1867,8 @@ Per the [Skill Maintenance Addendum](./prd-addendum-skill-maintenance.md):
 See [Command Surface Architecture](#command-surface-architecture-dry-invariant) for the full layering. Summary of the invariant enforced on every PR:
 
 - A new command creates exactly **one** file under `crates/core/src/commands/`.
-- That file registers itself via `inventory::submit! { CommandDescriptor { … } }`.
-- The CLI, FFI, and MCP transports each walk that registry at startup / build time; none of them hand-maintains a command list.
+- CLI and batch must share the typed `Commands` enum, `CommandPolicy`, and `dispatch()` path.
+- Any future registry/codegen must be deterministic `build.rs` filesystem enumeration, not `inventory` or `linkme`.
 - Per-platform work is limited to the `PlatformAdapter` trait implementations in `crates/{macos,windows,linux}/` — never per-transport, never per-command.
 - PRs that add a command to a single transport without updating the shared registry fail review. If a task in this document sounds like it requires per-transport duplication, it's a wording bug — the actual implementation follows the registry pattern.
 
@@ -1955,7 +1892,7 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | `clap` 4.x, `serde` 1.x, `thiserror` 2.x, `tracing` 0.1+, `base64` 0.22+ | Phase 1 | Core: CLI, JSON, errors, logging, encoding |
 | `tracing-subscriber` 0.3, `rustc-hash` 2.1 | Phase 1 | Log formatter + fast hashing |
 | `accessibility-sys` 0.1+, `core-foundation` 0.10+, `core-graphics` 0.24+ | Phase 1 | macOS AX API FFI |
-| `cbindgen` = 0.27.0 (pinned), `libc` 0.2+ | Phase 1.5 | C header generation + macOS `pthread_main_np` for FFI main-thread guard |
+| `cbindgen` maintainer tool, `libc` 0.2+ | Phase 1.5 | explicit C header regeneration + macOS `pthread_main_np` for FFI main-thread guard |
 | `uiautomation` 0.24+ | Phase 2 | Windows UIA wrapper |
 | `windows` 0.62.2 | Phase 2 | Win32 / WinRT bindings (pinned to match `windows-capture 1.5` pin) |
 | `windows-capture` 1.5.4 | Phase 2 | Modern `Windows.Graphics.Capture` screenshot |
@@ -1984,7 +1921,7 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | Set text | `AXValue = val` | `ValuePattern.SetValue()` | `Text.InsertText` |
 | Keyboard | `CGEventCreateKeyboard` | `SendInput` | `xdotool` / `ydotool` |
 | Clipboard | `NSPasteboard` | Win32 Clipboard API | `wl-clipboard` / `xclip` |
-| Screenshot | `CGWindowListCreateImage` | `BitBlt` / `PrintWindow` | `PipeWire` / `XGetImage` |
+| Screenshot | `ScreenshotBackend` over secure `screencapture` path today; ScreenCaptureKit planned | `BitBlt` / `PrintWindow` legacy, Windows.Graphics.Capture planned | `PipeWire` / `XGetImage` |
 | Permissions | `AXIsProcessTrusted()` | COM security / UAC | Bus availability |
 | Notifications | Notification Center AX tree (`com.apple.notificationcenterui`) | UIA tree of Action Center / Toast Manager | D-Bus `org.freedesktop.Notifications` + daemon-specific history |
 | System tray | `SystemUIServer` AX tree + `ControlCenter` AX tree | UIA tree of `Shell_TrayWnd` + overflow window | D-Bus `StatusNotifierWatcher` + XEmbed fallback |
@@ -2003,6 +1940,6 @@ All runners enforce: `cargo clippy --all-targets -- -D warnings`, `cargo test --
 | R6 | MCP spec changes break compat | Low | Medium | Pin `rmcp` version. Monitor spec under Linux Foundation governance. |
 | R7 | Tree traversal too slow (>5s) | Medium | Medium | Depth limiting via `--max-depth`. Focused-window-only. Cached subtrees in Phase 5 daemon. Progressive skeleton traversal (`--skeleton` + `--root`) reduces token consumption 78-96% for dense apps. |
 | R8 | Ref instability confuses agents | Medium | High | Clear docs: refs are snapshot-scoped. `STALE_REF` error with recovery hint. Stable hashing in Phase 5. Progressive skeleton traversal with scoped invalidation provides a stable drill-down workflow for navigating complex UIs. **Phase 2**: stable-selector fields (`identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` via `StableSelectors` flatten) + identifier-preferred resolver drop `STALE_REF` rate on Electron / localized apps. |
-| R9 | Headless operation requirement | High | Critical | **Phase 2 plan §Headless-First Invariant** codifies the contract: UIA-first / AX-first paths for all actions; `NSDraggingSession` rejected for FileDrop (replaced by `DeliverFiles` 4-tier fallback); `ad_init()` version handshake; integration tests assert no focus steal and no cursor movement for non-mouse commands. |
+| R9 | Headless operation requirement | High | Critical | Phase 1 introduced `ActionRequest`/`InteractionPolicy`, default no focus steal/cursor movement, and explicit physical/headed policy paths. Phase 2 must preserve the same contract for Windows/Linux. |
 | R10 | Command registry link-GC | Medium | High | Research Topic B confirmed `inventory`/`linkme` are unreliable across linkers for cdylib consumers. Resolved by pure `build.rs` filesystem enumeration — zero linker magic. |
 | R11 | Skeleton traversal cross-platform | Low | High | Core is already platform-agnostic (`crates/core/src/snapshot_ref.rs`); Windows needs ~50 LOC glue (`ControlViewWalker` + `FindAll(TreeScope_Children, TrueCondition)` + fresh `UICacheRequest` per drill-down). Research Topic 4 confirmed `ElementFromHandle(hwnd)` is headless-safe. |

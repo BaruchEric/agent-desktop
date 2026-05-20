@@ -1,13 +1,14 @@
 use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind, Point},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_ref,
+    commands::helpers::resolve_point_from_ref_or_xy,
     error::AppError,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub struct HoverArgs {
     pub ref_id: Option<String>,
+    pub snapshot_id: Option<String>,
     pub xy: Option<(f64, f64)>,
     pub duration_ms: Option<u64>,
 }
@@ -26,18 +27,11 @@ pub fn execute(args: HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
 }
 
 fn resolve_hover_point(args: &HoverArgs, adapter: &dyn PlatformAdapter) -> Result<Point, AppError> {
-    if let Some(ref_id) = &args.ref_id {
-        let (_entry, handle) = resolve_ref(ref_id, adapter)?;
-        let bounds = adapter
-            .get_element_bounds(&handle)?
-            .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
-        Ok(Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        })
-    } else if let Some((x, y)) = args.xy {
-        Ok(Point { x, y })
-    } else {
-        Err(AppError::invalid_input("Provide a ref (@e1) or --xy x,y"))
-    }
+    resolve_point_from_ref_or_xy(
+        args.ref_id.as_deref(),
+        args.xy,
+        args.snapshot_id.as_deref(),
+        adapter,
+        "Provide a ref (@e1) or --xy x,y",
+    )
 }

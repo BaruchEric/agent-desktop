@@ -20,14 +20,16 @@ impl NcSession {
     }
 
     pub(crate) fn close(self) -> Result<(), AdapterError> {
-        if !self.was_already_open {
-            close_nc()?;
-        }
+        let close_result = if self.was_already_open {
+            Ok(())
+        } else {
+            close_nc()
+        };
         if let Some(ref app) = self.previous_app {
             reactivate_app(app);
         }
         std::mem::forget(self);
-        Ok(())
+        close_result
     }
 }
 
@@ -46,20 +48,20 @@ impl Drop for NcSession {
 
 #[cfg(target_os = "macos")]
 fn frontmost_app() -> Option<String> {
-    let output = std::process::Command::new("/usr/bin/osascript")
-        .args([
-            "-e",
-            "tell application \"System Events\" to get name of first application process whose frontmost is true",
-        ])
-        .output()
-        .ok()?;
+    let mut command = std::process::Command::new("/usr/bin/osascript");
+    command.args([
+        "-e",
+        "tell application \"System Events\" to get name of first application process whose frontmost is true",
+    ]);
+    let output = crate::system::process::run_with_timeout(
+        &mut command,
+        "frontmost-app osascript",
+        std::time::Duration::from_secs(2),
+    )
+    .ok()?;
     if output.status.success() {
         let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if name.is_empty() {
-            None
-        } else {
-            Some(name)
-        }
+        if name.is_empty() { None } else { Some(name) }
     } else {
         None
     }
@@ -72,15 +74,28 @@ fn frontmost_app() -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn reactivate_app(name: &str) {
-    let script = format!(
-        "tell application \"{}\" to activate",
-        name.replace('"', "\\\"")
+    let script = format!("tell application {} to activate", applescript_string(name));
+    let mut command = std::process::Command::new("/usr/bin/osascript");
+    command.arg("-e").arg(script);
+    let _ = crate::system::process::run_with_timeout(
+        &mut command,
+        "reactivate-app osascript",
+        std::time::Duration::from_secs(1),
     );
-    let _ = std::process::Command::new("/usr/bin/osascript")
-        .args(["-e", &script])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+}
+
+#[cfg(target_os = "macos")]
+fn applescript_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        if matches!(ch, '\\' | '"') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped.push('"');
+    escaped
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -88,11 +103,14 @@ fn reactivate_app(_name: &str) {}
 
 #[cfg(target_os = "macos")]
 pub(super) fn nc_pid() -> Option<i32> {
-    let output = std::process::Command::new("/usr/bin/pgrep")
-        .arg("-x")
-        .arg("NotificationCenter")
-        .output()
-        .ok()?;
+    let mut command = std::process::Command::new("/usr/bin/pgrep");
+    command.arg("-x").arg("NotificationCenter");
+    let output = crate::system::process::run_with_timeout(
+        &mut command,
+        "pgrep NotificationCenter",
+        std::time::Duration::from_secs(1),
+    )
+    .ok()?;
 
     String::from_utf8_lossy(&output.stdout)
         .trim()
@@ -125,30 +143,14 @@ fn open_nc() -> Result<(), AdapterError> {
         click (first menu bar item of menu bar 1 whose description is "Clock")
     end tell"#;
 
-    let mut child = std::process::Command::new("/usr/bin/osascript")
-        .arg("-e")
-        .arg(script)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| AdapterError::internal(format!("Failed to spawn osascript: {e}")))?;
-
+    let mut command = std::process::Command::new("/usr/bin/osascript");
+    command.arg("-e").arg(script);
+    let _ = crate::system::process::run_with_timeout(
+        &mut command,
+        "osascript open-nc",
+        std::time::Duration::from_secs(2),
+    );
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if std::time::Instant::now() > deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-            Err(_) => break,
-        }
-    }
     Ok(())
 }
 
@@ -169,6 +171,19 @@ fn close_nc() -> Result<(), AdapterError> {
     keyboard::synthesize_key(&combo)?;
     std::thread::sleep(std::time::Duration::from_millis(300));
     Ok(())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::applescript_string;
+
+    #[test]
+    fn applescript_string_escapes_quotes_and_backslashes() {
+        assert_eq!(
+            applescript_string(r#"Bad \ "Name""#),
+            r#""Bad \\ \"Name\"""#
+        );
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

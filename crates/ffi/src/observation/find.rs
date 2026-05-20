@@ -1,11 +1,12 @@
+use crate::AdAdapter;
 use crate::convert::string::decode_optional_filter;
-use crate::error::{set_last_error, AdResult};
+use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::observation::walk::find_first_match;
 use crate::types::{AdFindQuery, AdNativeHandle, AdWindowInfo};
-use crate::AdAdapter;
 use agent_desktop_core::adapter::{SnapshotSurface, TreeOptions};
 use agent_desktop_core::refs::RefEntry;
+use std::mem::ManuallyDrop;
 
 /// Finds the first element in `win`'s accessibility tree matching the
 /// query and resolves it to an opaque `AdNativeHandle`. The caller owns
@@ -22,7 +23,7 @@ use agent_desktop_core::refs::RefEntry;
 /// `adapter`, `win`, and `query` must be valid pointers. `out_handle`
 /// must be a valid writable `*mut AdNativeHandle`. On
 /// `AD_RESULT_ERR_ELEMENT_NOT_FOUND` the out-handle is zero-initialized.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_find(
     adapter: *const AdAdapter,
     win: *const AdWindowInfo,
@@ -100,10 +101,16 @@ pub unsafe extern "C" fn ad_find(
             bounds_hash,
             available_actions: Vec::new(),
             source_app: None,
+            source_window_id: Some(core_win.id.clone()),
+            source_window_title: Some(core_win.title.clone()),
+            source_surface: SnapshotSurface::Window,
             root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
         };
         match adapter.inner.resolve_element(&ref_entry) {
             Ok(handle) => {
+                let handle = ManuallyDrop::new(handle);
                 (*out_handle).ptr = handle.as_raw();
                 AdResult::Ok
             }

@@ -1,8 +1,6 @@
-/// Direct probe of macOS AX APIs — no abstraction.
-/// Reveals exactly what the raw APIs return and validates click behavior.
-///
-///   cargo run -p agent-desktop-macos --example ax_probe -- <AppName>
-use std::ffi::c_void;
+//! Direct probe of macOS AX APIs with raw API output and click validation.
+//!
+//!   cargo run -p agent-desktop-macos --example ax_probe -- <AppName>
 
 #[cfg(target_os = "macos")]
 fn main() {
@@ -78,7 +76,10 @@ fn probe_app(pid: i32) {
 
             // ── 3. Test kAXPressAction on each child ────────────────────────
             let ax_err = ax_press(*child);
-            println!("                 kAXPressAction → err={} (0=ok, -25200=fail, -25205=not_supported)", ax_err);
+            println!(
+                "                 kAXPressAction → err={} (0=ok, -25200=fail, -25205=not_supported)",
+                ax_err
+            );
 
             // ── 4. Test CGEvent click at element center ─────────────────────
             if let (Some(p), Some(s)) = (cpos, csz) {
@@ -219,11 +220,7 @@ fn read_cgpoint(el: accessibility_sys::AXUIElementRef, attr: &str) -> Option<(f6
         )
     };
     unsafe { core_foundation::base::CFRelease(val) };
-    if ok {
-        Some((pt.x, pt.y))
-    } else {
-        None
-    }
+    if ok { Some((pt.x, pt.y)) } else { None }
 }
 
 #[cfg(target_os = "macos")]
@@ -295,7 +292,7 @@ fn cg_click(x: f64, y: f64) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn cg_scroll(x: f64, y: f64, dx: i32, dy: i32) -> bool {
+fn cg_scroll(_x: f64, _y: f64, dx: i32, dy: i32) -> bool {
     use core_graphics::{
         event::{CGEvent, CGEventTapLocation, ScrollEventUnit},
         event_source::{CGEventSource, CGEventSourceStateID},
@@ -314,11 +311,11 @@ fn cg_scroll(x: f64, y: f64, dx: i32, dy: i32) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn speed_test(app: accessibility_sys::AXUIElementRef, pid: i32) {
+fn speed_test(app: accessibility_sys::AXUIElementRef, _pid: i32) {
     use accessibility_sys::*;
     use core_foundation::{
         array::CFArray,
-        base::{CFRelease, CFType, CFTypeRef, TCFType},
+        base::{CFRelease, CFTypeRef, TCFType},
         string::CFString,
     };
     use std::time::Instant;

@@ -64,11 +64,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Check binary size
         run: |
@@ -147,11 +147,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
 
       - name: Build FFI cdylib (release-ffi profile)
-        run: cargo build --profile release-ffi -p agent-desktop-ffi --target ${{ matrix.target }}
+        run: cargo build --locked --profile release-ffi -p agent-desktop-ffi --target ${{ matrix.target }}
 
       # build.rs bakes install_name=@rpath/... ; a regression here silently
       # breaks Swift/SPM consumers, so verify before shipping.
@@ -180,7 +180,7 @@ jobs:
           # agent-desktop FFI cdylib — v${VERSION} (${{ matrix.target }})
 
           - \`lib/${{ matrix.lib_name }}\` — shared library
-          - \`include/agent_desktop.h\` — cbindgen header
+          - \`include/agent_desktop.h\` — committed C ABI header
           - \`LICENSE\` — Apache-2.0
 
           Docs: https://github.com/lahfir/agent-desktop/tree/main/skills/agent-desktop-ffi
@@ -235,7 +235,7 @@ jobs:
 
       - name: Create checksums file
         run: |
-          cat *.sha256 > checksums.txt
+          cat ./*.sha256 > checksums.txt
           cat checksums.txt
 
       - name: Upload assets to GitHub Release
@@ -244,7 +244,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            *.tar.gz *.zip checksums.txt \
+            ./*.tar.gz ./*.zip checksums.txt \
             --clobber
 
       # Keyless Sigstore provenance. Verify with:

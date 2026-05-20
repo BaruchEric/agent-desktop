@@ -1,11 +1,12 @@
 use super::*;
-use crate::action::Action;
-use crate::adapter::{NativeHandle, PermissionStatus, PlatformAdapter};
+use crate::action::ActionRequest;
+use crate::adapter::{NativeHandle, PlatformAdapter};
 use crate::error::AdapterError;
 use crate::node::AccessibilityNode;
 use crate::ref_alloc::ref_entry_from_node;
-use crate::refs::HomeGuard;
-use std::cell::Cell;
+use crate::refs_test_support::HomeGuard;
+use crate::{refs::RefMap, refs_store::RefStore};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 fn node(role: &str) -> AccessibilityNode {
     AccessibilityNode {
@@ -16,6 +17,7 @@ fn node(role: &str) -> AccessibilityNode {
         description: None,
         hint: None,
         states: vec![],
+        available_actions: vec![],
         bounds: None,
         children_count: None,
         children: vec![],
@@ -30,31 +32,37 @@ fn named(role: &str, name: &str) -> AccessibilityNode {
 
 struct StubAdapter {
     subtree: AccessibilityNode,
-    resolve_calls: Cell<u32>,
+    subtree_error: Option<AdapterError>,
+    resolve_calls: AtomicU32,
+    release_calls: AtomicU32,
 }
 
 impl StubAdapter {
     fn new(subtree: AccessibilityNode) -> Self {
         Self {
             subtree,
-            resolve_calls: Cell::new(0),
+            subtree_error: None,
+            resolve_calls: AtomicU32::new(0),
+            release_calls: AtomicU32::new(0),
+        }
+    }
+
+    fn with_subtree_error(error: AdapterError) -> Self {
+        Self {
+            subtree: node("group"),
+            subtree_error: Some(error),
+            resolve_calls: AtomicU32::new(0),
+            release_calls: AtomicU32::new(0),
         }
     }
 }
 
-unsafe impl Send for StubAdapter {}
-unsafe impl Sync for StubAdapter {}
-
 impl PlatformAdapter for StubAdapter {
-    fn check_permissions(&self) -> PermissionStatus {
-        PermissionStatus::Granted
-    }
-
     fn resolve_element(
         &self,
         _entry: &crate::refs::RefEntry,
     ) -> Result<NativeHandle, AdapterError> {
-        self.resolve_calls.set(self.resolve_calls.get() + 1);
+        self.resolve_calls.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::null())
     }
 
@@ -63,23 +71,61 @@ impl PlatformAdapter for StubAdapter {
         _handle: &NativeHandle,
         _opts: &TreeOptions,
     ) -> Result<AccessibilityNode, AdapterError> {
+        if let Some(error) = &self.subtree_error {
+            return Err(error.clone());
+        }
         Ok(self.subtree.clone())
+    }
+
+    fn release_handle(&self, _handle: &NativeHandle) -> Result<(), AdapterError> {
+        self.release_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn execute_action(
         &self,
         _handle: &NativeHandle,
-        _action: Action,
+        _request: ActionRequest,
     ) -> Result<crate::action::ActionResult, AdapterError> {
         Err(AdapterError::not_supported("execute_action"))
     }
 }
 
+fn save_latest(refmap: RefMap) -> String {
+    RefStore::new()
+        .unwrap()
+        .save_new_snapshot(&refmap)
+        .expect("snapshot refmap should save")
+}
+
+fn load_latest() -> RefMap {
+    RefStore::new()
+        .unwrap()
+        .load_latest()
+        .expect("latest snapshot should load")
+}
+
 fn seed_skeleton_refmap() -> RefMap {
     let mut map = RefMap::new();
-    let anchor = ref_entry_from_node(&named("group", "Sidebar"), 42, Some("TestApp"), None);
+    let anchor = ref_entry_from_node(
+        &named("group", "Sidebar"),
+        42,
+        Some("TestApp"),
+        None,
+        None,
+        None,
+        &[0],
+    );
     let _ = map.allocate(anchor);
-    let other = ref_entry_from_node(&named("button", "Toolbar"), 42, Some("TestApp"), None);
+    let other = ref_entry_from_node(
+        &named("button", "Toolbar"),
+        42,
+        Some("TestApp"),
+        None,
+        None,
+        None,
+        &[1],
+    );
     let _ = map.allocate(other);
     map
 }
@@ -94,7 +140,7 @@ fn drill_opts() -> TreeOptions {
 #[test]
 fn test_run_from_ref_returns_subtree_and_persists_refs() {
     let _guard = HomeGuard::new();
-    seed_skeleton_refmap().save().unwrap();
+    save_latest(seed_skeleton_refmap());
 
     let mut child_btn = named("button", "Save");
     child_btn.children = vec![];
@@ -102,9 +148,9 @@ fn test_run_from_ref_returns_subtree_and_persists_refs() {
     subtree_root.children = vec![child_btn];
 
     let adapter = StubAdapter::new(subtree_root);
-    let result = run_from_ref(&adapter, &drill_opts(), "@e1").expect("drill should succeed");
+    let result = run_from_ref(&adapter, &drill_opts(), "@e1", None).expect("drill should succeed");
 
-    let on_disk = RefMap::load().unwrap();
+    let on_disk = load_latest();
     assert_eq!(on_disk.len(), result.refmap.len());
     assert!(
         result.refmap.len() >= 3,
@@ -121,16 +167,38 @@ fn test_run_from_ref_returns_subtree_and_persists_refs() {
         .expect("button child should carry a ref");
     let drill_entry = on_disk.get(drill_ref).expect("entry persisted");
     assert_eq!(drill_entry.root_ref.as_deref(), Some("@e1"));
-    assert_eq!(adapter.resolve_calls.get(), 1);
+    assert!(
+        drill_entry.path_is_absolute,
+        "drilled refs must retain an absolute path for fast, scoped resolution"
+    );
+    assert_eq!(drill_entry.path.as_slice(), [0, 0]);
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn test_run_from_ref_releases_handle_when_subtree_read_fails() {
+    let _guard = HomeGuard::new();
+    save_latest(seed_skeleton_refmap());
+
+    let adapter = StubAdapter::with_subtree_error(AdapterError::new(
+        crate::error::ErrorCode::ActionFailed,
+        "subtree failed",
+    ));
+    let result = run_from_ref(&adapter, &drill_opts(), "@e1", None);
+
+    assert!(result.is_err());
+    assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]
 fn test_run_from_ref_stale_root_returns_stale_ref() {
     let _guard = HomeGuard::new();
-    RefMap::new().save().unwrap();
+    save_latest(RefMap::new());
 
     let adapter = StubAdapter::new(named("group", "Sidebar"));
-    let result = run_from_ref(&adapter, &drill_opts(), "@e99");
+    let result = run_from_ref(&adapter, &drill_opts(), "@e99", None);
     let err = match result {
         Ok(_) => panic!("stale root must error"),
         Err(e) => e,
@@ -151,16 +219,16 @@ fn test_run_from_ref_stale_root_returns_stale_ref() {
 #[test]
 fn test_run_from_ref_re_drill_replaces_drill_refs_only() {
     let _guard = HomeGuard::new();
-    seed_skeleton_refmap().save().unwrap();
+    save_latest(seed_skeleton_refmap());
 
     let subtree = named("button", "Save");
     let adapter = StubAdapter::new(subtree);
 
-    let first = run_from_ref(&adapter, &drill_opts(), "@e1").unwrap();
+    let first = run_from_ref(&adapter, &drill_opts(), "@e1", None).unwrap();
     let first_count = first.refmap.len();
     let first_button_ref = first.tree.ref_id.clone().expect("button should get a ref");
 
-    let second = run_from_ref(&adapter, &drill_opts(), "@e1").unwrap();
+    let second = run_from_ref(&adapter, &drill_opts(), "@e1", None).unwrap();
     let second_count = second.refmap.len();
     let second_button_ref = second.tree.ref_id.clone().expect("button should get a ref");
 
@@ -172,7 +240,7 @@ fn test_run_from_ref_re_drill_replaces_drill_refs_only() {
         first_button_ref, second_button_ref,
         "re-drill should issue a fresh ref id (counter continues)"
     );
-    let on_disk = RefMap::load().unwrap();
+    let on_disk = load_latest();
     assert!(on_disk.get("@e1").is_some(), "skeleton anchor preserved");
     assert!(on_disk.get(&second_button_ref).is_some());
     assert!(
@@ -184,17 +252,17 @@ fn test_run_from_ref_re_drill_replaces_drill_refs_only() {
 #[test]
 fn test_run_from_ref_multiple_drill_downs_accumulate() {
     let _guard = HomeGuard::new();
-    seed_skeleton_refmap().save().unwrap();
+    save_latest(seed_skeleton_refmap());
 
     let adapter_one = StubAdapter::new(named("button", "FromE1"));
-    let first = run_from_ref(&adapter_one, &drill_opts(), "@e1").unwrap();
+    let first = run_from_ref(&adapter_one, &drill_opts(), "@e1", None).unwrap();
     let from_e1_ref = first.tree.ref_id.clone().expect("first drill ref");
 
     let adapter_two = StubAdapter::new(named("button", "FromE2"));
-    let second = run_from_ref(&adapter_two, &drill_opts(), "@e2").unwrap();
+    let second = run_from_ref(&adapter_two, &drill_opts(), "@e2", None).unwrap();
     let from_e2_ref = second.tree.ref_id.clone().expect("second drill ref");
 
-    let on_disk = RefMap::load().unwrap();
+    let on_disk = load_latest();
     assert!(on_disk.get("@e1").is_some(), "skeleton @e1 preserved");
     assert!(on_disk.get("@e2").is_some(), "skeleton @e2 preserved");
     let entry_one = on_disk.get(&from_e1_ref).expect("@e1 drill survives");
@@ -216,25 +284,31 @@ fn test_drilldown_refmap_matches_golden_fixture() {
         42,
         Some("Fixture"),
         None,
+        None,
+        None,
+        &[0],
     ));
     seed.allocate(ref_entry_from_node(
         &named("group", "Toolbar"),
         42,
         Some("Fixture"),
         None,
+        None,
+        None,
+        &[1],
     ));
-    seed.save().unwrap();
+    save_latest(seed);
 
     let mut sidebar_subtree = named("outline", "Sidebar");
     sidebar_subtree.children = vec![named("treeitem", "Recents"), named("treeitem", "Documents")];
     let adapter = StubAdapter::new(sidebar_subtree);
-    let _ = run_from_ref(&adapter, &drill_opts(), "@e1").unwrap();
+    let _ = run_from_ref(&adapter, &drill_opts(), "@e1", None).unwrap();
 
     let toolbar_subtree = named("button", "Back");
     let adapter = StubAdapter::new(toolbar_subtree);
-    let _ = run_from_ref(&adapter, &drill_opts(), "@e2").unwrap();
+    let _ = run_from_ref(&adapter, &drill_opts(), "@e2", None).unwrap();
 
-    let on_disk = RefMap::load().unwrap();
+    let on_disk = load_latest();
     assert_eq!(
         on_disk.len(),
         expected_total,
@@ -263,10 +337,10 @@ fn test_drilldown_refmap_matches_golden_fixture() {
 #[test]
 fn test_run_from_ref_empty_subtree() {
     let _guard = HomeGuard::new();
-    seed_skeleton_refmap().save().unwrap();
+    save_latest(seed_skeleton_refmap());
 
     let adapter = StubAdapter::new(node("group"));
-    let result = run_from_ref(&adapter, &drill_opts(), "@e1").unwrap();
+    let result = run_from_ref(&adapter, &drill_opts(), "@e1", None).unwrap();
 
     assert!(result.tree.children.is_empty());
     assert_eq!(
@@ -274,91 +348,4 @@ fn test_run_from_ref_empty_subtree() {
         2,
         "no new refs added for empty subtree"
     );
-}
-
-fn drill_config<'a>(
-    source_app: Option<&'a str>,
-    pid: i32,
-    root_ref_id: &'a str,
-    interactive_only: bool,
-    compact: bool,
-) -> RefAllocConfig<'a> {
-    RefAllocConfig {
-        include_bounds: false,
-        interactive_only,
-        compact,
-        pid,
-        source_app,
-        root_ref_id: Some(root_ref_id),
-    }
-}
-
-#[test]
-fn test_drill_alloc_tags_entries() {
-    let mut btn = node("button");
-    btn.name = Some("Submit".into());
-    let mut root = node("group");
-    root.children = vec![btn];
-
-    let mut refmap = RefMap::new();
-    let config = drill_config(Some("TestApp"), 42, "@e5", false, false);
-    let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
-
-    assert_eq!(refmap.len(), 1);
-    let btn_ref = tree.children[0]
-        .ref_id
-        .as_deref()
-        .expect("button should have ref");
-    let entry = refmap.get(btn_ref).expect("entry should exist");
-    assert_eq!(entry.root_ref.as_deref(), Some("@e5"));
-    assert_eq!(entry.pid, 42);
-    assert_eq!(entry.source_app.as_deref(), Some("TestApp"));
-}
-
-#[test]
-fn test_drill_alloc_respects_interactive_only() {
-    let btn = node("button");
-    let text = node("statictext");
-    let mut root = node("group");
-    root.children = vec![btn, text];
-
-    let mut refmap = RefMap::new();
-    let config = drill_config(None, 1, "@e1", true, false);
-    let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
-
-    assert_eq!(tree.children.len(), 1);
-    assert_eq!(tree.children[0].role, "button");
-}
-
-#[test]
-fn test_drill_alloc_preserves_truncated_child() {
-    let mut container = node("group");
-    container.name = Some("Sidebar".into());
-    container.children_count = Some(4);
-    let mut root = node("window");
-    root.children = vec![container];
-
-    let mut refmap = RefMap::new();
-    let config = drill_config(None, 1, "@e1", true, false);
-    let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
-
-    assert_eq!(tree.children.len(), 1);
-    assert_eq!(tree.children[0].children_count, Some(4));
-}
-
-#[test]
-fn test_drill_alloc_compact() {
-    let mut btn = node("button");
-    btn.name = Some("OK".into());
-    let mut wrapper = node("group");
-    wrapper.children = vec![btn];
-    let mut root = node("window");
-    root.children = vec![wrapper];
-
-    let mut refmap = RefMap::new();
-    let config = drill_config(None, 1, "@e1", false, true);
-    let tree = ref_alloc::allocate_refs(root, &mut refmap, &config);
-
-    assert_eq!(tree.children.len(), 1);
-    assert_eq!(tree.children[0].role, "button");
 }

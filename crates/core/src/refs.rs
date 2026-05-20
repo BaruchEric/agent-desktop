@@ -1,10 +1,19 @@
+use crate::adapter::SnapshotSurface;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-const MAX_REFMAP_BYTES: u64 = 1_048_576; // 1 MB
+pub type RefPath = SmallVec<[usize; 8]>;
+
+pub(crate) const MAX_REFMAP_BYTES: u64 = 1_048_576;
+static SNAPSHOT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     static HOME_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
@@ -25,7 +34,35 @@ pub struct RefEntry {
     pub available_actions: Vec<String>,
     pub source_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_window_title: Option<String>,
+    #[serde(default, skip_serializing_if = "SnapshotSurface::is_window")]
+    pub source_surface: SnapshotSurface,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub path_is_absolute: bool,
+    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
+    pub path: RefPath,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
+    let valid = ref_id.starts_with("@e")
+        && ref_id.len() >= 3
+        && ref_id.len() <= 12
+        && ref_id[2..].chars().all(|c| c.is_ascii_digit())
+        && ref_id[2..].parse::<u32>().is_ok_and(|n| n > 0);
+    if valid {
+        return Ok(());
+    }
+    Err(AppError::invalid_input(format!(
+        "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
+    )))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +103,7 @@ impl RefMap {
             .retain(|_, entry| entry.root_ref.as_deref() != Some(root));
     }
 
-    fn serialize_with_size_check(&self) -> Result<String, AppError> {
+    pub(crate) fn serialize_with_size_check(&self) -> Result<String, AppError> {
         let json = serde_json::to_string(self)?;
         if json.len() as u64 > MAX_REFMAP_BYTES {
             return Err(AppError::Internal(
@@ -76,45 +113,11 @@ impl RefMap {
         Ok(json)
     }
 
-    pub fn save(&self) -> Result<(), AppError> {
+    #[cfg(test)]
+    pub(crate) fn save(&self) -> Result<(), AppError> {
         let json = self.serialize_with_size_check()?;
-
         let path = refmap_path()?;
-        let dir = path
-            .parent()
-            .ok_or_else(|| AppError::Internal("invalid refmap path".into()))?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(dir)?;
-        }
-        #[cfg(not(unix))]
-        std::fs::create_dir_all(dir)?;
-
-        let tmp = path.with_extension("tmp");
-
-        #[cfg(unix)]
-        {
-            use std::io::Write;
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            file.write_all(json.as_bytes())?;
-            file.flush()?;
-        }
-        #[cfg(not(unix))]
-        std::fs::write(&tmp, json.as_bytes())?;
-
-        std::fs::rename(&tmp, &path)?;
-        Ok(())
+        write_private_file(&path, json.as_bytes())
     }
 
     pub fn load() -> Result<Self, AppError> {
@@ -144,358 +147,130 @@ fn refmap_path() -> Result<PathBuf, AppError> {
     Ok(home.join(".agent-desktop").join("last_refmap.json"))
 }
 
-fn home_dir() -> Option<PathBuf> {
-    if let Some(p) = HOME_OVERRIDE.with(|cell| cell.borrow().clone()) {
-        return Some(p);
+pub(crate) fn new_snapshot_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let counter = SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let seed = RandomState::new();
+    let mixed = seed.hash_one((nanos, std::process::id(), counter));
+    format!("s{}", base36(mixed))
+}
+
+fn base36(mut value: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    const MIN_LEN: usize = 4;
+
+    let mut buf = [b'0'; 13];
+    let mut i = buf.len();
+    if value == 0 {
+        i -= 1;
+    } else {
+        while value > 0 {
+            i -= 1;
+            buf[i] = DIGITS[(value % 36) as usize];
+            value /= 36;
+        }
     }
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+
+    let digits = buf.len() - i;
+    if digits < MIN_LEN {
+        let pad = MIN_LEN - digits;
+        i -= pad;
+    }
+
+    String::from_utf8_lossy(&buf[i..]).into_owned()
+}
+
+pub fn validate_snapshot_id(snapshot_id: &str) -> Result<(), AppError> {
+    let valid = snapshot_id.len() <= 64
+        && snapshot_id.len() >= 3
+        && snapshot_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !valid {
+        return Err(AppError::invalid_input(format!(
+            "Invalid snapshot_id '{snapshot_id}': use the value returned by snapshot"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| AppError::Internal("invalid ref store path".into()))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(dir)?;
+
+    let tmp = path.with_extension("tmp");
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+    }
+    #[cfg(not(unix))]
+    std::fs::write(&tmp, bytes)?;
+
+    std::fs::rename(tmp, path)?;
+    Ok(())
+}
+
+pub(crate) fn home_dir() -> Option<PathBuf> {
+    let home = HOME_OVERRIDE
+        .with(|cell| cell.borrow().clone())
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))?;
+    validate_home_dir(&home).then_some(home)
+}
+
+fn validate_home_dir(home: &Path) -> bool {
+    let Ok(link_meta) = std::fs::symlink_metadata(home) else {
+        return false;
+    };
+    if link_meta.file_type().is_symlink() {
+        return false;
+    }
+    let Ok(meta) = std::fs::metadata(home) else {
+        return false;
+    };
+    if !meta.is_dir() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        meta.uid() == unsafe { libc::getuid() }
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 #[cfg(test)]
-pub(crate) struct HomeGuard {
-    _dir: tempdir::TempDir,
-    prev: Option<PathBuf>,
+pub(crate) fn set_home_override(home: Option<PathBuf>) -> Option<PathBuf> {
+    HOME_OVERRIDE.with(|cell| std::mem::replace(&mut *cell.borrow_mut(), home))
 }
 
 #[cfg(test)]
-mod tempdir {
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    pub struct TempDir(PathBuf);
-
-    impl TempDir {
-        pub fn new() -> Self {
-            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
-            let path = std::env::temp_dir().join(format!("agent-desktop-test-{nanos}-{n}"));
-            fs::create_dir_all(&path).expect("create tempdir");
-            Self(path)
-        }
-
-        pub fn path(&self) -> &std::path::Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-}
-
-#[cfg(test)]
-impl HomeGuard {
-    pub fn new() -> Self {
-        let dir = tempdir::TempDir::new();
-        let prev = HOME_OVERRIDE.with(|cell| cell.borrow().clone());
-        HOME_OVERRIDE.with(|cell| *cell.borrow_mut() = Some(dir.path().to_path_buf()));
-        Self { _dir: dir, prev }
-    }
-}
-
-#[cfg(test)]
-impl Drop for HomeGuard {
-    fn drop(&mut self) {
-        let prev = self.prev.take();
-        HOME_OVERRIDE.with(|cell| *cell.borrow_mut() = prev);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_allocate_sequential() {
-        let mut map = RefMap::new();
-        let entry = RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: Some("OK".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec!["Click".into()],
-            source_app: None,
-            root_ref: None,
-        };
-        let r1 = map.allocate(entry.clone());
-        let r2 = map.allocate(entry);
-        assert_eq!(r1, "@e1");
-        assert_eq!(r2, "@e2");
-        assert_eq!(map.len(), 2);
-    }
-
-    #[test]
-    fn test_get_existing() {
-        let mut map = RefMap::new();
-        let entry = RefEntry {
-            pid: 42,
-            role: "textfield".into(),
-            name: None,
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: Some(12345),
-            available_actions: vec![],
-            source_app: Some("Finder".into()),
-            root_ref: None,
-        };
-        let ref_id = map.allocate(entry);
-        let retrieved = map.get(&ref_id).unwrap();
-        assert_eq!(retrieved.pid, 42);
-        assert_eq!(retrieved.role, "textfield");
-    }
-
-    #[test]
-    fn test_get_missing() {
-        let map = RefMap::new();
-        assert!(map.get("@e99").is_none());
-    }
-
-    #[test]
-    fn test_remove_by_root_ref() {
-        let mut map = RefMap::new();
-        let base = RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: Some("OK".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec!["Click".into()],
-            source_app: None,
-            root_ref: None,
-        };
-
-        map.allocate(base.clone());
-
-        let drilled = RefEntry {
-            root_ref: Some("@e1".into()),
-            ..base.clone()
-        };
-        map.allocate(drilled.clone());
-        map.allocate(drilled);
-        assert_eq!(map.len(), 3);
-
-        map.remove_by_root_ref("@e1");
-        assert_eq!(map.len(), 1);
-        assert!(map.get("@e1").is_some());
-    }
-
-    #[test]
-    fn test_counter_continues_after_skeleton_into_drill_down() {
-        let mut map = RefMap::new();
-        let skeleton_entry = RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: Some("Skeleton".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec![],
-            source_app: None,
-            root_ref: None,
-        };
-
-        let last_skeleton = (0..10)
-            .map(|_| map.allocate(skeleton_entry.clone()))
-            .last()
-            .unwrap();
-        assert_eq!(last_skeleton, "@e10");
-
-        let drilled = RefEntry {
-            root_ref: Some("@e3".into()),
-            ..skeleton_entry
-        };
-
-        let first_drilled = map.allocate(drilled.clone());
-        let second_drilled = map.allocate(drilled);
-        assert_eq!(
-            first_drilled, "@e11",
-            "counter should continue past skeleton ids, not reset"
-        );
-        assert_eq!(second_drilled, "@e12");
-        assert_eq!(map.len(), 12);
-
-        map.remove_by_root_ref("@e3");
-        assert_eq!(
-            map.len(),
-            10,
-            "scoped invalidation should drop only the drill-down refs"
-        );
-        assert!(map.get("@e3").is_some(), "skeleton @e3 must survive");
-    }
-
-    #[test]
-    fn test_root_ref_serde_roundtrip() {
-        let entry = RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: None,
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec![],
-            source_app: None,
-            root_ref: Some("@e5".into()),
-        };
-        let json = serde_json::to_string(&entry).unwrap();
-        assert!(json.contains("root_ref"));
-        let back: RefEntry = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.root_ref.as_deref(), Some("@e5"));
-    }
-
-    #[test]
-    fn test_serialize_with_size_check_rejects_oversized() {
-        let mut map = RefMap::new();
-        let big_name = "x".repeat(2048);
-        for _ in 0..600 {
-            map.allocate(RefEntry {
-                pid: 1,
-                role: "button".into(),
-                name: Some(big_name.clone()),
-                value: None,
-                states: vec![],
-                bounds: None,
-                bounds_hash: None,
-                available_actions: vec!["Click".into()],
-                source_app: None,
-                root_ref: None,
-            });
-        }
-
-        let result = map.serialize_with_size_check();
-        assert!(result.is_err(), "oversized refmap should be rejected");
-        let err = result.unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("1MB"),
-            "error should mention the 1MB limit, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn test_serialize_with_size_check_accepts_normal() {
-        let mut map = RefMap::new();
-        for _ in 0..50 {
-            map.allocate(RefEntry {
-                pid: 1,
-                role: "button".into(),
-                name: Some("OK".into()),
-                value: None,
-                states: vec![],
-                bounds: None,
-                bounds_hash: None,
-                available_actions: vec!["Click".into()],
-                source_app: None,
-                root_ref: None,
-            });
-        }
-
-        let result = map.serialize_with_size_check();
-        assert!(result.is_ok(), "normal-sized refmap should serialize");
-    }
-
-    #[test]
-    fn test_save_load_roundtrip_with_home_override() {
-        let _guard = HomeGuard::new();
-        let mut map = RefMap::new();
-        map.allocate(RefEntry {
-            pid: 7,
-            role: "button".into(),
-            name: Some("Send".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: Some(42),
-            available_actions: vec!["Click".into()],
-            source_app: Some("TestApp".into()),
-            root_ref: None,
-        });
-        map.save().expect("save should succeed under HomeGuard");
-
-        let loaded = RefMap::load().expect("load should succeed");
-        assert_eq!(loaded.len(), 1);
-        let entry = loaded.get("@e1").unwrap();
-        assert_eq!(entry.pid, 7);
-        assert_eq!(entry.name.as_deref(), Some("Send"));
-    }
-
-    #[test]
-    fn test_save_oversize_preserves_previous_file() {
-        let _guard = HomeGuard::new();
-
-        let mut original = RefMap::new();
-        original.allocate(RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: Some("Original".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec!["Click".into()],
-            source_app: None,
-            root_ref: None,
-        });
-        original.save().expect("baseline save");
-
-        let mut oversize = RefMap::new();
-        let big = "x".repeat(2048);
-        for _ in 0..600 {
-            oversize.allocate(RefEntry {
-                pid: 1,
-                role: "button".into(),
-                name: Some(big.clone()),
-                value: None,
-                states: vec![],
-                bounds: None,
-                bounds_hash: None,
-                available_actions: vec!["Click".into()],
-                source_app: None,
-                root_ref: None,
-            });
-        }
-        let result = oversize.save();
-        assert!(result.is_err(), "oversize save must reject");
-
-        let reloaded = RefMap::load().expect("previous file must still load");
-        assert_eq!(reloaded.len(), 1);
-        let entry = reloaded.get("@e1").unwrap();
-        assert_eq!(entry.name.as_deref(), Some("Original"));
-    }
-
-    #[test]
-    fn test_root_ref_none_omitted() {
-        let entry = RefEntry {
-            pid: 1,
-            role: "button".into(),
-            name: None,
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash: None,
-            available_actions: vec![],
-            source_app: None,
-            root_ref: None,
-        };
-        let json = serde_json::to_string(&entry).unwrap();
-        assert!(!json.contains("root_ref"));
-    }
-}
+#[path = "refs_tests.rs"]
+mod tests;

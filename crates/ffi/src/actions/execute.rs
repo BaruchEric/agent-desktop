@@ -1,10 +1,10 @@
+use crate::AdAdapter;
 use crate::actions::conversion::action_from_c;
 use crate::actions::result::action_result_to_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdAction, AdActionResult, AdNativeHandle};
-use crate::AdAdapter;
-use agent_desktop_core::adapter::NativeHandle;
+use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind};
+use agent_desktop_core::{action::ActionRequest, adapter::NativeHandle};
 
 /// # Safety
 ///
@@ -12,11 +12,30 @@ use agent_desktop_core::adapter::NativeHandle;
 /// `handle` must be a non-null pointer to a valid `AdNativeHandle`.
 /// `action` must be a non-null pointer to a valid `AdAction`.
 /// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_execute_action(
     adapter: *const AdAdapter,
     handle: *const AdNativeHandle,
     action: *const AdAction,
+    out: *mut AdActionResult,
+) -> AdResult {
+    unsafe {
+        ad_execute_action_with_policy(adapter, handle, action, AdPolicyKind::Headless as i32, out)
+    }
+}
+
+/// # Safety
+///
+/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
+/// `handle` must be a non-null pointer to a valid `AdNativeHandle`.
+/// `action` must be a non-null pointer to a valid `AdAction`.
+/// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ad_execute_action_with_policy(
+    adapter: *const AdAdapter,
+    handle: *const AdNativeHandle,
+    action: *const AdAction,
+    policy: i32,
     out: *mut AdActionResult,
 ) -> AdResult {
     trap_panic(|| unsafe {
@@ -49,7 +68,15 @@ pub unsafe extern "C" fn ad_execute_action(
             }
         };
         let native_handle = NativeHandle::from_ptr(handle_ref.ptr);
-        match adapter.inner.execute_action(&native_handle, core_action) {
+        let Some(policy) = AdPolicyKind::from_c(policy) else {
+            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+                agent_desktop_core::error::ErrorCode::InvalidArgs,
+                "invalid policy kind discriminant",
+            ));
+            return AdResult::ErrInvalidArgs;
+        };
+        let request = action_request(policy, core_action);
+        match adapter.inner.execute_action(&native_handle, request) {
             Ok(result) => {
                 *out = action_result_to_c(&result);
                 AdResult::Ok
@@ -60,4 +87,15 @@ pub unsafe extern "C" fn ad_execute_action(
             }
         }
     })
+}
+
+fn action_request(
+    policy: AdPolicyKind,
+    action: agent_desktop_core::action::Action,
+) -> ActionRequest {
+    match policy {
+        AdPolicyKind::Headless => ActionRequest::headless(action),
+        AdPolicyKind::FocusFallback => ActionRequest::focus_fallback(action),
+        AdPolicyKind::Physical => ActionRequest::physical(action),
+    }
 }

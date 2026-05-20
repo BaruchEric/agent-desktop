@@ -1,19 +1,32 @@
 use crate::{
-    adapter::{NativeHandle, PlatformAdapter, WindowFilter},
+    action::{ActionRequest, Point, WindowOp},
+    adapter::{PlatformAdapter, WindowFilter},
     error::AppError,
-    refs::{RefEntry, RefMap},
+    node::WindowInfo,
+    refs::{RefEntry, validate_ref_id},
+    refs_store::RefStore,
+    resolved_element::ResolvedElement,
+    window_lookup,
 };
+use serde_json::{Value, json};
+
+pub struct AppArgs {
+    pub app: Option<String>,
+}
 
 pub struct RefArgs {
     pub ref_id: String,
+    pub snapshot_id: Option<String>,
 }
 
-pub fn resolve_ref(
+pub(crate) fn resolve_ref<'a>(
     ref_id: &str,
-    adapter: &dyn PlatformAdapter,
-) -> Result<(RefEntry, NativeHandle), AppError> {
+    snapshot_id: Option<&str>,
+    adapter: &'a dyn PlatformAdapter,
+) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
     validate_ref_id(ref_id)?;
-    let refmap = RefMap::load().map_err(|e| {
+    let store = RefStore::new()?;
+    let refmap = store.load(snapshot_id).map_err(|e| {
         tracing::debug!("refmap load failed: {e}");
         AppError::stale_ref(ref_id)
     })?;
@@ -30,23 +43,13 @@ pub fn resolve_ref(
     );
     let handle = adapter.resolve_element(&entry)?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
-    Ok((entry, handle))
+    Ok((entry, ResolvedElement::new(adapter, handle)))
 }
 
-pub fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
-    let valid = ref_id.starts_with("@e")
-        && ref_id.len() >= 3
-        && ref_id.len() <= 12
-        && ref_id[2..].chars().all(|c| c.is_ascii_digit());
-    if !valid {
-        return Err(AppError::invalid_input(format!(
-            "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
-        )));
-    }
-    Ok(())
-}
-
-pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Result<i32, AppError> {
+pub(crate) fn resolve_app_pid(
+    app: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+) -> Result<i32, AppError> {
     if let Some(name) = app {
         let apps = adapter.list_apps()?;
         apps.into_iter()
@@ -66,24 +69,77 @@ pub fn resolve_app_pid(app: Option<&str>, adapter: &dyn PlatformAdapter) -> Resu
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_valid_refs() {
-        assert!(validate_ref_id("@e1").is_ok());
-        assert!(validate_ref_id("@e14").is_ok());
-        assert!(validate_ref_id("@e999").is_ok());
-    }
-
-    #[test]
-    fn test_invalid_refs() {
-        assert!(validate_ref_id("@").is_err());
-        assert!(validate_ref_id("e1").is_err());
-        assert!(validate_ref_id("@e").is_err());
-        assert!(validate_ref_id("@e0abc").is_err());
-        assert!(validate_ref_id("1").is_err());
-        assert!(validate_ref_id("").is_err());
-    }
+pub(crate) fn execute_ref_action(
+    args: RefArgs,
+    adapter: &dyn PlatformAdapter,
+    request: ActionRequest,
+) -> Result<Value, AppError> {
+    let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    let result = adapter.execute_action(handle.handle(), request)?;
+    Ok(serde_json::to_value(result)?)
 }
+
+pub(crate) fn resolve_point_from_ref_or_xy(
+    ref_id: Option<&str>,
+    xy: Option<(f64, f64)>,
+    snapshot_id: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+    missing_input_message: impl Into<String>,
+) -> Result<Point, AppError> {
+    if let Some(ref_id) = ref_id {
+        let (_entry, handle) = resolve_ref(ref_id, snapshot_id, adapter)?;
+        let bounds = adapter
+            .get_element_bounds(handle.handle())?
+            .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
+        return Ok(Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        });
+    }
+    if let Some((x, y)) = xy {
+        return Ok(Point { x, y });
+    }
+    Err(AppError::invalid_input(missing_input_message.into()))
+}
+
+pub(crate) fn window_op_command(
+    args: AppArgs,
+    adapter: &dyn PlatformAdapter,
+    op: WindowOp,
+    response_key: &'static str,
+) -> Result<Value, AppError> {
+    let pid = resolve_app_pid(args.app.as_deref(), adapter)?;
+    let win = match find_window_for_pid(pid, adapter) {
+        Ok(win) => win,
+        Err(_) if matches!(op, WindowOp::Restore) => WindowInfo {
+            id: String::new(),
+            title: String::new(),
+            app: args.app.unwrap_or_default(),
+            pid,
+            bounds: None,
+            is_focused: false,
+        },
+        Err(err) => return Err(err),
+    };
+    adapter.window_op(&win, op)?;
+    Ok(json!({ response_key: true }))
+}
+
+pub(crate) fn find_window_for_pid(
+    pid: i32,
+    adapter: &dyn PlatformAdapter,
+) -> Result<WindowInfo, AppError> {
+    window_lookup::find_window_for_pid(pid, adapter)
+}
+
+pub(crate) fn resolve_window_for_app(
+    app: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+) -> Result<WindowInfo, AppError> {
+    let pid = resolve_app_pid(app, adapter)?;
+    find_window_for_pid(pid, adapter)
+}
+
+#[cfg(test)]
+#[path = "helpers_tests.rs"]
+mod tests;

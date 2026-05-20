@@ -4,12 +4,14 @@ use crate::{
     node::{AccessibilityNode, WindowInfo},
     ref_alloc::{self, RefAllocConfig},
     refs::RefMap,
+    refs_store::RefStore,
 };
 
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
     pub refmap: RefMap,
     pub window: WindowInfo,
+    pub snapshot_id: Option<String>,
 }
 
 pub fn build(
@@ -82,7 +84,11 @@ pub fn build(
         compact: opts.compact,
         pid: window.pid,
         source_app: Some(window.app.as_str()),
+        source_window_id: Some(window.id.as_str()),
+        source_window_title: Some(window.title.as_str()),
+        source_surface: opts.surface,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
 
@@ -92,6 +98,7 @@ pub fn build(
         tree,
         refmap,
         window,
+        snapshot_id: None,
     })
 }
 
@@ -101,8 +108,10 @@ pub fn run(
     app_name: Option<&str>,
     window_id: Option<&str>,
 ) -> Result<SnapshotResult, AppError> {
-    let result = build(adapter, opts, app_name, window_id)?;
-    result.refmap.save()?;
+    let mut result = build(adapter, opts, app_name, window_id)?;
+    let store = RefStore::new()?;
+    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+    result.snapshot_id = Some(snapshot_id);
     Ok(result)
 }
 
@@ -111,31 +120,42 @@ pub fn append_surface_refs(
     pid: i32,
     source_app: Option<&str>,
     surface: SnapshotSurface,
-) -> Option<AccessibilityNode> {
+) -> Result<Option<AccessibilityNode>, AppError> {
     let filter = WindowFilter {
         focused_only: false,
         app: None,
     };
-    let windows = adapter.list_windows(&filter).ok()?;
-    let window = windows.into_iter().find(|w| w.pid == pid)?;
+    let windows = adapter.list_windows(&filter)?;
+    let Some(window) = windows.into_iter().find(|w| w.pid == pid) else {
+        return Ok(None);
+    };
     let opts = TreeOptions {
         surface,
         interactive_only: true,
         ..Default::default()
     };
-    let raw_tree = adapter.get_tree(&window, &opts).ok()?;
-    let mut refmap = RefMap::load().ok()?;
+    let raw_tree = adapter.get_tree(&window, &opts)?;
+    let store = RefStore::new()?;
+    let mut refmap = store.load_latest()?;
     let config = RefAllocConfig {
         include_bounds: false,
         interactive_only: true,
         compact: false,
         pid,
         source_app,
+        source_window_id: Some(window.id.as_str()),
+        source_window_title: Some(window.title.as_str()),
+        source_surface: surface,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
-    refmap.save().ok()?;
-    Some(tree)
+    if let Some(id) = store.latest_snapshot_id() {
+        store.save_existing_snapshot(&id, &refmap)?;
+    } else {
+        store.save_new_snapshot(&refmap)?;
+    }
+    Ok(Some(tree))
 }
 
 #[cfg(test)]

@@ -15,6 +15,8 @@ pub enum ErrorCode {
     Timeout,
     InvalidArgs,
     NotificationNotFound,
+    SnapshotNotFound,
+    PolicyDenied,
     Internal,
 }
 
@@ -32,6 +34,8 @@ impl ErrorCode {
             ErrorCode::Timeout => "TIMEOUT",
             ErrorCode::InvalidArgs => "INVALID_ARGS",
             ErrorCode::NotificationNotFound => "NOTIFICATION_NOT_FOUND",
+            ErrorCode::SnapshotNotFound => "SNAPSHOT_NOT_FOUND",
+            ErrorCode::PolicyDenied => "POLICY_DENIED",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -122,7 +126,21 @@ impl AdapterError {
             "Accessibility permission not granted",
         )
         .with_suggestion(
-            "Open System Settings > Privacy & Security > Accessibility and add your terminal",
+            "Open System Settings > Privacy & Security > Accessibility and add the app that launches agent-desktop",
+        )
+    }
+
+    pub fn snapshot_not_found(snapshot_id: &str) -> Self {
+        Self::new(
+            ErrorCode::SnapshotNotFound,
+            format!("Snapshot '{snapshot_id}' not found"),
+        )
+        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id")
+    }
+
+    pub fn policy_denied(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::PolicyDenied, message).with_suggestion(
+            "Use an explicit mouse/focus command if physical interaction is intended",
         )
     }
 }
@@ -163,6 +181,15 @@ impl AppError {
 
     pub fn invalid_input(msg: impl Into<String>) -> Self {
         AppError::Adapter(AdapterError::new(ErrorCode::InvalidArgs, msg))
+    }
+
+    pub fn invalid_input_with_suggestion(
+        msg: impl Into<String>,
+        suggestion: impl Into<String>,
+    ) -> Self {
+        AppError::Adapter(
+            AdapterError::new(ErrorCode::InvalidArgs, msg).with_suggestion(suggestion),
+        )
     }
 }
 

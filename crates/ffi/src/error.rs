@@ -1,6 +1,6 @@
 use agent_desktop_core::error::{AdapterError, ErrorCode};
 use std::cell::RefCell;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 
 const fn error_code_variant_count() -> usize {
     let mut count = 0;
@@ -16,6 +16,8 @@ const fn error_code_variant_count() -> usize {
         ErrorCode::Timeout,
         ErrorCode::InvalidArgs,
         ErrorCode::NotificationNotFound,
+        ErrorCode::SnapshotNotFound,
+        ErrorCode::PolicyDenied,
         ErrorCode::Internal,
     ];
     let mut i = 0;
@@ -40,6 +42,8 @@ const fn ad_result_error_variant_count() -> usize {
         AdResult::ErrInvalidArgs,
         AdResult::ErrNotificationNotFound,
         AdResult::ErrInternal,
+        AdResult::ErrSnapshotNotFound,
+        AdResult::ErrPolicyDenied,
     ];
     let mut count = 0;
     let mut i = 0;
@@ -50,10 +54,6 @@ const fn ad_result_error_variant_count() -> usize {
     count
 }
 
-// Compile-time parity check: every core `ErrorCode` variant must have a
-// matching `AdResult::Err*`. Adding a variant to either enum without
-// updating the other fails the build with the message below — preferable
-// to the silent-drop we'd otherwise see at the FFI boundary.
 const _: () = assert!(
     error_code_variant_count() == ad_result_error_variant_count(),
     "ErrorCode variants must match AdResult error-code variants one-to-one"
@@ -75,7 +75,24 @@ pub enum AdResult {
     ErrInvalidArgs = -10,
     ErrNotificationNotFound = -11,
     ErrInternal = -12,
+    ErrSnapshotNotFound = -13,
+    ErrPolicyDenied = -14,
 }
+
+const _: () = assert!(AdResult::ErrPermDenied as i32 == -1);
+const _: () = assert!(AdResult::ErrElementNotFound as i32 == -2);
+const _: () = assert!(AdResult::ErrAppNotFound as i32 == -3);
+const _: () = assert!(AdResult::ErrActionFailed as i32 == -4);
+const _: () = assert!(AdResult::ErrActionNotSupported as i32 == -5);
+const _: () = assert!(AdResult::ErrStaleRef as i32 == -6);
+const _: () = assert!(AdResult::ErrWindowNotFound as i32 == -7);
+const _: () = assert!(AdResult::ErrPlatformNotSupported as i32 == -8);
+const _: () = assert!(AdResult::ErrTimeout as i32 == -9);
+const _: () = assert!(AdResult::ErrInvalidArgs as i32 == -10);
+const _: () = assert!(AdResult::ErrNotificationNotFound as i32 == -11);
+const _: () = assert!(AdResult::ErrInternal as i32 == -12);
+const _: () = assert!(AdResult::ErrSnapshotNotFound as i32 == -13);
+const _: () = assert!(AdResult::ErrPolicyDenied as i32 == -14);
 
 enum MessageSource {
     Owned(CString),
@@ -126,6 +143,8 @@ fn error_code_to_result(code: &ErrorCode) -> AdResult {
         ErrorCode::InvalidArgs => AdResult::ErrInvalidArgs,
         ErrorCode::NotificationNotFound => AdResult::ErrNotificationNotFound,
         ErrorCode::Internal => AdResult::ErrInternal,
+        ErrorCode::SnapshotNotFound => AdResult::ErrSnapshotNotFound,
+        ErrorCode::PolicyDenied => AdResult::ErrPolicyDenied,
     }
 }
 
@@ -196,7 +215,7 @@ pub(crate) fn last_error_code() -> AdResult {
 /// leaks to Thread B.
 /// Returns the `AdResult` code of the last error on the calling thread,
 /// or `AD_RESULT_OK` if no error has been recorded.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_code() -> AdResult {
     crate::ffi_try::trap_panic(last_error_code)
 }
@@ -205,7 +224,7 @@ pub extern "C" fn ad_last_error_code() -> AdResult {
 /// error has been recorded on the calling thread. The pointer remains
 /// valid across any number of subsequent *successful* FFI calls; only
 /// the next failing call overwrites it.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_message() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
         LAST_ERROR.with(|cell| {
@@ -220,7 +239,7 @@ pub extern "C" fn ad_last_error_message() -> *const c_char {
 /// Returns a borrowed C string with a human-readable suggestion for how
 /// to recover from the last error, or null if the adapter didn't emit
 /// one. Same lifetime rules as `ad_last_error_message`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
         LAST_ERROR.with(|cell| {
@@ -236,7 +255,7 @@ pub extern "C" fn ad_last_error_suggestion() -> *const c_char {
 /// for the last error (AX error codes, COM HRESULTs, AT-SPI messages,
 /// etc.), or null if the adapter didn't supply one. Same lifetime rules
 /// as `ad_last_error_message`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
     crate::ffi_try::trap_panic_const_ptr(|| {
         LAST_ERROR.with(|cell| {
@@ -249,76 +268,5 @@ pub extern "C" fn ad_last_error_platform_detail() -> *const c_char {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn last_error_message_str() -> Option<String> {
-        LAST_ERROR.with(|cell| cell.borrow().as_ref().map(|e| e.message.to_owned_string()))
-    }
-
-    fn last_error_suggestion_str() -> Option<String> {
-        LAST_ERROR.with(|cell| {
-            cell.borrow().as_ref().and_then(|e| {
-                e.suggestion
-                    .as_ref()
-                    .map(|s| s.to_string_lossy().into_owned())
-            })
-        })
-    }
-
-    fn last_error_platform_detail_str() -> Option<String> {
-        LAST_ERROR.with(|cell| {
-            cell.borrow().as_ref().and_then(|e| {
-                e.platform_detail
-                    .as_ref()
-                    .map(|s| s.to_string_lossy().into_owned())
-            })
-        })
-    }
-
-    #[test]
-    fn test_no_error_initially() {
-        clear_last_error();
-        assert!(last_error_message_str().is_none());
-    }
-
-    #[test]
-    fn test_set_and_get_error() {
-        let err = AdapterError::new(ErrorCode::ElementNotFound, "element @e5 gone")
-            .with_suggestion("run snapshot");
-        set_last_error(&err);
-        assert_eq!(last_error_code(), AdResult::ErrElementNotFound);
-        assert_eq!(last_error_message_str().unwrap(), "element @e5 gone");
-        assert_eq!(last_error_suggestion_str().unwrap(), "run snapshot");
-        assert!(last_error_platform_detail_str().is_none());
-    }
-
-    #[test]
-    fn test_clear_error() {
-        let err = AdapterError::internal("oops");
-        set_last_error(&err);
-        clear_last_error();
-        assert!(last_error_message_str().is_none());
-    }
-
-    #[test]
-    fn test_error_isolation_across_threads() {
-        clear_last_error();
-        let err = AdapterError::internal("thread1");
-        set_last_error(&err);
-
-        let handle = std::thread::spawn(|| last_error_message_str().is_none());
-        assert!(handle.join().unwrap(), "other thread should see no error");
-        assert_eq!(last_error_message_str().unwrap(), "thread1");
-    }
-
-    #[test]
-    fn test_interior_nul_falls_back_to_static() {
-        let err = AdapterError::new(ErrorCode::Internal, "before\0after");
-        set_last_error(&err);
-        assert_eq!(
-            last_error_message_str().unwrap(),
-            "(message contained null byte)"
-        );
-    }
-}
+#[path = "error_tests.rs"]
+mod tests;

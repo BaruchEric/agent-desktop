@@ -84,6 +84,7 @@ pub use types::notification_filter::AdNotificationFilter;
 pub use types::notification_info::AdNotificationInfo;
 pub use types::notification_list::AdNotificationList;
 pub use types::point::AdPoint;
+pub use types::policy_kind::AdPolicyKind;
 pub use types::rect::AdRect;
 pub use types::ref_entry::AdRefEntry;
 pub use types::screenshot_kind::AdScreenshotKind;

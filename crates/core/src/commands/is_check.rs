@@ -1,8 +1,12 @@
-use crate::{adapter::PlatformAdapter, commands::helpers::resolve_ref, error::AppError};
-use serde_json::{json, Value};
+use crate::{
+    action::ElementState, adapter::PlatformAdapter, commands::helpers::resolve_ref,
+    error::AppError, refs::RefEntry,
+};
+use serde_json::{Value, json};
 
 pub struct IsArgs {
     pub ref_id: String,
+    pub snapshot_id: Option<String>,
     pub property: IsProperty,
 }
 
@@ -14,11 +18,14 @@ pub enum IsProperty {
     Expanded,
 }
 
-/// States are read from the last snapshot's RefMap. `resolve_ref` verifies the element
-/// is still live before returning, but the state values themselves are not re-queried
-/// from the AX API. Run `snapshot` to refresh state before calling `is`.
+/// State is read live when the platform supports it, then falls back to snapshot state.
 pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let (entry, _handle) = resolve_ref(&args.ref_id, adapter)?;
+    let (entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
+    let state = adapter
+        .get_live_state(handle.handle())
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| state_from_ref_entry(&entry));
 
     let prop_name = match args.property {
         IsProperty::Visible => "visible",
@@ -28,14 +35,14 @@ pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, App
         IsProperty::Expanded => "expanded",
     };
 
-    let applicable = is_applicable(&args.property, &entry.role);
+    let applicable = is_applicable(&args.property, &entry, &state);
 
     let result = match args.property {
-        IsProperty::Visible => !entry.states.contains(&"hidden".to_string()),
-        IsProperty::Enabled => !entry.states.contains(&"disabled".to_string()),
-        IsProperty::Checked => entry.states.contains(&"checked".to_string()),
-        IsProperty::Focused => entry.states.contains(&"focused".to_string()),
-        IsProperty::Expanded => entry.states.contains(&"expanded".to_string()),
+        IsProperty::Visible => !has_state(&state, "hidden"),
+        IsProperty::Enabled => !has_state(&state, "disabled"),
+        IsProperty::Checked => has_state(&state, "checked"),
+        IsProperty::Focused => has_state(&state, "focused"),
+        IsProperty::Expanded => has_state(&state, "expanded"),
     };
 
     Ok(
@@ -43,21 +50,41 @@ pub fn execute(args: IsArgs, adapter: &dyn PlatformAdapter) -> Result<Value, App
     )
 }
 
-fn is_applicable(property: &IsProperty, role: &str) -> bool {
-    match property {
-        IsProperty::Visible | IsProperty::Enabled | IsProperty::Focused => true,
-        IsProperty::Checked => matches!(
-            role,
-            "checkbox"
-                | "switch"
-                | "radiobutton"
-                | "togglebutton"
-                | "menuitemcheckbox"
-                | "menuitemradio"
-        ),
-        IsProperty::Expanded => matches!(
-            role,
-            "disclosuretriangle" | "treeitem" | "combobox" | "popupbutton" | "outline" | "row"
-        ),
+fn state_from_ref_entry(entry: &RefEntry) -> ElementState {
+    ElementState {
+        role: entry.role.clone(),
+        states: entry.states.clone(),
+        value: entry.value.clone(),
     }
 }
+
+fn has_state(state: &ElementState, name: &str) -> bool {
+    state.states.iter().any(|s| s == name)
+}
+
+fn is_applicable(property: &IsProperty, entry: &RefEntry, state: &ElementState) -> bool {
+    match property {
+        IsProperty::Visible | IsProperty::Enabled | IsProperty::Focused => true,
+        IsProperty::Checked => {
+            crate::roles::is_toggleable_role(&entry.role)
+                || has_state(state, "checked")
+                || has_available_action(entry, "Toggle")
+                || has_available_action(entry, "Check")
+                || has_available_action(entry, "Uncheck")
+        }
+        IsProperty::Expanded => {
+            crate::roles::is_expandable_role(&entry.role)
+                || has_state(state, "expanded")
+                || has_available_action(entry, "Expand")
+                || has_available_action(entry, "Collapse")
+        }
+    }
+}
+
+fn has_available_action(entry: &RefEntry, action: &str) -> bool {
+    entry.available_actions.iter().any(|a| a == action)
+}
+
+#[cfg(test)]
+#[path = "is_check_tests.rs"]
+mod tests;

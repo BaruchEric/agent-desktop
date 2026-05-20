@@ -1,8 +1,4 @@
-use agent_desktop_core::{
-    adapter::WindowFilter,
-    error::AdapterError,
-    node::{AppInfo, WindowInfo},
-};
+use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
 
 #[cfg(target_os = "macos")]
 pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
@@ -18,7 +14,7 @@ pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
 #[cfg(target_os = "macos")]
 pub fn ensure_app_focused(pid: i32) -> Result<(), AdapterError> {
     tracing::debug!("system: ensure_app_focused pid={pid}");
-    use accessibility_sys::{kAXErrorSuccess, AXUIElementSetAttributeValue};
+    use accessibility_sys::{AXUIElementSetAttributeValue, kAXErrorSuccess};
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     let app_el = crate::tree::element_for_pid(pid);
@@ -47,8 +43,8 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
         win.title
     );
     use accessibility_sys::{
-        kAXErrorSuccess, AXUIElementCreateApplication, AXUIElementPerformAction,
-        AXUIElementSetAttributeValue,
+        AXUIElementCreateApplication, AXUIElementPerformAction, AXUIElementSetAttributeValue,
+        kAXErrorSuccess,
     };
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
@@ -96,9 +92,11 @@ pub fn focus_window_impl(_win: &WindowInfo) -> Result<(), AdapterError> {
 #[cfg(target_os = "macos")]
 pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
     tracing::debug!("system: launch app={id:?} timeout={timeout_ms}ms");
-    use crate::adapter::list_windows_impl;
+    use crate::system::window_list::list_windows_impl;
     use std::process::Command;
     use std::time::{Duration, Instant};
+
+    const OPEN_TIMEOUT: Duration = Duration::from_secs(5);
 
     if id.contains("..") || id.starts_with('/') {
         return Err(AdapterError::new(
@@ -118,11 +116,9 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
         }
     }
 
-    Command::new("open")
-        .arg("-a")
-        .arg(id)
-        .output()
-        .map_err(|e| AdapterError::internal(format!("open failed: {e}")))?;
+    let mut command = Command::new("/usr/bin/open");
+    command.arg("-a").arg(id);
+    crate::system::process::run_with_timeout(&mut command, "open", OPEN_TIMEOUT)?;
 
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
@@ -162,12 +158,14 @@ pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, Adapte
 pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
     tracing::debug!("system: close app={id:?} force={force}");
     use std::process::Command;
+    use std::time::Duration;
+
+    const QUIT_TIMEOUT: Duration = Duration::from_secs(3);
+
     if force {
-        Command::new("pkill")
-            .arg("-x")
-            .arg(id)
-            .output()
-            .map_err(|e| AdapterError::internal(format!("pkill failed: {e}")))?;
+        let mut command = Command::new("/usr/bin/pkill");
+        command.arg("-x").arg(id);
+        crate::system::process::run_with_timeout(&mut command, "pkill", QUIT_TIMEOUT)?;
     } else {
         let pid = crate::system::key_dispatch::find_pid_by_name(id)?;
         let app_ax = crate::tree::element_for_pid(pid);
@@ -189,11 +187,9 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
     tell theProc to quit
 end tell"#
             );
-            Command::new("osascript")
-                .arg("-e")
-                .arg(script)
-                .output()
-                .map_err(|e| AdapterError::internal(format!("quit failed: {e}")))?;
+            let mut command = Command::new("/usr/bin/osascript");
+            command.arg("-e").arg(script);
+            crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
         }
     }
     Ok(())
@@ -201,7 +197,7 @@ end tell"#
 
 #[cfg(target_os = "macos")]
 fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
-    use accessibility_sys::{kAXErrorSuccess, AXUIElementPerformAction};
+    use accessibility_sys::{AXUIElementPerformAction, kAXErrorSuccess};
     use core_foundation::{base::TCFType, string::CFString};
 
     let Some(menu_bar) = crate::tree::copy_element_attr(app_el, "AXMenuBar") else {
@@ -237,81 +233,4 @@ fn try_quit_via_menu_bar(app_el: &crate::tree::AXElement) -> bool {
 #[cfg(not(target_os = "macos"))]
 pub fn close_app_impl(_id: &str, _force: bool) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("close_app"))
-}
-
-pub fn list_apps_impl() -> Result<Vec<AppInfo>, AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use core_foundation::base::{CFType, TCFType};
-        use core_foundation::number::CFNumber;
-        use core_foundation::string::CFString;
-        use core_foundation_sys::dictionary::CFDictionaryGetValue;
-        use core_graphics::display::CGDisplay;
-        use core_graphics::window::{
-            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerName, kCGWindowOwnerPID,
-        };
-
-        let arr = match CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None) {
-            Some(a) => a,
-            None => return Ok(vec![]),
-        };
-
-        let mut seen_pids = std::collections::HashSet::new();
-        let mut apps = Vec::new();
-
-        for raw in arr.get_all_values() {
-            if raw.is_null() {
-                continue;
-            }
-
-            let layer = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowLayer as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .unwrap_or(99)
-            };
-            if layer != 0 {
-                continue;
-            }
-
-            let pid = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerPID as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFNumber>()
-                    .and_then(|n| n.to_i64())
-                    .unwrap_or(0) as i32
-            };
-            if !seen_pids.insert(pid) {
-                continue;
-            }
-
-            let name = unsafe {
-                let v = CFDictionaryGetValue(raw as _, kCGWindowOwnerName as _);
-                if v.is_null() {
-                    continue;
-                }
-                CFType::wrap_under_get_rule(v as _)
-                    .downcast::<CFString>()
-                    .map(|s| s.to_string())
-            };
-
-            if let Some(n) = name {
-                apps.push(AppInfo {
-                    name: n,
-                    pid,
-                    bundle_id: None,
-                });
-            }
-        }
-        Ok(apps)
-    }
-    #[cfg(not(target_os = "macos"))]
-    Err(AdapterError::not_supported("list_apps"))
 }

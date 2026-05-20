@@ -53,3 +53,6 @@ pub mod type_text;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
+
+#[cfg(test)]
+mod ref_policy_tests;

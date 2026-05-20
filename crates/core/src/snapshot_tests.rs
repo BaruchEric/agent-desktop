@@ -10,6 +10,7 @@ fn node(role: &str) -> AccessibilityNode {
         description: None,
         hint: None,
         states: vec![],
+        available_actions: vec![],
         bounds: None,
         children_count: None,
         children: vec![],
@@ -23,7 +24,11 @@ fn run_config(compact: bool, interactive_only: bool) -> RefAllocConfig<'static> 
         compact,
         pid: 1,
         source_app: Some("Test"),
+        source_window_id: None,
+        source_window_title: Some("Test Window"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: None,
+        path_prefix: &[],
     }
 }
 
@@ -181,7 +186,11 @@ fn test_skeleton_anchor_suppressed_in_drilldown() {
         compact: false,
         pid: 1,
         source_app: Some("Test"),
+        source_window_id: None,
+        source_window_title: Some("Test Window"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: Some("@e3"),
+        path_prefix: &[],
     };
     let result = ref_alloc::allocate_refs(root, &mut refmap, &config);
 
@@ -254,7 +263,11 @@ fn test_skeleton_fixture_matches_golden() {
         compact: false,
         pid: 42,
         source_app: Some("Fixture"),
+        source_window_id: None,
+        source_window_title: Some("Fixture Window"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let result = ref_alloc::allocate_refs(root, &mut refmap, &config);
 

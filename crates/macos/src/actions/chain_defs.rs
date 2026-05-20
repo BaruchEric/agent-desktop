@@ -5,14 +5,14 @@ mod imp {
     use super::*;
     use crate::actions::{
         ax_helpers,
-        chain::{execute_chain, ChainContext, ChainDef, ChainStep},
-        chain_steps,
+        chain::{ChainDef, ChainStep},
+        chain_menu_steps, chain_steps,
         discovery::ElementCaps,
     };
     use crate::tree::AXElement;
-    use agent_desktop_core::action::MouseButton;
+    use agent_desktop_core::action::{InteractionPolicy, MouseButton};
 
-    pub static CLICK_CHAIN: ChainDef = ChainDef {
+    pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
         pre_scroll: true,
         steps: &[
             ChainStep::Custom {
@@ -26,13 +26,9 @@ mod imp {
                 label: "show_alternate_ui",
                 func: chain_steps::try_show_alternate_ui,
             },
-            ChainStep::ChildActions {
-                actions: &["AXPress", "AXConfirm", "AXOpen"],
-                limit: 3,
-            },
             ChainStep::Custom {
-                label: "value_relay",
-                func: chain_steps::try_value_relay,
+                label: "containing_item_select",
+                func: chain_steps::try_select_containing_item,
             },
             ChainStep::SetBool {
                 attr: "AXSelected",
@@ -43,20 +39,20 @@ mod imp {
                 func: chain_steps::try_parent_row_select,
             },
             ChainStep::Custom {
+                label: "value_relay",
+                func: chain_steps::try_value_relay,
+            },
+            ChainStep::Custom {
                 label: "select_via_parent",
                 func: chain_steps::try_select_via_parent,
+            },
+            ChainStep::ChildActions {
+                actions: &["AXPress", "AXConfirm", "AXOpen"],
+                limit: 3,
             },
             ChainStep::Custom {
                 label: "custom_actions",
                 func: chain_steps::try_custom_actions,
-            },
-            ChainStep::Custom {
-                label: "focus_verified_confirm_or_press",
-                func: chain_steps::try_focus_then_verified_confirm_or_press,
-            },
-            ChainStep::Custom {
-                label: "keyboard_activate",
-                func: chain_steps::try_keyboard_activate,
             },
             ChainStep::AncestorActions {
                 actions: &["AXPress", "AXConfirm"],
@@ -70,26 +66,28 @@ mod imp {
         suggestion: "Element may not be interactable. Try 'mouse-click --xy X,Y'.",
     };
 
-    pub static RIGHT_CLICK_CHAIN: ChainDef = ChainDef {
+    pub(crate) static RIGHT_CLICK_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
-            ChainStep::Action("AXShowMenu"),
             ChainStep::Custom {
-                label: "focus_app_show_menu",
-                func: chain_steps::focus_app_then_show_menu,
+                label: "show_menu",
+                func: chain_menu_steps::show_menu,
             },
             ChainStep::Custom {
                 label: "select_then_show_menu",
-                func: chain_steps::select_then_show_menu,
+                func: chain_menu_steps::select_then_show_menu,
             },
-            ChainStep::FocusThenAction("AXShowMenu"),
-            ChainStep::AncestorActions {
-                actions: &["AXShowMenu"],
-                limit: 3,
+            ChainStep::Custom {
+                label: "selected_items_menu",
+                func: chain_menu_steps::select_then_selected_items_menu,
             },
-            ChainStep::ChildActions {
-                actions: &["AXShowMenu"],
-                limit: 5,
+            ChainStep::Custom {
+                label: "child_show_menu",
+                func: chain_menu_steps::show_menu_on_children,
+            },
+            ChainStep::Custom {
+                label: "ancestor_show_menu",
+                func: chain_menu_steps::show_menu_on_ancestors,
             },
             ChainStep::CGClick {
                 button: MouseButton::Right,
@@ -99,10 +97,14 @@ mod imp {
         suggestion: "Try 'mouse-click --button right --xy X,Y'.",
     };
 
-    pub static EXPAND_CHAIN: ChainDef = ChainDef {
+    pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
             ChainStep::Action("AXExpand"),
+            ChainStep::SetBool {
+                attr: "AXExpanded",
+                value: true,
+            },
             ChainStep::SetBool {
                 attr: "AXDisclosing",
                 value: true,
@@ -111,10 +113,14 @@ mod imp {
         suggestion: "Try 'click' to open it instead.",
     };
 
-    pub static COLLAPSE_CHAIN: ChainDef = ChainDef {
+    pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
             ChainStep::Action("AXCollapse"),
+            ChainStep::SetBool {
+                attr: "AXExpanded",
+                value: false,
+            },
             ChainStep::SetBool {
                 attr: "AXDisclosing",
                 value: false,
@@ -123,29 +129,28 @@ mod imp {
         suggestion: "Try 'click' to close it instead.",
     };
 
-    pub static SET_VALUE_CHAIN: ChainDef = ChainDef {
+    const VALUE_STEPS: &[ChainStep] = &[
+        ChainStep::SetDynamic { attr: "AXValue" },
+        ChainStep::FocusThenSetDynamic { attr: "AXValue" },
+    ];
+
+    pub(crate) static SET_VALUE_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
-        steps: &[
-            ChainStep::SetDynamic { attr: "AXValue" },
-            ChainStep::FocusThenSetDynamic { attr: "AXValue" },
-        ],
+        steps: VALUE_STEPS,
         suggestion: "Try 'clear' then 'type', or check element is a text field.",
     };
 
-    pub static CLEAR_CHAIN: ChainDef = ChainDef {
+    pub(crate) static CLEAR_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
             ChainStep::SetDynamic { attr: "AXValue" },
             ChainStep::FocusThenSetDynamic { attr: "AXValue" },
-            ChainStep::Custom {
-                label: "select_all_delete",
-                func: chain_steps::select_all_then_delete,
-            },
+            ChainStep::FocusThenClearByKeyboard,
         ],
         suggestion: "Try 'press cmd+a' then 'press delete'.",
     };
 
-    pub static FOCUS_CHAIN: ChainDef = ChainDef {
+    pub(crate) static FOCUS_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
             ChainStep::SetBool {
@@ -166,40 +171,35 @@ mod imp {
         suggestion: "Try 'click' to focus the element instead.",
     };
 
-    pub static SCROLL_TO_CHAIN: ChainDef = ChainDef {
+    pub(crate) static SCROLL_TO_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
         steps: &[
             ChainStep::Action("AXScrollToVisible"),
             ChainStep::Custom {
-                label: "walk_parents_scroll",
-                func: chain_steps::walk_parents_and_scroll,
+                label: "visible_in_scroll_context",
+                func: chain_steps::element_is_visible_in_scroll_context,
             },
         ],
         suggestion: "Element may not be in a scrollable container.",
     };
 
-    pub fn double_click(el: &AXElement, caps: &ElementCaps) -> Result<(), AdapterError> {
+    pub(crate) fn double_click(
+        el: &AXElement,
+        _caps: &ElementCaps,
+        policy: InteractionPolicy,
+    ) -> Result<(), AdapterError> {
         if ax_helpers::try_ax_action(el, "AXOpen") {
             return Ok(());
         }
-        let ctx = ChainContext {
-            dynamic_value: None,
-        };
-        let _ = execute_chain(el, caps, &CLICK_CHAIN, &ctx);
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        let _ = execute_chain(el, caps, &CLICK_CHAIN, &ctx);
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2)
+        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)
     }
 
-    pub fn triple_click(el: &AXElement, caps: &ElementCaps) -> Result<(), AdapterError> {
-        let ctx = ChainContext {
-            dynamic_value: None,
-        };
-        for _ in 0..3 {
-            let _ = execute_chain(el, caps, &CLICK_CHAIN, &ctx);
-            std::thread::sleep(std::time::Duration::from_millis(30));
-        }
-        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3)
+    pub(crate) fn triple_click(
+        el: &AXElement,
+        _caps: &ElementCaps,
+        policy: InteractionPolicy,
+    ) -> Result<(), AdapterError> {
+        crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 3, policy)
     }
 }
 
@@ -208,6 +208,6 @@ mod imp {}
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{
-    double_click, triple_click, CLEAR_CHAIN, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN,
-    FOCUS_CHAIN, RIGHT_CLICK_CHAIN, SCROLL_TO_CHAIN, SET_VALUE_CHAIN,
+    CLEAR_CHAIN, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN, FOCUS_CHAIN, RIGHT_CLICK_CHAIN,
+    SCROLL_TO_CHAIN, SET_VALUE_CHAIN, double_click, triple_click,
 };

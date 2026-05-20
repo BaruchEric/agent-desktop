@@ -1,24 +1,8 @@
+use crate::adapter::SnapshotSurface;
 use crate::node::AccessibilityNode;
 use crate::refs::{RefEntry, RefMap};
 
-pub(crate) const INTERACTIVE_ROLES: &[&str] = &[
-    "button",
-    "textfield",
-    "checkbox",
-    "link",
-    "menuitem",
-    "tab",
-    "slider",
-    "combobox",
-    "treeitem",
-    "cell",
-    "radiobutton",
-    "incrementor",
-    "menubutton",
-    "switch",
-    "colorwell",
-    "dockitem",
-];
+pub(crate) use crate::roles::INTERACTIVE_ROLES;
 
 pub(crate) fn actions_for_role(role: &str) -> Vec<String> {
     match role {
@@ -37,7 +21,10 @@ pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
     pid: i32,
     source_app: Option<&str>,
+    source_window_id: Option<&str>,
+    source_window_title: Option<&str>,
     root_ref: Option<String>,
+    path: &[usize],
 ) -> RefEntry {
     RefEntry {
         pid,
@@ -47,9 +34,18 @@ pub(crate) fn ref_entry_from_node(
         states: node.states.clone(),
         bounds: node.bounds,
         bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
-        available_actions: actions_for_role(&node.role),
+        available_actions: if node.available_actions.is_empty() {
+            actions_for_role(&node.role)
+        } else {
+            node.available_actions.clone()
+        },
         source_app: source_app.map(str::to_string),
+        source_window_id: source_window_id.map(str::to_string),
+        source_window_title: source_window_title.map(str::to_string),
+        source_surface: SnapshotSurface::Window,
         root_ref,
+        path_is_absolute: false,
+        path: smallvec::SmallVec::from_slice(path),
     }
 }
 
@@ -113,20 +109,42 @@ pub(crate) struct RefAllocConfig<'a> {
     pub compact: bool,
     pub pid: i32,
     pub source_app: Option<&'a str>,
+    pub source_window_id: Option<&'a str>,
+    pub source_window_title: Option<&'a str>,
+    pub source_surface: SnapshotSurface,
     pub root_ref_id: Option<&'a str>,
+    pub path_prefix: &'a [usize],
 }
 
 pub(crate) fn allocate_refs(
-    mut node: AccessibilityNode,
+    node: AccessibilityNode,
     refmap: &mut RefMap,
     config: &RefAllocConfig,
 ) -> AccessibilityNode {
-    let root_ref_owned = config.root_ref_id.map(str::to_string);
+    allocate_refs_at_path(node, refmap, config, &mut config.path_prefix.to_vec())
+}
+
+fn allocate_refs_at_path(
+    mut node: AccessibilityNode,
+    refmap: &mut RefMap,
+    config: &RefAllocConfig,
+    path: &mut Vec<usize>,
+) -> AccessibilityNode {
     let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
 
     if is_interactive {
-        let entry =
-            ref_entry_from_node(&node, config.pid, config.source_app, root_ref_owned.clone());
+        let mut entry = ref_entry_from_node(
+            &node,
+            config.pid,
+            config.source_app,
+            config.source_window_id,
+            config.source_window_title,
+            config.root_ref_id.map(str::to_string),
+            path,
+        );
+        entry.source_surface = config.source_surface;
+        entry.path_is_absolute = config.root_ref_id.is_some();
+        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -138,8 +156,18 @@ pub(crate) fn allocate_refs(
         && config.root_ref_id.is_none();
 
     if is_skeleton_anchor {
-        let mut entry = ref_entry_from_node(&node, config.pid, config.source_app, None);
+        let mut entry = ref_entry_from_node(
+            &node,
+            config.pid,
+            config.source_app,
+            config.source_window_id,
+            config.source_window_title,
+            None,
+            path,
+        );
+        entry.source_surface = config.source_surface;
         entry.available_actions = vec![];
+        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -150,8 +178,12 @@ pub(crate) fn allocate_refs(
     node.children = node
         .children
         .into_iter()
+        .enumerate()
         .filter_map(|child| {
-            let child = allocate_refs(child, refmap, config);
+            let (idx, child) = child;
+            path.push(idx);
+            let child = allocate_refs_at_path(child, refmap, config, path);
+            path.pop();
             if config.compact && is_collapsible(&child) {
                 return child.children.into_iter().next();
             }
@@ -170,87 +202,13 @@ pub(crate) fn allocate_refs(
     node
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::node::{AccessibilityNode, Rect};
-
-    fn node(role: &str, name: Option<&str>) -> AccessibilityNode {
-        AccessibilityNode {
-            ref_id: None,
-            role: role.into(),
-            name: name.map(str::to_string),
-            value: None,
-            description: None,
-            hint: None,
-            states: vec![],
-            bounds: Some(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 10.0,
-                height: 10.0,
-            }),
-            children_count: None,
-            children: vec![],
-        }
-    }
-
-    #[test]
-    fn transform_tree_include_bounds_false_strips_bounds() {
-        let n = node("group", None);
-        let out = transform_tree(n, false, false, false);
-        assert!(out.bounds.is_none());
-    }
-
-    #[test]
-    fn transform_tree_include_bounds_true_preserves_bounds() {
-        let n = node("group", None);
-        let out = transform_tree(n, true, false, false);
-        assert!(out.bounds.is_some());
-    }
-
-    #[test]
-    fn transform_tree_interactive_only_prunes_noninteractive_leaves() {
-        let mut root = node("window", Some("w"));
-        root.children = vec![node("group", None), node("button", Some("OK"))];
-        let out = transform_tree(root, true, true, false);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "button");
-    }
-
-    #[test]
-    fn transform_tree_interactive_only_keeps_named_containers_with_children() {
-        let mut labeled = node("group", Some("Toolbar"));
-        labeled.children = vec![node("button", Some("Save"))];
-        let mut root = node("window", Some("w"));
-        root.children = vec![labeled];
-        let out = transform_tree(root, true, true, false);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].children.len(), 1);
-    }
-
-    #[test]
-    fn transform_tree_compact_collapses_empty_single_child_chain() {
-        let mut outer = node("group", None);
-        let mut inner = node("group", None);
-        inner.children = vec![node("button", Some("Go"))];
-        outer.children = vec![inner];
-        let mut root = node("window", Some("w"));
-        root.children = vec![outer];
-        let out = transform_tree(root, true, false, true);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "button");
-    }
-
-    #[test]
-    fn transform_tree_compact_preserves_labeled_containers() {
-        let mut named = node("group", Some("Toolbar"));
-        named.children = vec![node("button", Some("Save"))];
-        let mut root = node("window", Some("w"));
-        root.children = vec![named];
-        let out = transform_tree(root, true, false, true);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "group");
-        assert_eq!(out.children[0].name.as_deref(), Some("Toolbar"));
+fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
+    if !include_bounds {
+        entry.bounds = None;
+        entry.bounds_hash = None;
     }
 }
+
+#[cfg(test)]
+#[path = "ref_alloc_tests.rs"]
+mod tests;

@@ -1,25 +1,42 @@
-use agent_desktop_core::adapter::PermissionStatus;
+use agent_desktop_core::{PermissionReport, PermissionState};
+
+const ACCESSIBILITY_SUGGESTION: &str = "Open System Settings > Privacy & Security > Accessibility and add the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
+const SCREEN_RECORDING_SUGGESTION: &str = "Open System Settings > Privacy & Security > Screen Recording and add the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
 
 #[cfg(target_os = "macos")]
 mod imp {
     use accessibility_sys::{
-        kAXTrustedCheckOptionPrompt, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
+        AXIsProcessTrusted, AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt,
     };
     use core_foundation::{
         base::TCFType, boolean::CFBoolean, dictionary::CFDictionary, string::CFString,
     };
 
-    pub fn is_trusted() -> bool {
+    pub(super) fn is_trusted() -> bool {
         unsafe { AXIsProcessTrusted() }
     }
 
-    pub fn request_trust() -> bool {
+    pub(super) fn request_trust() -> bool {
         unsafe {
             let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
             let val = CFBoolean::true_value();
             let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
             AXIsProcessTrustedWithOptions(dict.as_concrete_TypeRef())
         }
+    }
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGPreflightScreenCaptureAccess() -> bool;
+        fn CGRequestScreenCaptureAccess() -> bool;
+    }
+
+    pub(super) fn screen_recording_granted() -> bool {
+        unsafe { CGPreflightScreenCaptureAccess() }
+    }
+
+    pub(super) fn request_screen_recording() -> bool {
+        unsafe { CGRequestScreenCaptureAccess() }
     }
 }
 
@@ -31,25 +48,51 @@ mod imp {
     pub fn request_trust() -> bool {
         false
     }
+    pub fn screen_recording_granted() -> bool {
+        false
+    }
+    pub fn request_screen_recording() -> bool {
+        false
+    }
 }
 
-pub fn check() -> PermissionStatus {
+pub fn report() -> PermissionReport {
+    PermissionReport {
+        accessibility: accessibility_report_state(),
+        screen_recording: screen_recording_report_state(),
+        automation: PermissionState::NotRequired,
+    }
+}
+
+pub fn request_report() -> PermissionReport {
+    PermissionReport {
+        accessibility: permission_state(imp::request_trust(), ACCESSIBILITY_SUGGESTION),
+        screen_recording: permission_state(
+            imp::request_screen_recording(),
+            SCREEN_RECORDING_SUGGESTION,
+        ),
+        automation: PermissionState::NotRequired,
+    }
+}
+
+fn permission_state(granted: bool, suggestion: &'static str) -> PermissionState {
+    if granted {
+        PermissionState::Granted
+    } else {
+        PermissionState::Denied {
+            suggestion: suggestion.into(),
+        }
+    }
+}
+
+fn accessibility_report_state() -> PermissionState {
     if imp::is_trusted() {
-        PermissionStatus::Granted
-    } else {
-        PermissionStatus::Denied {
-            suggestion: "Open System Settings > Privacy & Security > Accessibility and add your terminal application".into(),
-        }
+        return PermissionState::Granted;
     }
+
+    permission_state(false, ACCESSIBILITY_SUGGESTION)
 }
 
-pub fn check_with_request() -> PermissionStatus {
-    let trusted = imp::request_trust();
-    if trusted {
-        PermissionStatus::Granted
-    } else {
-        PermissionStatus::Denied {
-            suggestion: "Grant accessibility permission in the system dialog that appeared".into(),
-        }
-    }
+fn screen_recording_report_state() -> PermissionState {
+    permission_state(imp::screen_recording_granted(), SCREEN_RECORDING_SUGGESTION)
 }

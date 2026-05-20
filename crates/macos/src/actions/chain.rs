@@ -1,51 +1,12 @@
-use agent_desktop_core::action::MouseButton;
+use agent_desktop_core::action::InteractionPolicy;
 use agent_desktop_core::error::{AdapterError, ErrorCode};
 
 use crate::actions::discovery::ElementCaps;
 use crate::tree::AXElement;
 
-#[allow(dead_code)]
-pub enum ChainStep {
-    Action(&'static str),
-    SetBool {
-        attr: &'static str,
-        value: bool,
-    },
-    SetDynamic {
-        attr: &'static str,
-    },
-    FocusThenAction(&'static str),
-    FocusThenSetDynamic {
-        attr: &'static str,
-    },
-    FocusThenConfirmOrPress,
-    ChildActions {
-        actions: &'static [&'static str],
-        limit: usize,
-    },
-    AncestorActions {
-        actions: &'static [&'static str],
-        limit: usize,
-    },
-    Custom {
-        label: &'static str,
-        func: fn(&AXElement, &ElementCaps) -> bool,
-    },
-    CGClick {
-        button: MouseButton,
-        count: u32,
-    },
-}
-
-pub struct ChainDef {
-    pub pre_scroll: bool,
-    pub steps: &'static [ChainStep],
-    pub suggestion: &'static str,
-}
-
-pub struct ChainContext<'a> {
-    pub dynamic_value: Option<&'a str>,
-}
+pub(crate) use super::chain_context::ChainContext;
+pub(crate) use super::chain_def::ChainDef;
+pub(crate) use super::chain_step::ChainStep;
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -53,15 +14,19 @@ mod imp {
     use crate::actions::ax_helpers;
     use std::time::{Duration, Instant};
 
-    const CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
+    const DEFAULT_CHAIN_TIMEOUT: Duration = Duration::from_secs(10);
+    const MAX_CHAIN_TIMEOUT_MS: u64 = 300_000;
 
-    pub fn execute_chain(
+    pub(crate) fn execute_chain(
         el: &AXElement,
         caps: &ElementCaps,
         def: &ChainDef,
         ctx: &ChainContext,
+        policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
-        let deadline = Instant::now() + CHAIN_TIMEOUT;
+        let deadline = ctx
+            .deadline
+            .unwrap_or_else(|| Instant::now() + chain_timeout());
         let total = def.steps.len();
 
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {
@@ -82,15 +47,25 @@ mod imp {
                     .iter()
                     .find(|s| matches!(s, ChainStep::CGClick { .. }))
                 {
-                    if execute_step(el, caps, cg, ctx) {
+                    if physical_click_permitted(policy) && execute_step(el, caps, cg, ctx, policy)?
+                    {
                         tracing::debug!("chain: CGClick fallback succeeded");
                         return Ok(());
                     }
                 }
-                return Err(AdapterError::timeout("Chain execution exceeded 10s"));
+                return Err(
+                    AdapterError::timeout("Chain execution deadline exceeded").with_suggestion(
+                        "Retry the command, refresh the snapshot, or increase AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow apps.",
+                    ),
+                );
+            }
+            if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
+                return Err(AdapterError::policy_denied(
+                    "Physical click fallback is disabled by the current interaction policy",
+                ));
             }
             let label = step_label(step);
-            if execute_step(el, caps, step, ctx) {
+            if execute_step(el, caps, step, ctx, policy)? {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
                 return Ok(());
             }
@@ -109,9 +84,8 @@ mod imp {
             ChainStep::Action(name) => name,
             ChainStep::SetBool { attr, .. } => attr,
             ChainStep::SetDynamic { attr } => attr,
-            ChainStep::FocusThenAction(name) => name,
             ChainStep::FocusThenSetDynamic { attr } => attr,
-            ChainStep::FocusThenConfirmOrPress => "FocusThenConfirmOrPress",
+            ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
             ChainStep::ChildActions { .. } => "ChildActions",
             ChainStep::AncestorActions { .. } => "AncestorActions",
             ChainStep::Custom { label, .. } => label,
@@ -124,9 +98,10 @@ mod imp {
         caps: &ElementCaps,
         step: &ChainStep,
         ctx: &ChainContext,
-    ) -> bool {
+        policy: InteractionPolicy,
+    ) -> Result<bool, AdapterError> {
         match step {
-            ChainStep::Action(name) => ax_helpers::try_ax_action_retried(el, name),
+            ChainStep::Action(name) => ax_helpers::try_ax_action_retried_or_err(el, name),
 
             ChainStep::SetBool { attr, value } => {
                 let settable = match *attr {
@@ -135,69 +110,175 @@ mod imp {
                     "AXFocused" => caps.settable_focus,
                     _ => ax_helpers::is_attr_settable(el, attr),
                 };
-                settable && ax_helpers::set_ax_bool(el, attr, *value)
+                Ok(settable && set_bool_verified(el, attr, *value)?)
             }
 
             ChainStep::SetDynamic { attr } => {
                 let value = match ctx.dynamic_value {
                     Some(v) => v,
-                    None => return false,
+                    None => return Ok(false),
                 };
-                ax_helpers::set_ax_string_or_err(el, attr, value).is_ok()
-            }
-
-            ChainStep::FocusThenAction(name) => {
-                if !ax_helpers::ax_focus(el) {
-                    return false;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-                ax_helpers::try_ax_action_retried(el, name)
+                set_dynamic_verified(el, attr, value)
             }
 
             ChainStep::FocusThenSetDynamic { attr } => {
+                if !policy.allow_focus_steal {
+                    return Ok(false);
+                }
                 let value = match ctx.dynamic_value {
                     Some(v) => v,
-                    None => return false,
+                    None => return Ok(false),
                 };
-                if !ax_helpers::ax_focus(el) {
-                    return false;
+                if !ax_helpers::ax_focus_or_err(el)? {
+                    return Ok(false);
                 }
                 std::thread::sleep(Duration::from_millis(50));
-                ax_helpers::set_ax_string_or_err(el, attr, value).is_ok()
+                set_dynamic_verified(el, attr, value)
             }
 
-            ChainStep::FocusThenConfirmOrPress => {
-                if !ax_helpers::ax_focus(el) {
-                    return false;
+            ChainStep::FocusThenClearByKeyboard => {
+                if !policy.allow_focus_steal {
+                    return Ok(false);
                 }
-                std::thread::sleep(Duration::from_millis(50));
-                ax_helpers::try_ax_action_retried(el, "AXConfirm")
-                    || ax_helpers::try_ax_action_retried(el, "AXPress")
+                if !ax_helpers::ax_focus_or_err(el)? {
+                    return Ok(false);
+                }
+                std::thread::sleep(Duration::from_millis(20));
+                Ok(crate::input::keyboard::synthesize_key_for_element(
+                    el,
+                    &agent_desktop_core::action::KeyCombo {
+                        key: "a".into(),
+                        modifiers: vec![agent_desktop_core::action::Modifier::Cmd],
+                    },
+                )
+                .and_then(|_| {
+                    crate::input::keyboard::synthesize_key_for_element(
+                        el,
+                        &agent_desktop_core::action::KeyCombo {
+                            key: "delete".into(),
+                            modifiers: vec![],
+                        },
+                    )
+                })
+                .is_ok())
             }
 
-            ChainStep::ChildActions { actions, limit } => ax_helpers::try_each_child(
+            ChainStep::ChildActions { actions, limit } => Ok(ax_helpers::try_each_child(
                 el,
                 |child| {
                     let child_actions = ax_helpers::list_ax_actions(child);
                     ax_helpers::try_action_from_list(child, &child_actions, actions)
                 },
                 *limit,
-            ),
+            )),
 
-            ChainStep::AncestorActions { actions, limit } => ax_helpers::try_each_ancestor(
+            ChainStep::AncestorActions { actions, limit } => Ok(ax_helpers::try_each_ancestor(
                 el,
                 |ancestor| {
                     let al = ax_helpers::list_ax_actions(ancestor);
                     ax_helpers::try_action_from_list(ancestor, &al, actions)
                 },
                 *limit,
-            ),
+            )),
 
             ChainStep::Custom { label: _, func } => func(el, caps),
 
             ChainStep::CGClick { button, count } => {
-                crate::actions::dispatch::click_via_bounds(el, button.clone(), *count).is_ok()
+                Ok(
+                    crate::actions::dispatch::click_via_bounds(el, button.clone(), *count, policy)
+                        .is_ok(),
+                )
             }
+        }
+    }
+
+    fn chain_timeout() -> Duration {
+        std::env::var("AGENT_DESKTOP_CHAIN_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|ms| *ms > 0)
+            .map(|ms| ms.min(MAX_CHAIN_TIMEOUT_MS))
+            .map(Duration::from_millis)
+            .unwrap_or(DEFAULT_CHAIN_TIMEOUT)
+    }
+
+    fn physical_click_permitted(policy: InteractionPolicy) -> bool {
+        policy.allow_focus_steal && policy.allow_cursor_move
+    }
+
+    fn set_dynamic_verified(el: &AXElement, attr: &str, value: &str) -> Result<bool, AdapterError> {
+        ax_helpers::set_ax_string_or_err(el, attr, value)?;
+        Ok(dynamic_write_had_effect(
+            attr,
+            ax_helpers::element_role(el).as_deref(),
+            value,
+            crate::tree::copy_value_typed(el).as_deref(),
+        ))
+    }
+
+    fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
+        Ok(ax_helpers::set_ax_bool_or_err(el, attr, value)?
+            && bool_write_had_effect(attr, value, crate::tree::copy_bool_attr(el, attr)))
+    }
+
+    fn bool_write_had_effect(attr: &str, expected: bool, observed: Option<bool>) -> bool {
+        !matches!(
+            attr,
+            "AXExpanded" | "AXDisclosing" | "AXSelected" | "AXFocused"
+        ) || observed == Some(expected)
+    }
+
+    fn dynamic_write_had_effect(
+        attr: &str,
+        role: Option<&str>,
+        expected: &str,
+        observed: Option<&str>,
+    ) -> bool {
+        attr != "AXValue" || role == Some("AXSecureTextField") || observed == Some(expected)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{bool_write_had_effect, dynamic_write_had_effect};
+
+        #[test]
+        fn ax_value_write_requires_readback_match() {
+            assert!(!dynamic_write_had_effect(
+                "AXValue",
+                Some("AXTextField"),
+                "",
+                Some("unchanged")
+            ));
+            assert!(dynamic_write_had_effect(
+                "AXValue",
+                Some("AXTextField"),
+                "",
+                Some("")
+            ));
+        }
+
+        #[test]
+        fn non_value_and_secure_writes_trust_ax_success() {
+            assert!(dynamic_write_had_effect(
+                "AXSelected",
+                Some("AXCheckBox"),
+                "true",
+                None
+            ));
+            assert!(dynamic_write_had_effect(
+                "AXValue",
+                Some("AXSecureTextField"),
+                "secret",
+                None
+            ));
+        }
+
+        #[test]
+        fn bool_state_writes_require_readback_match_for_stateful_attrs() {
+            assert!(bool_write_had_effect("AXExpanded", true, Some(true)));
+            assert!(!bool_write_had_effect("AXExpanded", true, Some(false)));
+            assert!(!bool_write_had_effect("AXExpanded", false, None));
+            assert!(bool_write_had_effect("AXFoo", true, None));
         }
     }
 }
@@ -211,6 +292,7 @@ mod imp {
         _caps: &ElementCaps,
         def: &ChainDef,
         _ctx: &ChainContext,
+        _policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
         Err(AdapterError::new(
             ErrorCode::ActionFailed,

@@ -41,10 +41,17 @@ ad_check_permissions(adapter);                // success
 printf("%s\n", msg);                          // still valid
 ```
 
+`ad_check_permissions` does not treat `Unknown` as success. Stub adapters that
+cannot answer permission probes return `AD_RESULT_ERR_PLATFORM_NOT_SUPPORTED`.
+The macOS adapter reports `AD_RESULT_ERR_INTERNAL` only if the platform probe
+itself is ambiguous; read `ad_last_error_*` for the diagnostic.
+
 Failure-path calls rotate: if a subsequent call fails, the prior
 pointer may dangle. Read it before the next potentially-failing call.
 
 ## Error codes
+
+Numeric values are ABI-stable. New codes are appended; existing values are not renumbered.
 
 | Name                                 | i32   | Meaning                               |
 |--------------------------------------|-------|---------------------------------------|
@@ -60,7 +67,9 @@ pointer may dangle. Read it before the next potentially-failing call.
 | `AD_RESULT_ERR_TIMEOUT`              |  -9   | Wait exceeded deadline                |
 | `AD_RESULT_ERR_INVALID_ARGS`         | -10   | Null pointer, bad enum, invalid UTF-8 |
 | `AD_RESULT_ERR_NOTIFICATION_NOT_FOUND`| -11  | Notification index out of range       |
-| `AD_RESULT_ERR_INTERNAL`             | -12   | Rust panic caught at FFI boundary     |
+| `AD_RESULT_ERR_INTERNAL`             | -12   | Internal failure or ambiguous platform probe |
+| `AD_RESULT_ERR_SNAPSHOT_NOT_FOUND`   | -13   | Requested snapshot ref store is missing |
+| `AD_RESULT_ERR_POLICY_DENIED`        | -14   | Current action policy blocks fallback |
 
 ## Enum validation
 

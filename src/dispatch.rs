@@ -1,11 +1,11 @@
 use agent_desktop_core::{
-    action::{Direction, MouseButton},
+    PermissionReport,
     adapter::PlatformAdapter,
     commands::{
-        batch, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
-        collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
-        is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize,
-        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
+        check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
+        double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
+        key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, minimize,
+        mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
         skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
     },
@@ -13,9 +13,18 @@ use agent_desktop_core::{
 };
 use serde_json::Value;
 
-use crate::cli::{Commands, SkillsAction};
+use crate::cli::Commands;
+use crate::cli_args_skills::SkillsAction;
+use crate::dispatch_parse::{
+    parse_direction, parse_get_property, parse_is_property, parse_mouse_button, parse_xy,
+    parse_xy_opt,
+};
 
-pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+pub(crate) fn dispatch(
+    cmd: Commands,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
     match cmd {
         Commands::Snapshot(a) => snapshot::execute(
@@ -29,6 +38,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 surface: a.surface.to_core(),
                 skeleton: a.skeleton,
                 root_ref: a.root,
+                snapshot_id: a.snapshot,
             },
             adapter,
         ),
@@ -44,6 +54,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 first: a.first,
                 last: a.last,
                 nth: a.nth,
+                limit: a.limit,
             },
             adapter,
         ),
@@ -60,6 +71,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::Get(a) => get::execute(
             get::GetArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 property: parse_get_property(&a.property)?,
             },
             adapter,
@@ -68,25 +80,21 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::Is(a) => is_check::execute(
             is_check::IsArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 property: parse_is_property(&a.property)?,
             },
             adapter,
         ),
 
-        Commands::Click(a) => click::execute(click::ClickArgs { ref_id: a.ref_id }, adapter),
-        Commands::DoubleClick(a) => {
-            double_click::execute(double_click::DoubleClickArgs { ref_id: a.ref_id }, adapter)
-        }
-        Commands::TripleClick(a) => {
-            triple_click::execute(triple_click::TripleClickArgs { ref_id: a.ref_id }, adapter)
-        }
-        Commands::RightClick(a) => {
-            right_click::execute(right_click::RightClickArgs { ref_id: a.ref_id }, adapter)
-        }
+        Commands::Click(a) => click::execute(ref_args(a), adapter),
+        Commands::DoubleClick(a) => double_click::execute(ref_args(a), adapter),
+        Commands::TripleClick(a) => triple_click::execute(ref_args(a), adapter),
+        Commands::RightClick(a) => right_click::execute(ref_args(a), adapter),
 
         Commands::Type(a) => type_text::execute(
             type_text::TypeArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 text: a.text,
             },
             adapter,
@@ -95,25 +103,25 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::SetValue(a) => set_value::execute(
             set_value::SetValueArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 value: a.value,
             },
             adapter,
         ),
 
-        Commands::Clear(a) => clear::execute(clear::ClearArgs { ref_id: a.ref_id }, adapter),
+        Commands::Clear(a) => clear::execute(ref_args(a), adapter),
 
-        Commands::Focus(a) => focus::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Toggle(a) => toggle::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Check(a) => check::execute(check::CheckArgs { ref_id: a.ref_id }, adapter),
-        Commands::Uncheck(a) => {
-            uncheck::execute(uncheck::UncheckArgs { ref_id: a.ref_id }, adapter)
-        }
-        Commands::Expand(a) => expand::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
-        Commands::Collapse(a) => collapse::execute(helpers::RefArgs { ref_id: a.ref_id }, adapter),
+        Commands::Focus(a) => focus::execute(ref_args(a), adapter),
+        Commands::Toggle(a) => toggle::execute(ref_args(a), adapter),
+        Commands::Check(a) => check::execute(ref_args(a), adapter),
+        Commands::Uncheck(a) => uncheck::execute(ref_args(a), adapter),
+        Commands::Expand(a) => expand::execute(ref_args(a), adapter),
+        Commands::Collapse(a) => collapse::execute(ref_args(a), adapter),
 
         Commands::Select(a) => select::execute(
             select::SelectArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 value: a.value,
             },
             adapter,
@@ -122,15 +130,14 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::Scroll(a) => scroll::execute(
             scroll::ScrollArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 direction: parse_direction(&a.direction)?,
                 amount: a.amount,
             },
             adapter,
         ),
 
-        Commands::ScrollTo(a) => {
-            scroll_to::execute(scroll_to::ScrollToArgs { ref_id: a.ref_id }, adapter)
-        }
+        Commands::ScrollTo(a) => scroll_to::execute(ref_args(a), adapter),
 
         Commands::Press(a) => press::execute(
             press::PressArgs {
@@ -149,6 +156,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
         Commands::Hover(a) => hover::execute(
             hover::HoverArgs {
                 ref_id: a.ref_id,
+                snapshot_id: a.snapshot,
                 xy: parse_xy_opt(a.xy.as_deref())?,
                 duration_ms: a.duration,
             },
@@ -161,6 +169,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
                 from_xy: parse_xy_opt(a.from_xy.as_deref())?,
                 to_ref: a.to,
                 to_xy: parse_xy_opt(a.to_xy.as_deref())?,
+                snapshot_id: a.snapshot,
                 duration_ms: a.duration,
             },
             adapter,
@@ -228,7 +237,9 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             list_windows::execute(list_windows::ListWindowsArgs { app: a.app }, adapter)
         }
 
-        Commands::ListApps => list_apps::execute(adapter),
+        Commands::ListApps(a) => {
+            list_apps::execute(list_apps::ListAppsArgs { app: a.app }, adapter)
+        }
 
         Commands::ListSurfaces(a) => {
             list_surfaces::execute(list_surfaces::ListSurfacesArgs { app: a.app }, adapter)
@@ -261,11 +272,11 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             adapter,
         ),
 
-        Commands::Minimize(a) => minimize::execute(minimize::MinimizeArgs { app: a.app }, adapter),
+        Commands::Minimize(a) => minimize::execute(helpers::AppArgs { app: a.app }, adapter),
 
-        Commands::Maximize(a) => maximize::execute(maximize::MaximizeArgs { app: a.app }, adapter),
+        Commands::Maximize(a) => maximize::execute(helpers::AppArgs { app: a.app }, adapter),
 
-        Commands::Restore(a) => restore::execute(restore::RestoreArgs { app: a.app }, adapter),
+        Commands::Restore(a) => restore::execute(helpers::AppArgs { app: a.app }, adapter),
 
         Commands::ListNotifications(_)
         | Commands::DismissNotification(_)
@@ -282,6 +293,7 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             wait::WaitArgs {
                 ms: a.ms,
                 element: a.element,
+                snapshot_id: a.snapshot,
                 window: a.window,
                 text: a.text,
                 timeout_ms: a.timeout,
@@ -293,11 +305,13 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             adapter,
         ),
 
-        Commands::Status => status::execute(adapter),
+        Commands::Status => status::execute_with_report(adapter, permission_report),
 
-        Commands::Permissions(a) => {
-            permissions::execute(permissions::PermissionsArgs { request: a.request }, adapter)
-        }
+        Commands::Permissions(a) => permissions::execute_with_report(
+            permissions::PermissionsArgs { request: a.request },
+            adapter,
+            permission_report,
+        ),
 
         Commands::Version(a) => version::execute(version::VersionArgs { json: a.json }),
 
@@ -311,102 +325,13 @@ pub fn dispatch(cmd: Commands, adapter: &dyn PlatformAdapter) -> Result<Value, A
             }),
         },
 
-        Commands::Batch(a) => {
-            let commands = batch::parse_commands(&a.commands_json)?;
-            let mut results = Vec::new();
-            for cmd in commands {
-                let result =
-                    crate::batch_dispatch::dispatch_batch_command(&cmd.command, cmd.args, adapter);
-                let ok = result.is_ok();
-                let entry = match result {
-                    Ok(data) => {
-                        serde_json::json!({ "ok": true, "command": cmd.command, "data": data })
-                    }
-                    Err(e) => {
-                        serde_json::json!({ "ok": false, "command": cmd.command, "error": e.to_string() })
-                    }
-                };
-                results.push(entry);
-                if !ok && a.stop_on_error {
-                    break;
-                }
-            }
-            Ok(serde_json::json!({ "results": results }))
-        }
+        Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report),
     }
 }
 
-pub(crate) fn parse_get_property(s: &str) -> Result<get::GetProperty, AppError> {
-    match s {
-        "text" => Ok(get::GetProperty::Text),
-        "value" => Ok(get::GetProperty::Value),
-        "title" => Ok(get::GetProperty::Title),
-        "bounds" => Ok(get::GetProperty::Bounds),
-        "role" => Ok(get::GetProperty::Role),
-        "states" => Ok(get::GetProperty::States),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown property '{other}'. Valid: text, value, title, bounds, role, states"
-        ))),
-    }
-}
-
-pub(crate) fn parse_is_property(s: &str) -> Result<is_check::IsProperty, AppError> {
-    match s {
-        "visible" => Ok(is_check::IsProperty::Visible),
-        "enabled" => Ok(is_check::IsProperty::Enabled),
-        "checked" => Ok(is_check::IsProperty::Checked),
-        "focused" => Ok(is_check::IsProperty::Focused),
-        "expanded" => Ok(is_check::IsProperty::Expanded),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown property '{other}'. Valid: visible, enabled, checked, focused, expanded"
-        ))),
-    }
-}
-
-pub(crate) fn parse_direction(s: &str) -> Result<Direction, AppError> {
-    match s {
-        "up" => Ok(Direction::Up),
-        "down" => Ok(Direction::Down),
-        "left" => Ok(Direction::Left),
-        "right" => Ok(Direction::Right),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown direction '{other}'. Valid: up, down, left, right"
-        ))),
-    }
-}
-
-pub(crate) fn parse_mouse_button(s: &str) -> Result<MouseButton, AppError> {
-    match s {
-        "left" => Ok(MouseButton::Left),
-        "right" => Ok(MouseButton::Right),
-        "middle" => Ok(MouseButton::Middle),
-        other => Err(AppError::invalid_input(format!(
-            "Unknown button '{other}'. Valid: left, right, middle"
-        ))),
-    }
-}
-
-pub(crate) fn parse_xy(s: &str) -> Result<(f64, f64), AppError> {
-    let parts: Vec<&str> = s.split(',').collect();
-    if parts.len() != 2 {
-        return Err(AppError::invalid_input(format!(
-            "Invalid coordinates '{s}'. Expected format: x,y (e.g., 500,300)"
-        )));
-    }
-    let x: f64 = parts[0]
-        .trim()
-        .parse()
-        .map_err(|_| AppError::invalid_input(format!("Invalid x coordinate: '{}'", parts[0])))?;
-    let y: f64 = parts[1]
-        .trim()
-        .parse()
-        .map_err(|_| AppError::invalid_input(format!("Invalid y coordinate: '{}'", parts[1])))?;
-    Ok((x, y))
-}
-
-fn parse_xy_opt(s: Option<&str>) -> Result<Option<(f64, f64)>, AppError> {
-    match s {
-        Some(s) => parse_xy(s).map(Some),
-        None => Ok(None),
+fn ref_args(args: crate::cli_args::RefArgs) -> helpers::RefArgs {
+    helpers::RefArgs {
+        ref_id: args.ref_id,
+        snapshot_id: args.snapshot_id,
     }
 }

@@ -13,6 +13,8 @@ agent-desktop permissions --request
 # Then: System Settings > Privacy & Security > Accessibility > enable your terminal
 ```
 
+For screenshots, also grant Screen Recording. `permissions` reports `accessibility`, `screen_recording`, and `automation` separately.
+
 ## Pattern: Progressive Skeleton Traversal (Default for Dense Apps)
 
 The recommended approach for Electron apps (Slack, VS Code, Discord) and any app with 50+ interactive elements. Reduces token consumption 78-96%.
@@ -20,6 +22,7 @@ The recommended approach for Electron apps (Slack, VS Code, Discord) and any app
 ```bash
 # 1. Get skeleton overview — shallow 3-level map with children_count hints
 agent-desktop snapshot --skeleton --app "Slack" -i --compact
+# Keep snapshot_id = s8f...
 # Output shows regions like:
 #   @e1 = group "Workspaces" (children_count: 4)
 #   @e2 = group "Channels" (children_count: 42)
@@ -27,19 +30,19 @@ agent-desktop snapshot --skeleton --app "Slack" -i --compact
 #   @e4 = button "New Message"    ← interactive elements at top levels still get refs
 
 # 2. Identify the region you need and drill into it
-agent-desktop snapshot --root @e2 -i --compact
+agent-desktop snapshot --root @e2 --snapshot s8f... -i --compact
 # Now you see all 42 children inside "Channels" with full refs
 
 # 3. Act on an element found in the drill-down
-agent-desktop click @e18  # Click "general" channel
+agent-desktop click @e18 --snapshot s8f...  # Click "general" channel
 
 # 4. Re-drill the same or a different region to verify / continue
-agent-desktop snapshot --root @e3 -i --compact
+agent-desktop snapshot --root @e3 --snapshot s8f... -i --compact
 # Scoped invalidation: only @e3's previous refs are replaced
 # @e2's drill-down refs and the skeleton refs are preserved
 
 # 5. Drill into another region as needed — refs accumulate
-agent-desktop snapshot --root @e1 -i --compact
+agent-desktop snapshot --root @e1 --snapshot s8f... -i --compact
 # Now you have refs from skeleton + @e2 drill + @e3 drill + @e1 drill
 ```
 
@@ -55,21 +58,22 @@ agent-desktop snapshot --root @e1 -i --compact
 ```bash
 # For simple apps, full snapshot is fine
 agent-desktop snapshot --app "System Settings" -i
+# Keep snapshot_id = s8f...
 
 # For dense apps, use skeleton first to find the form region, then drill
 # agent-desktop snapshot --skeleton --app "System Settings" -i --compact
-# agent-desktop snapshot --root @e5 -i --compact
+# agent-desktop snapshot --root @e5 --snapshot s8f... -i --compact
 
 # Found: @e3 = "Computer Name" textfield, @e5 = "Local Hostname" textfield
 
 # Clear and fill each field
-agent-desktop clear @e3
-agent-desktop type @e3 "My MacBook Pro"
-agent-desktop clear @e5
-agent-desktop type @e5 "my-macbook-pro"
+agent-desktop clear @e3 --snapshot s8f...
+agent-desktop type @e3 --snapshot s8f... "My MacBook Pro"
+agent-desktop clear @e5 --snapshot s8f...
+agent-desktop type @e5 --snapshot s8f... "my-macbook-pro"
 
 # Click the save/apply button
-agent-desktop click @e8
+agent-desktop click @e8 --snapshot s8f...
 
 # Verify success — re-snapshot or re-drill
 agent-desktop snapshot --app "System Settings" -i
@@ -82,12 +86,12 @@ agent-desktop snapshot --app "System Settings" -i
 agent-desktop snapshot --app "TextEdit" --surface menubar -i
 # Found: @e1 = "File" menuitem
 
-agent-desktop click @e1
+agent-desktop click @e1 --snapshot s8f...
 agent-desktop wait --menu --app "TextEdit"
 agent-desktop snapshot --app "TextEdit" --surface menu -i
 # Found: @e5 = "Save As..." menuitem
 
-agent-desktop click @e5
+agent-desktop click @e5 --snapshot s9a...
 
 # 2. Wait for the dialog, then snapshot the SHEET surface (not the full window)
 agent-desktop wait --window "Save"
@@ -97,19 +101,16 @@ agent-desktop snapshot --app "TextEdit" --surface sheet -i
 ## Pattern: Right-Click Context Menu
 
 ```bash
-# 1. Right-click the target element
+# 1. Right-click the target element. Success means a menu surface was verified.
 agent-desktop right-click @e3
 
-# 2. Wait for context menu to appear
-agent-desktop wait --menu --app "Finder" --timeout 3000
-
-# 3. Snapshot the menu surface
+# 2. Use the returned menu tree, or snapshot the menu surface if you need a fresh read.
 agent-desktop snapshot --app "Finder" --surface menu -i
 
-# 4. Click the desired menu item
-agent-desktop click @e7
+# 3. Click the desired menu item
+agent-desktop click @e7 --snapshot s8f...
 
-# 5. Wait for menu to close
+# 4. Wait for menu to close
 agent-desktop wait --menu-closed --app "Finder" --timeout 2000
 ```
 
@@ -124,10 +125,10 @@ agent-desktop snapshot --app "TextEdit" --surface sheet -i
 # For alerts: --surface alert | For popovers: --surface popover
 
 # Fill dialog fields
-agent-desktop type @e2 "my-document.txt"
+agent-desktop type @e2 --snapshot s8f... "my-document.txt"
 
 # Click OK/Save
-agent-desktop click @e5
+agent-desktop click @e5 --snapshot s8f...
 
 # After dialog closes, snapshot the window again for fresh refs
 agent-desktop snapshot --app "TextEdit" -i
@@ -143,24 +144,24 @@ agent-desktop snapshot --skeleton --app "App" -i --compact
 # Found: @e2 = group "Content" (children_count: 200)
 
 # 2. Drill into the region to get a scroll area ref
-agent-desktop snapshot --root @e2 -i --compact
+agent-desktop snapshot --root @e2 --snapshot s8f... -i --compact
 # Found: @e8 = scroll area
 
 # 3. Scroll and search in a loop
-agent-desktop scroll @e8 --direction down --amount 5
+agent-desktop scroll @e8 --snapshot s8f... --direction down --amount 5
 agent-desktop find --app "App" --name "Target Item"
 # If no matches, scroll again
-agent-desktop scroll @e8 --direction down --amount 5
+agent-desktop scroll @e8 --snapshot s8f... --direction down --amount 5
 agent-desktop find --app "App" --name "Target Item"
 # Found: @e14 = "Target Item"
-agent-desktop click @e14
+agent-desktop click @e14 --snapshot s9a...
 ```
 
 ## Pattern: Tab Through Fields
 
 ```bash
 # For sequential form filling without needing refs for each field:
-agent-desktop click @e1          # Focus first field
+agent-desktop focus @e1          # Explicit focus change
 agent-desktop type @e1 "value1"
 agent-desktop press tab
 # Now in next field — type directly since focus moved
@@ -175,7 +176,7 @@ agent-desktop type @e3 "value3"  # Or snapshot again to get new refs
 agent-desktop get @e5 --property value
 
 # Option B: Copy via keyboard
-agent-desktop click @e5
+agent-desktop focus @e5
 agent-desktop press cmd+a
 agent-desktop press cmd+c
 agent-desktop clipboard-get
@@ -198,13 +199,13 @@ agent-desktop drag --from @e3 --to-xy 500,400 --duration 500
 
 ```bash
 # After triggering a long operation:
-agent-desktop click @e5  # "Download" button
+agent-desktop click @e5 --snapshot s8f...  # "Download" button
 
 # Wait for completion text
 agent-desktop wait --text "Download complete" --app "App" --timeout 30000
 
 # Or wait for a specific element to appear
-agent-desktop wait --element @e10 --timeout 10000
+agent-desktop wait --element @e10 --snapshot <snapshot_id> --timeout 10000
 ```
 
 ## Pattern: Launch, Automate, Close
@@ -218,7 +219,7 @@ agent-desktop snapshot --app "Calculator" -i
 # Dense app → skeleton first
 # agent-desktop launch "Slack"
 # agent-desktop snapshot --skeleton --app "Slack" -i --compact
-# agent-desktop snapshot --root @e2 -i --compact
+# agent-desktop snapshot --root @e2 --snapshot s8f... -i --compact
 
 # ... perform automation ...
 
@@ -257,9 +258,9 @@ agent-desktop uncheck @e6  # No-op if already unchecked
 ```bash
 # Run multiple commands atomically
 agent-desktop batch '[
-  {"command":"click","args":{"ref_id":"@e1"}},
+  {"command":"click","args":{"ref_id":"@e1","snapshot":"s8f..."}},
   {"command":"wait","args":{"ms":200}},
-  {"command":"type","args":{"ref_id":"@e2","text":"hello"}},
+  {"command":"type","args":{"ref_id":"@e2","snapshot":"s8f...","text":"hello"}},
   {"command":"press","args":{"combo":"return"}}
 ]' --stop-on-error
 ```
@@ -275,3 +276,4 @@ agent-desktop batch '[
 7. **Assuming UI stability.** Re-drill the affected region after every action that could change the UI.
 8. **Snapshotting the full window when an overlay is open.** Use `--surface sheet/alert/popover/menu` instead. Never `--skeleton` for surfaces — they're already focused.
 9. **Re-snapshotting everything after one action.** Use scoped re-drill (`--root @ref`) to refresh only the affected region. Other refs stay valid.
+10. **Relying on implicit focus or cursor movement.** Non-mouse ref commands use semantic paths and block silent physical/headed paths.

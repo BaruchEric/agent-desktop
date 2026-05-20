@@ -49,42 +49,45 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Cache build artifacts
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: target/
-          key: ${{ runner.os }}-build-ci-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/*.rs') }}
+          key: ${{ runner.os }}-build-ci-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
           restore-keys: |
-            ${{ runner.os }}-build-ci-${{ hashFiles('**/Cargo.toml') }}-
+            ${{ runner.os }}-build-ci-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}-
             ${{ runner.os }}-build-ci-
 
       - name: Check dependency isolation
         run: |
-          if cargo tree -p agent-desktop-core 2>/dev/null | grep -E 'agent-desktop-(macos|windows|linux)'; then
+          if cargo tree --locked -p agent-desktop-core 2>/dev/null | grep -E 'agent-desktop-(macos|windows|linux)'; then
             echo "FAIL: core crate depends on platform crates"
             exit 1
           fi
           echo "OK: core crate has no platform dependencies"
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Unit tests
-        run: cargo test --lib --workspace
+        run: cargo test --locked --lib --workspace
+
+      - name: Binary command tests
+        run: cargo test --locked -p agent-desktop
 
       # The FFI crate ships integration harnesses under crates/ffi/tests/ that
       # exercise the C-ABI from outside the crate (raw extern "C" decls, enum
       # fuzzing, out-param zeroing, last-error lifetimes). The workspace --lib
       # run skips them, so wire them in explicitly so regressions fail PR CI.
       - name: FFI integration tests
-        run: cargo test -p agent-desktop-ffi --tests
+        run: cargo test --locked -p agent-desktop-ffi --tests
 
       # Use the ci profile (no LTO, opt-level 1) — fast compile, still checks the binary builds.
       - name: Build binary (ci profile)
-        run: cargo build --profile ci
+        run: cargo build --locked --profile ci
 
       - name: Check binary size
         run: |
@@ -98,27 +101,33 @@ jobs:
           echo "OK: binary within 15MB limit"
 
       - name: FFI cdylib build (release-ffi profile)
-        run: cargo build --profile release-ffi -p agent-desktop-ffi
+        run: cargo build --locked --profile release-ffi -p agent-desktop-ffi
 
-      - name: FFI header drift check
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+
+      - name: NPM package contents
+        run: node scripts/check-npm-package.js
+
+      - name: NPM wrapper smoke
         run: |
-          # build.rs stamps target/ffi-header-path.txt with the absolute path
-          # to the header produced by the most recent build, so the drift
-          # check always compares against the just-generated artifact rather
-          # than an arbitrary match from `find | head -1` over a warm cache.
-          STAMP=target/ffi-header-path.txt
-          if [ ! -f "$STAMP" ]; then
-            echo "FAIL: $STAMP missing; build.rs did not stamp header path"
-            exit 1
-          fi
-          GENERATED=$(cat "$STAMP")
-          if [ ! -f "$GENERATED" ]; then
-            echo "FAIL: stamped header path does not exist: $GENERATED"
-            exit 1
-          fi
-          if ! diff -u crates/ffi/include/agent_desktop.h "$GENERATED"; then
-            echo "FAIL: crates/ffi/include/agent_desktop.h is out of date"
-            echo "Run 'scripts/update-ffi-header.sh' locally and commit the regenerated header."
-            exit 1
-          fi
-          echo "OK: FFI header is in sync with source"
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64) NAME=agent-desktop-darwin-arm64 ;;
+            Darwin-x86_64) NAME=agent-desktop-darwin-x64 ;;
+            *)
+              echo "Unsupported smoke-test platform: $(uname -s)-$(uname -m)"
+              exit 1
+              ;;
+          esac
+          trap 'rm -f "npm/bin/${NAME}"' EXIT
+          cp target/ci/agent-desktop "npm/bin/${NAME}"
+          chmod +x "npm/bin/${NAME}"
+          node npm/bin/agent-desktop.js version --json > /tmp/agent-desktop-version.json
+          node -e "
+            const out = require('fs').readFileSync('/tmp/agent-desktop-version.json', 'utf8');
+            const json = JSON.parse(out);
+            if (json.ok !== true || !json.data || typeof json.data.version !== 'string') {
+              throw new Error('agent-desktop npm wrapper did not return version JSON');
+            }
+          "

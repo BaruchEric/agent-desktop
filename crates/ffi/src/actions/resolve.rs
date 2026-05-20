@@ -1,16 +1,17 @@
+use crate::AdAdapter;
 use crate::convert::string::{c_to_string, try_c_to_string};
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
-use crate::AdAdapter;
 use agent_desktop_core::refs::RefEntry as CoreRefEntry;
+use std::mem::ManuallyDrop;
 
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
 /// `entry` must be a non-null pointer to a valid `AdRefEntry`.
 /// `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_resolve_element(
     adapter: *const AdAdapter,
     entry: *const AdRefEntry,
@@ -66,10 +67,16 @@ pub unsafe extern "C" fn ad_resolve_element(
             bounds_hash,
             available_actions: vec![],
             source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
             root_ref: None,
+            path_is_absolute: false,
+            path: smallvec::SmallVec::new(),
         };
         match adapter.inner.resolve_element(&core_entry) {
             Ok(handle) => {
+                let handle = ManuallyDrop::new(handle);
                 (*out).ptr = handle.as_raw();
                 AdResult::Ok
             }

@@ -3,8 +3,7 @@
 **/*.rs.bk
 
 # Cargo
-Cargo.lock
-!crates/*/Cargo.lock
+!Cargo.lock
 
 # macOS
 .DS_Store

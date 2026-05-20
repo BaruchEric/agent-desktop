@@ -6,6 +6,7 @@ module: crates/ffi
 problem_type: best_practice
 component: tooling
 severity: medium
+status: superseded_for_agent_desktop
 applies_when:
   - A build script (cbindgen, bindgen, codegen) writes an artifact to $OUT_DIR whose path includes a cargo-generated hash
   - CI or a developer script needs to locate that artifact after the build finishes
@@ -22,6 +23,12 @@ tags:
 ---
 
 ## Problem
+
+Update, 2026-05-19: `agent-desktop` no longer uses this pattern for the FFI
+header. `cbindgen` is intentionally denied from the Cargo dependency graph, and
+`crates/ffi/include/agent_desktop.h` is treated as the committed C ABI
+contract. The pattern below still applies to projects that deliberately run a
+build-script generator in the normal Cargo build graph.
 
 Cargo puts build-script artifacts under a hash-randomized directory:
 
@@ -122,8 +129,6 @@ explicit developer action (dedicated script) or CI-only step.
 
 ## References
 
-- `crates/ffi/build.rs` — the stamping logic
-- `.github/workflows/ci.yml` — "FFI header drift check" step
-- `scripts/update-ffi-header.sh` — developer-facing refresh script
+- `scripts/update-ffi-header.sh` — explicit maintainer refresh script
 - Todo `006-ready-p2-deterministic-ffi-header-drift-path` — the bug this
   pattern resolves

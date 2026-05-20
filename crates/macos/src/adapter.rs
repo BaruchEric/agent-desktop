@@ -1,8 +1,9 @@
 use agent_desktop_core::{
-    action::{Action, ActionResult, DragParams, MouseEvent, WindowOp},
+    PermissionReport,
+    action::{ActionRequest, ActionResult, DragParams, ElementState, MouseEvent, WindowOp},
     adapter::{
-        ImageBuffer, NativeHandle, PermissionStatus, PlatformAdapter, ScreenshotTarget,
-        SnapshotSurface, TreeOptions, WindowFilter,
+        ImageBuffer, NativeHandle, PlatformAdapter, ScreenshotTarget, SnapshotSurface, TreeOptions,
+        WindowFilter,
     },
     error::AdapterError,
     node::{AccessibilityNode, AppInfo, Rect, SurfaceInfo, WindowInfo},
@@ -26,8 +27,16 @@ impl Default for MacOSAdapter {
 }
 
 impl PlatformAdapter for MacOSAdapter {
-    fn check_permissions(&self) -> PermissionStatus {
-        crate::system::permissions::check()
+    fn permission_report(&self) -> PermissionReport {
+        crate::system::permissions::report()
+    }
+
+    fn request_permissions(&self) -> PermissionReport {
+        crate::system::permissions::request_report()
+    }
+
+    fn unknown_accessibility_means_unsupported(&self) -> bool {
+        false
     }
 
     fn get_tree(
@@ -51,16 +60,25 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         };
         let mut visited = FxHashSet::default();
-        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut visited, opts.skeleton)
-            .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
+        let context = crate::tree::TreeBuildContext::for_pid(win.pid, opts.include_bounds);
+        crate::tree::build_subtree(
+            &el,
+            0,
+            0,
+            opts.max_depth,
+            &mut visited,
+            opts.skeleton,
+            &context,
+        )
+        .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
     }
 
     fn execute_action(
         &self,
         handle: &NativeHandle,
-        action: Action,
+        request: ActionRequest,
     ) -> Result<ActionResult, AdapterError> {
-        execute_action_impl(handle, action)
+        execute_action_impl(handle, request)
     }
 
     fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
@@ -79,11 +97,11 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
-        list_windows_impl(filter)
+        crate::system::window_list::list_windows_impl(filter)
     }
 
     fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
-        crate::system::app_ops::list_apps_impl()
+        crate::system::app_list::list_apps_impl()
     }
 
     fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError> {
@@ -143,15 +161,28 @@ impl PlatformAdapter for MacOSAdapter {
         #[cfg(target_os = "macos")]
         {
             use crate::tree::AXElement;
-            use accessibility_sys::kAXValueAttribute;
             use std::mem::ManuallyDrop;
             let el = ManuallyDrop::new(AXElement(
                 handle.as_raw() as accessibility_sys::AXUIElementRef
             ));
-            Ok(crate::tree::copy_string_attr(&el, kAXValueAttribute))
+            Ok(crate::tree::copy_value_typed(&el))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_value"))
+    }
+
+    fn get_live_state(&self, handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            use crate::tree::AXElement;
+            use std::mem::ManuallyDrop;
+            let el = ManuallyDrop::new(AXElement(
+                handle.as_raw() as accessibility_sys::AXUIElementRef
+            ));
+            Ok(Some(crate::actions::post_state::read_element_state(&el)))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(AdapterError::not_supported("get_live_state"))
     }
 
     fn get_element_bounds(&self, handle: &NativeHandle) -> Result<Option<Rect>, AdapterError> {
@@ -177,6 +208,14 @@ impl PlatformAdapter for MacOSAdapter {
 
     fn mouse_event(&self, event: MouseEvent) -> Result<(), AdapterError> {
         crate::input::mouse::synthesize_mouse(event)
+    }
+
+    fn key_event(
+        &self,
+        combo: &agent_desktop_core::action::KeyCombo,
+        down: bool,
+    ) -> Result<(), AdapterError> {
+        crate::input::keyboard::synthesize_key_state(combo, down)
     }
 
     fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
@@ -230,21 +269,29 @@ impl PlatformAdapter for MacOSAdapter {
             handle.as_raw() as accessibility_sys::AXUIElementRef
         ));
         let mut ancestors = FxHashSet::default();
-        crate::tree::build_subtree(&el, 0, 0, opts.max_depth, &mut ancestors, opts.skeleton)
-            .ok_or_else(|| {
-                AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::ElementNotFound,
-                    "Element no longer exists in accessibility tree",
-                )
-                .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
-            })
+        let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
+        crate::tree::build_subtree(
+            &el,
+            0,
+            0,
+            opts.max_depth,
+            &mut ancestors,
+            opts.skeleton,
+            &context,
+        )
+        .ok_or_else(|| {
+            AdapterError::new(
+                agent_desktop_core::error::ErrorCode::ElementNotFound,
+                "Element no longer exists in accessibility tree",
+            )
+            .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
+        })
     }
 }
 
-#[cfg(target_os = "macos")]
 fn execute_action_impl(
     handle: &NativeHandle,
-    action: Action,
+    request: ActionRequest,
 ) -> Result<ActionResult, AdapterError> {
     use crate::tree::AXElement;
     use std::mem::ManuallyDrop;
@@ -252,103 +299,5 @@ fn execute_action_impl(
     let el = ManuallyDrop::new(AXElement(
         handle.as_raw() as accessibility_sys::AXUIElementRef
     ));
-    crate::actions::perform_action(&el, &action)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn execute_action_impl(
-    _handle: &NativeHandle,
-    _action: Action,
-) -> Result<ActionResult, AdapterError> {
-    Err(AdapterError::not_supported("execute_action"))
-}
-
-pub(crate) fn list_windows_impl(filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
-    #[cfg(target_os = "macos")]
-    {
-        use core_foundation::base::{CFType, TCFType};
-        use core_foundation::number::CFNumber;
-        use core_foundation::string::CFString;
-        use core_foundation_sys::dictionary::CFDictionaryGetValue;
-        use core_graphics::display::CGDisplay;
-        use core_graphics::window::{
-            kCGWindowLayer, kCGWindowListOptionOnScreenOnly, kCGWindowName, kCGWindowOwnerName,
-            kCGWindowOwnerPID,
-        };
-        use rustc_hash::FxHasher;
-        use std::ffi::c_void;
-        use std::hash::{Hash, Hasher};
-
-        unsafe fn dict_string(dict: *const c_void, key: *const c_void) -> Option<String> {
-            let val = CFDictionaryGetValue(dict as _, key);
-            if val.is_null() {
-                return None;
-            }
-            CFType::wrap_under_get_rule(val as _)
-                .downcast::<CFString>()
-                .map(|s| s.to_string())
-        }
-
-        unsafe fn dict_i64(dict: *const c_void, key: *const c_void) -> Option<i64> {
-            let val = CFDictionaryGetValue(dict as _, key);
-            if val.is_null() {
-                return None;
-            }
-            CFType::wrap_under_get_rule(val as _)
-                .downcast::<CFNumber>()
-                .and_then(|n| n.to_i64())
-        }
-
-        let arr = match CGDisplay::window_list_info(kCGWindowListOptionOnScreenOnly, None) {
-            Some(a) => a,
-            None => return Ok(vec![]),
-        };
-
-        let app_filter = filter.app.as_deref().unwrap_or("").to_lowercase();
-        let mut windows = Vec::new();
-
-        for raw in arr.get_all_values() {
-            if raw.is_null() {
-                continue;
-            }
-            let layer = unsafe { dict_i64(raw, kCGWindowLayer as _) }.unwrap_or(99);
-            if layer != 0 {
-                continue;
-            }
-
-            let app_name = match unsafe { dict_string(raw, kCGWindowOwnerName as _) } {
-                Some(n) if !n.is_empty() => n,
-                _ => continue,
-            };
-            if !app_filter.is_empty() && !app_name.to_lowercase().contains(&app_filter) {
-                continue;
-            }
-
-            let title = match unsafe { dict_string(raw, kCGWindowName as _) } {
-                Some(t) if !t.is_empty() => t,
-                _ => app_name.clone(),
-            };
-
-            let pid = unsafe { dict_i64(raw, kCGWindowOwnerPID as _) }.unwrap_or(0) as i32;
-            let mut h = FxHasher::default();
-            pid.hash(&mut h);
-            title.hash(&mut h);
-            let id = format!("w-{:x}", h.finish() & 0xFFFFFF);
-
-            windows.push(WindowInfo {
-                id,
-                title,
-                app: app_name,
-                pid,
-                bounds: None,
-                is_focused: windows.is_empty(),
-            });
-        }
-        Ok(windows)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = filter;
-        Err(AdapterError::not_supported("list_windows"))
-    }
+    crate::actions::perform_action(&el, &request)
 }
