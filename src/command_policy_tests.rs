@@ -4,6 +4,8 @@ use crate::cli_args::{RefArgs, ScreenshotArgs, SnapshotArgs};
 use agent_desktop_core::{PermissionReport, PermissionState};
 use clap::CommandFactory;
 
+const VALID_REF_ID: &str = "@e1";
+
 #[test]
 fn every_cli_subcommand_has_policy() {
     for subcommand in Cli::command().get_subcommands() {
@@ -117,7 +119,7 @@ fn accessibility_denial_is_preflighted_for_ax_commands() {
         automation: PermissionState::NotRequired,
     };
     let command = Commands::Click(crate::cli_args::RefArgs {
-        ref_id: "@e1".into(),
+        ref_id: VALID_REF_ID.into(),
         snapshot_id: None,
     });
 

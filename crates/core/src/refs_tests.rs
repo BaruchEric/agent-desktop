@@ -63,6 +63,24 @@ fn test_get_missing() {
 }
 
 #[test]
+fn test_validate_ref_id_accepts_positive_element_refs() {
+    assert!(validate_ref_id("@e1").is_ok());
+    assert!(validate_ref_id("@e14").is_ok());
+    assert!(validate_ref_id("@e999").is_ok());
+}
+
+#[test]
+fn test_validate_ref_id_rejects_malformed_refs() {
+    assert!(validate_ref_id("@").is_err());
+    assert!(validate_ref_id("e1").is_err());
+    assert!(validate_ref_id("@e").is_err());
+    assert!(validate_ref_id("@e0").is_err());
+    assert!(validate_ref_id("@e0abc").is_err());
+    assert!(validate_ref_id("1").is_err());
+    assert!(validate_ref_id("").is_err());
+}
+
+#[test]
 fn test_remove_by_root_ref() {
     let mut map = RefMap::new();
     let base = entry("button", Some("OK"));

@@ -149,21 +149,3 @@ fn restore_can_run_when_no_window_is_currently_listed() {
     assert_eq!(value["restored"], true);
     assert_eq!(adapter.op_count.load(Ordering::SeqCst), 1);
 }
-
-#[test]
-fn test_valid_refs() {
-    assert!(validate_ref_id("@e1").is_ok());
-    assert!(validate_ref_id("@e14").is_ok());
-    assert!(validate_ref_id("@e999").is_ok());
-}
-
-#[test]
-fn test_invalid_refs() {
-    assert!(validate_ref_id("@").is_err());
-    assert!(validate_ref_id("e1").is_err());
-    assert!(validate_ref_id("@e").is_err());
-    assert!(validate_ref_id("@e0").is_err());
-    assert!(validate_ref_id("@e0abc").is_err());
-    assert!(validate_ref_id("1").is_err());
-    assert!(validate_ref_id("").is_err());
-}

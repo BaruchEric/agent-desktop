@@ -1,10 +1,10 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::{helpers::resolve_app_pid, helpers::validate_ref_id},
+    commands::helpers::resolve_app_pid,
     error::{AppError, ErrorCode},
     node::AccessibilityNode,
     notification::NotificationFilter,
-    refs::RefMap,
+    refs::{RefMap, validate_ref_id},
     refs_store::RefStore,
     search_text, snapshot,
 };

@@ -1,7 +1,7 @@
 use crate::{
     adapter::{PlatformAdapter, SnapshotSurface},
-    commands::helpers::validate_ref_id,
     error::AppError,
+    refs::validate_ref_id,
     snapshot, snapshot_ref,
 };
 use serde_json::{Value, json};

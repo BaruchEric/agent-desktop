@@ -3,7 +3,7 @@ use crate::{
     adapter::{PlatformAdapter, WindowFilter},
     error::AppError,
     node::WindowInfo,
-    refs::RefEntry,
+    refs::{RefEntry, validate_ref_id},
     refs_store::RefStore,
     resolved_element::ResolvedElement,
     window_lookup,
@@ -44,20 +44,6 @@ pub(crate) fn resolve_ref<'a>(
     let handle = adapter.resolve_element(&entry)?;
     tracing::debug!("resolve: {} resolved successfully", ref_id);
     Ok((entry, ResolvedElement::new(adapter, handle)))
-}
-
-pub(crate) fn validate_ref_id(ref_id: &str) -> Result<(), AppError> {
-    let valid = ref_id.starts_with("@e")
-        && ref_id.len() >= 3
-        && ref_id.len() <= 12
-        && ref_id[2..].chars().all(|c| c.is_ascii_digit())
-        && ref_id[2..].parse::<u32>().is_ok_and(|n| n > 0);
-    if !valid {
-        return Err(AppError::invalid_input(format!(
-            "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
-        )));
-    }
-    Ok(())
 }
 
 pub(crate) fn resolve_app_pid(

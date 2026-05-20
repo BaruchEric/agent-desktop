@@ -1,13 +1,10 @@
 use agent_desktop_core::{
     PermissionReport,
     error::{AdapterError, AppError, ErrorCode},
+    refs::validate_ref_id,
 };
 
 use crate::cli::Commands;
-use crate::dispatch_parse::{
-    parse_direction, parse_get_property, parse_is_property, parse_mouse_button, parse_xy,
-    parse_xy_opt,
-};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PermissionNeed {
@@ -117,16 +114,14 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
                         "--root cannot be combined with --surface",
                     ));
                 }
-                validate_cli_ref_id(root)?;
+                validate_ref_id(root)?;
             }
         }
         Commands::Get(args) => {
-            validate_cli_ref_id(&args.ref_id)?;
-            parse_get_property(&args.property)?;
+            validate_ref_id(&args.ref_id)?;
         }
         Commands::Is(args) => {
-            validate_cli_ref_id(&args.ref_id)?;
-            parse_is_property(&args.property)?;
+            validate_ref_id(&args.ref_id)?;
         }
         Commands::Click(args)
         | Commands::DoubleClick(args)
@@ -140,64 +135,66 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Expand(args)
         | Commands::Collapse(args)
         | Commands::ScrollTo(args) => {
-            validate_cli_ref_id(&args.ref_id)?;
+            validate_ref_id(&args.ref_id)?;
         }
-        Commands::Type(args) => validate_cli_ref_id(&args.ref_id)?,
-        Commands::SetValue(args) => validate_cli_ref_id(&args.ref_id)?,
-        Commands::Select(args) => validate_cli_ref_id(&args.ref_id)?,
+        Commands::Type(args) => validate_ref_id(&args.ref_id)?,
+        Commands::SetValue(args) => validate_ref_id(&args.ref_id)?,
+        Commands::Select(args) => validate_ref_id(&args.ref_id)?,
         Commands::Scroll(args) => {
-            validate_cli_ref_id(&args.ref_id)?;
-            parse_direction(&args.direction)?;
+            validate_ref_id(&args.ref_id)?;
         }
         Commands::Hover(args) => {
             if let Some(ref_id) = &args.ref_id {
-                validate_cli_ref_id(ref_id)?;
+                validate_ref_id(ref_id)?;
             }
-            parse_xy_opt(args.xy.as_deref())?;
         }
         Commands::Drag(args) => {
             if let Some(ref_id) = &args.from {
-                validate_cli_ref_id(ref_id)?;
+                validate_ref_id(ref_id)?;
             }
             if let Some(ref_id) = &args.to {
-                validate_cli_ref_id(ref_id)?;
+                validate_ref_id(ref_id)?;
             }
-            parse_xy_opt(args.from_xy.as_deref())?;
-            parse_xy_opt(args.to_xy.as_deref())?;
-        }
-        Commands::MouseMove(args) => {
-            parse_xy(&args.xy)?;
-        }
-        Commands::MouseClick(args) => {
-            parse_xy(&args.xy)?;
-            parse_mouse_button(&args.button)?;
-        }
-        Commands::MouseDown(args) | Commands::MouseUp(args) => {
-            parse_xy(&args.xy)?;
-            parse_mouse_button(&args.button)?;
         }
         Commands::Wait(args) => {
             if let Some(ref_id) = &args.element {
-                validate_cli_ref_id(ref_id)?;
+                validate_ref_id(ref_id)?;
             }
         }
-        _ => {}
+        Commands::Find(_)
+        | Commands::Screenshot(_)
+        | Commands::Press(_)
+        | Commands::KeyDown(_)
+        | Commands::KeyUp(_)
+        | Commands::MouseMove(_)
+        | Commands::MouseClick(_)
+        | Commands::MouseDown(_)
+        | Commands::MouseUp(_)
+        | Commands::Launch(_)
+        | Commands::CloseApp(_)
+        | Commands::ListWindows(_)
+        | Commands::ListApps(_)
+        | Commands::FocusWindow(_)
+        | Commands::ResizeWindow(_)
+        | Commands::MoveWindow(_)
+        | Commands::Minimize(_)
+        | Commands::Maximize(_)
+        | Commands::Restore(_)
+        | Commands::ListSurfaces(_)
+        | Commands::ListNotifications(_)
+        | Commands::DismissNotification(_)
+        | Commands::DismissAllNotifications(_)
+        | Commands::NotificationAction(_)
+        | Commands::ClipboardGet
+        | Commands::ClipboardSet(_)
+        | Commands::ClipboardClear
+        | Commands::Status
+        | Commands::Permissions(_)
+        | Commands::Version(_)
+        | Commands::Batch(_)
+        | Commands::Skills(_) => {}
     }
     Ok(())
-}
-
-fn validate_cli_ref_id(ref_id: &str) -> Result<(), AppError> {
-    let valid = ref_id.starts_with("@e")
-        && ref_id.len() >= 3
-        && ref_id.len() <= 12
-        && ref_id[2..].chars().all(|c| c.is_ascii_digit())
-        && ref_id[2..].parse::<u32>().is_ok_and(|n| n > 0);
-    if valid {
-        return Ok(());
-    }
-    Err(AppError::invalid_input(format!(
-        "Invalid ref_id '{ref_id}': must match @e{{N}} where N is a positive integer"
-    )))
 }
 
 fn requires_accessibility(permission: PermissionNeed) -> bool {
