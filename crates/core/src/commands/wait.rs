@@ -1,12 +1,12 @@
 use crate::{
     adapter::{PlatformAdapter, WindowFilter},
-    commands::{helpers::resolve_app_pid, helpers::validate_ref_id, search_text},
+    commands::{helpers::resolve_app_pid, helpers::validate_ref_id},
     error::{AppError, ErrorCode},
     node::AccessibilityNode,
     notification::NotificationFilter,
     refs::RefMap,
     refs_store::RefStore,
-    snapshot,
+    search_text, snapshot,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -235,6 +235,7 @@ fn wait_for_text(
     let timeout = Duration::from_millis(timeout_ms);
     let opts = crate::adapter::TreeOptions::default();
     let normalized_text = search_text::normalize(&text);
+    let mut interval = Duration::from_millis(200);
 
     loop {
         if let Ok(result) = snapshot::build(adapter, &opts, app.as_deref(), None) {
@@ -252,13 +253,15 @@ fn wait_for_text(
             }
         }
 
-        if start.elapsed() >= timeout {
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
             return Err(AppError::Adapter(crate::error::AdapterError::timeout(
                 format!("Text '{text}' not found within {timeout_ms}ms"),
             )));
         }
 
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(remaining.min(interval));
+        interval = (interval * 2).min(Duration::from_millis(1000));
     }
 }
 

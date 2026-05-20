@@ -15,14 +15,15 @@ mod imp {
     use super::*;
     use crate::tree::ax_element::AXElement;
     use accessibility_sys::{
-        AXUIElementCopyAttributeValue, AXUIElementCopyMultipleAttributeValues,
-        AXUIElementCreateApplication, AXUIElementRef, AXUIElementSetMessagingTimeout,
+        AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
+        AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication,
+        AXUIElementGetAttributeValueCount, AXUIElementRef, AXUIElementSetMessagingTimeout,
         kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute,
         kAXTitleAttribute, kAXValueAttribute,
     };
     use core_foundation::{
         array::CFArray,
-        base::{CFRelease, CFRetain, CFType, CFTypeRef, TCFType},
+        base::{CFRetain, CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
         number::CFNumber,
         string::CFString,
@@ -227,6 +228,32 @@ mod imp {
         Some(children)
     }
 
+    pub fn copy_ax_array_prefix(
+        el: &AXElement,
+        attr: &str,
+        max_values: usize,
+    ) -> Option<Vec<AXElement>> {
+        if max_values == 0 {
+            return Some(Vec::new());
+        }
+        let cf_attr = CFString::new(attr);
+        let mut value: core_foundation_sys::array::CFArrayRef = std::ptr::null();
+        let err = unsafe {
+            AXUIElementCopyAttributeValues(
+                el.0,
+                cf_attr.as_concrete_TypeRef(),
+                0,
+                max_values as core_foundation_sys::base::CFIndex,
+                &mut value,
+            )
+        };
+        if err != kAXErrorSuccess || value.is_null() {
+            return None;
+        }
+        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
+        Some(ax_array_items(arr))
+    }
+
     pub fn copy_element_attr(el: &AXElement, attr: &str) -> Option<AXElement> {
         let cf_attr = CFString::new(attr);
         let mut value: CFTypeRef = std::ptr::null_mut();
@@ -243,24 +270,35 @@ mod imp {
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
         unsafe {
             for attr_name in child_attributes(ax_role) {
-                let mut value: core_foundation::base::CFTypeRef = std::ptr::null();
+                let mut count: core_foundation_sys::base::CFIndex = 0;
                 let attr = CFString::from_static_string(attr_name);
-                let err = AXUIElementCopyAttributeValue(
+                let err = AXUIElementGetAttributeValueCount(
                     element.0,
                     attr.as_concrete_TypeRef(),
-                    &mut value,
+                    &mut count,
                 );
-                if err != kAXErrorSuccess || value.is_null() {
+                if err != kAXErrorSuccess {
                     continue;
                 }
-                let count = core_foundation_sys::array::CFArrayGetCount(value as _);
-                CFRelease(value);
                 if count > 0 {
                     return count as u32;
                 }
             }
             0
         }
+    }
+
+    fn ax_array_items(arr: CFArray<CFType>) -> Vec<AXElement> {
+        arr.into_iter()
+            .filter_map(|item| {
+                let ptr = item.as_concrete_TypeRef() as AXUIElementRef;
+                if ptr.is_null() {
+                    return None;
+                }
+                unsafe { CFRetain(ptr as CFTypeRef) };
+                Some(AXElement(ptr))
+            })
+            .collect()
     }
 }
 
@@ -273,6 +311,14 @@ mod imp {
     }
 
     pub fn copy_ax_array(_el: &AXElement, _attr: &str) -> Option<Vec<AXElement>> {
+        None
+    }
+
+    pub fn copy_ax_array_prefix(
+        _el: &AXElement,
+        _attr: &str,
+        _max_values: usize,
+    ) -> Option<Vec<AXElement>> {
         None
     }
 
@@ -318,6 +364,7 @@ mod imp {
 }
 
 pub use imp::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_i64_attr, copy_string_attr,
-    copy_value_typed, count_children, element_for_pid, fetch_node_attrs, resolve_element_name,
+    copy_ax_array, copy_ax_array_prefix, copy_bool_attr, copy_element_attr, copy_i64_attr,
+    copy_string_attr, copy_value_typed, count_children, element_for_pid, fetch_node_attrs,
+    resolve_element_name,
 };

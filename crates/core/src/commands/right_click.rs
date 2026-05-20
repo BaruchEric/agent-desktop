@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, ActionRequest},
-    adapter::{PlatformAdapter, SnapshotSurface, TreeOptions, WindowFilter},
-    commands::helpers::{RefArgs, resolve_ref},
+    adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
+    commands::helpers::{RefArgs, find_window_for_pid, resolve_ref},
     error::AppError,
     refs::RefEntry,
     snapshot,
@@ -50,18 +50,9 @@ fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<Str
     if entry.source_app.is_some() {
         return entry.source_app.clone();
     }
-    adapter
-        .list_windows(&WindowFilter {
-            focused_only: false,
-            app: None,
-        })
+    find_window_for_pid(entry.pid, adapter)
         .ok()
-        .and_then(|windows| {
-            windows
-                .into_iter()
-                .find(|window| window.pid == entry.pid)
-                .map(|window| window.app)
-        })
+        .map(|window| window.app)
 }
 
 fn probe_error_json(err: &AppError) -> Value {

@@ -1,6 +1,5 @@
 use crate::{
-    adapter::PlatformAdapter, commands::search_text, error::AppError, node::AccessibilityNode,
-    snapshot,
+    adapter::PlatformAdapter, error::AppError, node::AccessibilityNode, search_text, snapshot,
 };
 use serde_json::{Value, json};
 
@@ -22,7 +21,11 @@ pub struct FindArgs {
 pub fn execute(args: FindArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
     let opts = crate::adapter::TreeOptions::default();
-    let result = snapshot::run(adapter, &opts, args.app.as_deref(), None)?;
+    let result = if args.count {
+        snapshot::build(adapter, &opts, args.app.as_deref(), None)?
+    } else {
+        snapshot::run(adapter, &opts, args.app.as_deref(), None)?
+    };
     let query = FindQuery::from_args(&args);
 
     if args.count {

@@ -167,6 +167,11 @@ fn test_run_from_ref_returns_subtree_and_persists_refs() {
         .expect("button child should carry a ref");
     let drill_entry = on_disk.get(drill_ref).expect("entry persisted");
     assert_eq!(drill_entry.root_ref.as_deref(), Some("@e1"));
+    assert!(
+        drill_entry.path_is_absolute,
+        "drilled refs must retain an absolute path for fast, scoped resolution"
+    );
+    assert_eq!(drill_entry.path.as_slice(), [0, 0]);
     assert_eq!(adapter.resolve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(adapter.release_calls.load(Ordering::SeqCst), 1);
 }

@@ -60,7 +60,7 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         };
         let mut visited = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::for_pid(win.pid);
+        let context = crate::tree::TreeBuildContext::for_pid(win.pid, opts.include_bounds);
         crate::tree::build_subtree(
             &el,
             0,
@@ -269,7 +269,7 @@ impl PlatformAdapter for MacOSAdapter {
             handle.as_raw() as accessibility_sys::AXUIElementRef
         ));
         let mut ancestors = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::empty();
+        let context = crate::tree::TreeBuildContext::empty(opts.include_bounds);
         crate::tree::build_subtree(
             &el,
             0,

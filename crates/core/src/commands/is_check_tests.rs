@@ -38,7 +38,9 @@ fn entry(states: Vec<String>, value: Option<&str>, actions: Vec<&str>) -> RefEnt
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     }
 }
@@ -161,7 +163,9 @@ fn action_availability_makes_toggle_and_expand_applicable() {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     let adapter = LiveStateAdapter {

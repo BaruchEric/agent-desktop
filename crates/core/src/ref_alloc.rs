@@ -1,3 +1,4 @@
+use crate::adapter::SnapshotSurface;
 use crate::node::AccessibilityNode;
 use crate::refs::{RefEntry, RefMap};
 
@@ -41,7 +42,9 @@ pub(crate) fn ref_entry_from_node(
         source_app: source_app.map(str::to_string),
         source_window_id: source_window_id.map(str::to_string),
         source_window_title: source_window_title.map(str::to_string),
+        source_surface: SnapshotSurface::Window,
         root_ref,
+        path_is_absolute: false,
         path: smallvec::SmallVec::from_slice(path),
     }
 }
@@ -108,7 +111,9 @@ pub(crate) struct RefAllocConfig<'a> {
     pub source_app: Option<&'a str>,
     pub source_window_id: Option<&'a str>,
     pub source_window_title: Option<&'a str>,
+    pub source_surface: SnapshotSurface,
     pub root_ref_id: Option<&'a str>,
+    pub path_prefix: &'a [usize],
 }
 
 pub(crate) fn allocate_refs(
@@ -116,7 +121,7 @@ pub(crate) fn allocate_refs(
     refmap: &mut RefMap,
     config: &RefAllocConfig,
 ) -> AccessibilityNode {
-    allocate_refs_at_path(node, refmap, config, &mut Vec::new())
+    allocate_refs_at_path(node, refmap, config, &mut config.path_prefix.to_vec())
 }
 
 fn allocate_refs_at_path(
@@ -137,6 +142,8 @@ fn allocate_refs_at_path(
             config.root_ref_id.map(str::to_string),
             path,
         );
+        entry.source_surface = config.source_surface;
+        entry.path_is_absolute = config.root_ref_id.is_some();
         strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));
     }
@@ -158,6 +165,7 @@ fn allocate_refs_at_path(
             None,
             path,
         );
+        entry.source_surface = config.source_surface;
         entry.available_actions = vec![];
         strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));

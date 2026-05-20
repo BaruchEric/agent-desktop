@@ -29,3 +29,7 @@ pub(crate) fn node_contains(
     .flatten()
     .any(|text| contains(text, normalized_needle))
 }
+
+#[cfg(test)]
+#[path = "search_text_tests.rs"]
+mod tests;

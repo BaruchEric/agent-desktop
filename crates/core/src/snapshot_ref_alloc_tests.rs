@@ -33,7 +33,9 @@ fn drill_config<'a>(
         source_app,
         source_window_id: None,
         source_window_title: Some("Drill Window"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: Some(root_ref_id),
+        path_prefix: &[],
     }
 }
 

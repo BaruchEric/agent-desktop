@@ -6,6 +6,7 @@ use crate::observation::walk::find_first_match;
 use crate::types::{AdFindQuery, AdNativeHandle, AdWindowInfo};
 use agent_desktop_core::adapter::{SnapshotSurface, TreeOptions};
 use agent_desktop_core::refs::RefEntry;
+use std::mem::ManuallyDrop;
 
 /// Finds the first element in `win`'s accessibility tree matching the
 /// query and resolves it to an opaque `AdNativeHandle`. The caller owns
@@ -102,11 +103,14 @@ pub unsafe extern "C" fn ad_find(
             source_app: None,
             source_window_id: Some(core_win.id.clone()),
             source_window_title: Some(core_win.title.clone()),
+            source_surface: SnapshotSurface::Window,
             root_ref: None,
+            path_is_absolute: false,
             path: smallvec::SmallVec::new(),
         };
         match adapter.inner.resolve_element(&ref_entry) {
             Ok(handle) => {
+                let handle = ManuallyDrop::new(handle);
                 (*out_handle).ptr = handle.as_raw();
                 AdResult::Ok
             }

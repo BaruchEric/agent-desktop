@@ -86,7 +86,9 @@ pub fn build(
         source_app: Some(window.app.as_str()),
         source_window_id: Some(window.id.as_str()),
         source_window_title: Some(window.title.as_str()),
+        source_surface: opts.surface,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
 
@@ -143,7 +145,9 @@ pub fn append_surface_refs(
         source_app,
         source_window_id: Some(window.id.as_str()),
         source_window_title: Some(window.title.as_str()),
+        source_surface: surface,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
     if let Some(id) = store.latest_snapshot_id() {

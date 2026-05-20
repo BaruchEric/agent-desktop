@@ -107,7 +107,9 @@ fn allocate_refs_records_structural_paths() {
         source_app: Some("Finder"),
         source_window_id: Some("w-42"),
         source_window_title: Some("Documents"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: None,
+        path_prefix: &[],
     };
     let out = allocate_refs(root, &mut refmap, &config);
 
@@ -134,7 +136,9 @@ fn allocate_refs_hides_bounds_from_refmap_when_snapshot_hides_bounds() {
         source_app: Some("Finder"),
         source_window_id: Some("w-42"),
         source_window_title: Some("Documents"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: None,
+        path_prefix: &[],
     };
 
     let out = allocate_refs(root, &mut refmap, &config);
@@ -162,7 +166,9 @@ fn allocate_refs_keeps_bounds_in_refmap_when_snapshot_includes_bounds() {
         source_app: Some("Finder"),
         source_window_id: Some("w-42"),
         source_window_title: Some("Documents"),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref_id: None,
+        path_prefix: &[],
     };
 
     let out = allocate_refs(root, &mut refmap, &config);

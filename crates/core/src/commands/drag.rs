@@ -1,7 +1,7 @@
 use crate::{
     action::{DragParams, Point},
     adapter::PlatformAdapter,
-    commands::helpers::resolve_ref,
+    commands::helpers::resolve_point_from_ref_or_xy,
     error::AppError,
 };
 use serde_json::{Value, json};
@@ -50,20 +50,11 @@ fn resolve_point(
     snapshot_id: Option<&str>,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Point, AppError> {
-    if let Some(ref_id) = ref_id {
-        let (_entry, handle) = resolve_ref(ref_id, snapshot_id, adapter)?;
-        let bounds = adapter
-            .get_element_bounds(handle.handle())?
-            .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
-        Ok(Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        })
-    } else if let Some((x, y)) = xy {
-        Ok(Point { x, y })
-    } else {
-        Err(AppError::invalid_input(format!(
-            "Provide --{label} <ref> or --{label}-xy x,y"
-        )))
-    }
+    resolve_point_from_ref_or_xy(
+        ref_id.as_deref(),
+        xy,
+        snapshot_id,
+        adapter,
+        format!("Provide --{label} <ref> or --{label}-xy x,y"),
+    )
 }

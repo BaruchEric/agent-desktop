@@ -15,7 +15,8 @@ pub struct WindowFilter {
     pub app: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum SnapshotSurface {
     #[default]
     Window,
@@ -25,6 +26,12 @@ pub enum SnapshotSurface {
     Sheet,
     Popover,
     Alert,
+}
+
+impl SnapshotSurface {
+    pub fn is_window(surface: &Self) -> bool {
+        matches!(surface, Self::Window)
+    }
 }
 
 pub struct TreeOptions {
@@ -62,7 +69,12 @@ pub struct NativeHandle {
 }
 
 impl NativeHandle {
-    pub fn from_ptr(ptr: *const std::ffi::c_void) -> Self {
+    /// # Safety
+    ///
+    /// `ptr` must be a valid platform accessibility handle whose ownership is
+    /// transferred to the caller. The adapter that creates the handle must
+    /// document how it is released through [`PlatformAdapter::release_handle`].
+    pub unsafe fn from_ptr(ptr: *const std::ffi::c_void) -> Self {
         Self {
             ptr,
             _not_send_sync: PhantomData,

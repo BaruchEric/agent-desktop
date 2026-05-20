@@ -94,4 +94,4 @@ pub fn promoted_item_label(ax_role: Option<&str>, el: &crate::tree::AXElement) -
     })
 }
 
-pub use agent_desktop_core::roles::{is_interactive_role, is_toggleable_role};
+pub use agent_desktop_core::roles::is_toggleable_role;

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     action::ActionResult,
-    adapter::NativeHandle,
+    adapter::{NativeHandle, WindowFilter},
     error::{AdapterError, ErrorCode},
     node::WindowInfo,
     refs::{RefEntry, RefMap},
@@ -87,7 +87,9 @@ fn save_refmap(source_app: Option<String>) -> String {
         source_app,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()

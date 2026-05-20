@@ -40,7 +40,9 @@ fn snapshot_with_one_ref() -> String {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
@@ -143,7 +145,9 @@ fn latest_ref_cache_picks_up_newer_snapshot_after_refresh() {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     let second_id = store.save_new_snapshot(&second).unwrap();
@@ -180,7 +184,9 @@ fn latest_ref_cache_debounces_consecutive_refreshes() {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     let _ = store.save_new_snapshot(&other).unwrap();

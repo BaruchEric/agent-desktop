@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    adapter::NativeHandle,
+    adapter::{NativeHandle, SnapshotSurface},
     error::{AdapterError, ErrorCode},
     refs::RefEntry,
 };
@@ -63,7 +63,7 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
 
 #[cfg(target_os = "macos")]
 fn can_use_path_fast_path(entry: &RefEntry) -> bool {
-    entry.root_ref.is_none()
+    (entry.root_ref.is_none() || entry.path_is_absolute)
         && !entry.path.is_empty()
         && (entry.bounds_hash.is_some()
             || entry.source_window_id.is_some()
@@ -72,7 +72,7 @@ fn can_use_path_fast_path(entry: &RefEntry) -> bool {
 
 #[cfg(target_os = "macos")]
 fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
-    entry.root_ref.is_none()
+    (entry.root_ref.is_none() || entry.path_is_absolute)
         && entry.bounds_hash.is_none()
         && !entry.path.is_empty()
         && (entry.source_window_id.is_some() || entry.source_window_title.is_some())
@@ -83,7 +83,20 @@ fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
     if entry.bounds_hash.is_some() {
         return candidate_roots(entry);
     }
-    exact_source_window_root(entry).into_iter().collect()
+    scoped_surface_root(entry).into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+fn scoped_surface_root(entry: &RefEntry) -> Option<AXElement> {
+    match entry.source_surface {
+        SnapshotSurface::Window => exact_source_window_root(entry),
+        SnapshotSurface::Focused => crate::tree::focused_surface_for_pid(entry.pid),
+        SnapshotSurface::Menu => crate::tree::menu_element_for_pid(entry.pid),
+        SnapshotSurface::Menubar => crate::tree::menubar_for_pid(entry.pid),
+        SnapshotSurface::Sheet => crate::tree::sheet_for_pid(entry.pid),
+        SnapshotSurface::Popover => crate::tree::popover_for_pid(entry.pid),
+        SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -154,7 +167,7 @@ fn find_entry_by_path(roots: &[AXElement], entry: &RefEntry) -> Result<NativeHan
         };
         if element_matches_entry(&candidate, entry) {
             unsafe { CFRetain(candidate.0 as CFTypeRef) };
-            return Ok(NativeHandle::from_ptr(candidate.0 as *const _));
+            return Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) });
         }
     }
 
@@ -224,7 +237,7 @@ pub fn find_element_recursive(
     if normalized == entry.role && element_matches_entry(el, entry) {
         ancestors.remove(&ptr_key);
         unsafe { CFRetain(el.0 as CFTypeRef) };
-        return Ok(NativeHandle::from_ptr(el.0 as *const _));
+        return Ok(unsafe { NativeHandle::from_ptr(el.0 as *const _) });
     }
 
     if depth >= max_depth {

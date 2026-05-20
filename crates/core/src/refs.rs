@@ -1,3 +1,4 @@
+use crate::adapter::SnapshotSurface;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -36,10 +37,18 @@ pub struct RefEntry {
     pub source_window_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_window_title: Option<String>,
+    #[serde(default, skip_serializing_if = "SnapshotSurface::is_window")]
+    pub source_surface: SnapshotSurface,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub path_is_absolute: bool,
     #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
     pub path: RefPath,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

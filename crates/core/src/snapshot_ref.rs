@@ -34,6 +34,7 @@ pub fn run_from_ref(
     let source_app = entry.source_app.as_deref();
     let source_window_id = entry.source_window_id.as_deref();
     let source_window_title = entry.source_window_title.as_deref();
+    let path_prefix = entry.path.clone();
     let config = RefAllocConfig {
         include_bounds: opts.include_bounds,
         interactive_only: opts.interactive_only,
@@ -42,7 +43,9 @@ pub fn run_from_ref(
         source_app,
         source_window_id,
         source_window_title,
+        source_surface: entry.source_surface,
         root_ref_id: Some(root_ref_id),
+        path_prefix: path_prefix.as_slice(),
     };
 
     let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);

@@ -42,7 +42,6 @@ pub mod right_click;
 pub mod screenshot;
 pub mod scroll;
 pub mod scroll_to;
-pub(crate) mod search_text;
 pub mod select;
 pub mod set_value;
 pub mod skills;

@@ -1,5 +1,5 @@
 use crate::{
-    action::{ActionRequest, WindowOp},
+    action::{ActionRequest, Point, WindowOp},
     adapter::{PlatformAdapter, WindowFilter},
     error::AppError,
     node::WindowInfo,
@@ -91,6 +91,29 @@ pub(crate) fn execute_ref_action(
     let (_entry, handle) = resolve_ref(&args.ref_id, args.snapshot_id.as_deref(), adapter)?;
     let result = adapter.execute_action(handle.handle(), request)?;
     Ok(serde_json::to_value(result)?)
+}
+
+pub(crate) fn resolve_point_from_ref_or_xy(
+    ref_id: Option<&str>,
+    xy: Option<(f64, f64)>,
+    snapshot_id: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+    missing_input_message: impl Into<String>,
+) -> Result<Point, AppError> {
+    if let Some(ref_id) = ref_id {
+        let (_entry, handle) = resolve_ref(ref_id, snapshot_id, adapter)?;
+        let bounds = adapter
+            .get_element_bounds(handle.handle())?
+            .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;
+        return Ok(Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        });
+    }
+    if let Some((x, y)) = xy {
+        return Ok(Point { x, y });
+    }
+    Err(AppError::invalid_input(missing_input_message.into()))
 }
 
 pub(crate) fn window_op_command(

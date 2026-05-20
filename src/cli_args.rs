@@ -13,7 +13,7 @@ fn default_is_property() -> String {
     "visible".to_string()
 }
 
-#[derive(ValueEnum, Clone, Debug, Default, Deserialize)]
+#[derive(ValueEnum, Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Surface {
     #[default]

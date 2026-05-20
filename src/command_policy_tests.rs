@@ -1,6 +1,6 @@
 use super::*;
-use crate::cli::Cli;
-use crate::cli_args::ScreenshotArgs;
+use crate::cli::{Cli, Commands};
+use crate::cli_args::{RefArgs, ScreenshotArgs, SnapshotArgs};
 use agent_desktop_core::{PermissionReport, PermissionState};
 use clap::CommandFactory;
 
@@ -108,7 +108,7 @@ fn screen_recording_denial_is_preflighted() {
 }
 
 #[test]
-fn accessibility_denial_does_not_preflight_ax_commands() {
+fn accessibility_denial_is_preflighted_for_ax_commands() {
     let report = PermissionReport {
         accessibility: PermissionState::Denied {
             suggestion: "grant accessibility".into(),
@@ -121,5 +121,54 @@ fn accessibility_denial_does_not_preflight_ax_commands() {
         snapshot_id: None,
     });
 
-    preflight(&command, &report).expect("AX command should execute and report adapter result");
+    let err = preflight(&command, &report).expect_err("denied accessibility fails");
+
+    assert_eq!(err.code(), "PERM_DENIED");
+    assert_eq!(err.suggestion(), Some("grant accessibility"));
+}
+
+#[test]
+fn invalid_ref_args_are_rejected_before_permission_preflight() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "grant accessibility".into(),
+        },
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+    let command = Commands::Click(RefArgs {
+        ref_id: "bad-ref".into(),
+        snapshot_id: None,
+    });
+
+    let err = preflight(&command, &report).expect_err("invalid ref fails first");
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+}
+
+#[test]
+fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "grant accessibility".into(),
+        },
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+    let command = Commands::Snapshot(SnapshotArgs {
+        app: None,
+        window_id: None,
+        max_depth: 10,
+        include_bounds: false,
+        interactive_only: false,
+        compact: false,
+        surface: crate::cli_args::Surface::Window,
+        skeleton: false,
+        root: Some("bad-root".into()),
+        snapshot: None,
+    });
+
+    let err = preflight(&command, &report).expect_err("invalid root fails first");
+
+    assert_eq!(err.code(), "INVALID_ARGS");
 }

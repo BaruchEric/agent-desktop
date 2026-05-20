@@ -4,6 +4,7 @@ use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdNativeHandle, AdRefEntry};
 use agent_desktop_core::refs::RefEntry as CoreRefEntry;
+use std::mem::ManuallyDrop;
 
 /// # Safety
 ///
@@ -68,11 +69,14 @@ pub unsafe extern "C" fn ad_resolve_element(
             source_app: None,
             source_window_id: None,
             source_window_title: None,
+            source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
             root_ref: None,
+            path_is_absolute: false,
             path: smallvec::SmallVec::new(),
         };
         match adapter.inner.resolve_element(&core_entry) {
             Ok(handle) => {
+                let handle = ManuallyDrop::new(handle);
                 (*out).ptr = handle.as_raw();
                 AdResult::Ok
             }

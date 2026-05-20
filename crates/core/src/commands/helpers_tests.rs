@@ -83,7 +83,9 @@ fn entry() -> RefEntry {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     }
 }

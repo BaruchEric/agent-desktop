@@ -3,7 +3,7 @@ use clap::CommandFactory;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-const NON_COMMAND_MODULES: &[&str] = &["helpers", "mod", "search_text"];
+const NON_COMMAND_MODULES: &[&str] = &["helpers", "mod"];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "find",

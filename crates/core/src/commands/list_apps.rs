@@ -1,4 +1,4 @@
-use crate::{adapter::PlatformAdapter, commands::search_text, error::AppError};
+use crate::{adapter::PlatformAdapter, error::AppError, search_text};
 use serde_json::{Value, json};
 
 pub struct ListAppsArgs {

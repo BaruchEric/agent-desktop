@@ -14,7 +14,9 @@ fn entry(role: &str, name: Option<&str>) -> RefEntry {
         source_app: None,
         source_window_id: None,
         source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     }
 }
@@ -44,7 +46,9 @@ fn test_get_existing() {
         source_app: Some("Finder".into()),
         source_window_id: None,
         source_window_title: Some("Documents".into()),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     let retrieved = map.get(&ref_id).unwrap();
@@ -169,7 +173,9 @@ fn test_save_load_roundtrip_with_home_override() {
         source_app: Some("TestApp".into()),
         source_window_id: None,
         source_window_title: Some("Test Window".into()),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
     map.save().expect("save should succeed under HomeGuard");
@@ -198,7 +204,9 @@ fn test_refstore_snapshot_roundtrip_and_latest_pointer() {
         source_app: Some("TestApp".into()),
         source_window_id: None,
         source_window_title: Some("Test Window".into()),
+        source_surface: crate::adapter::SnapshotSurface::Window,
         root_ref: None,
+        path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
 

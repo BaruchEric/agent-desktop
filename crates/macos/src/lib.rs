@@ -1,8 +1,8 @@
-pub mod actions;
-pub mod adapter;
-pub mod input;
-pub mod notifications;
-pub mod system;
-pub mod tree;
+mod actions;
+mod adapter;
+mod input;
+mod notifications;
+mod system;
+mod tree;
 
 pub use adapter::MacOSAdapter;

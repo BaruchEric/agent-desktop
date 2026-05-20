@@ -18,7 +18,9 @@ fn entry(
         source_app: None,
         source_window_id: source_window_id.map(String::from),
         source_window_title: source_window_title.map(String::from),
+        source_surface: agent_desktop_core::adapter::SnapshotSurface::Window,
         root_ref: root_ref.map(String::from),
+        path_is_absolute: false,
         path: smallvec::smallvec![0, 1],
     }
 }
@@ -45,6 +47,9 @@ fn path_fast_path_accepts_bounds_or_source_window_identity() {
         Some("Documents"),
         Some("@e1")
     )));
+    let mut absolute_drill = entry(Some(42), Some("w-10"), Some("Documents"), Some("@e1"));
+    absolute_drill.path_is_absolute = true;
+    assert!(can_use_path_fast_path(&absolute_drill));
 }
 
 #[test]
@@ -76,6 +81,9 @@ fn no_bounds_source_window_refs_require_scoped_path_resolution() {
         Some("Documents"),
         Some("@e1")
     )));
+    let mut absolute_drill = entry(None, Some("w-10"), Some("Documents"), Some("@e1"));
+    absolute_drill.path_is_absolute = true;
+    assert!(requires_scoped_path_resolution(&absolute_drill));
 }
 
 #[test]

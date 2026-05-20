@@ -184,8 +184,12 @@ impl RefStore {
                     return self.load_snapshot(id).map(Some);
                 }
             }
-            let Ok(refmap) = RefMap::load() else {
-                return Ok(None);
+            let refmap = match RefMap::load() {
+                Ok(refmap) => refmap,
+                Err(err) => {
+                    tracing::debug!("legacy last_refmap.json migration skipped: {err}");
+                    return Ok(None);
+                }
             };
             let snapshot_id = new_snapshot_id();
             self.save_snapshot_unlocked(&snapshot_id, &refmap)?;

@@ -1,17 +1,7 @@
-use agent_desktop_core::adapter::PlatformAdapter;
+mod actions;
+mod adapter;
+mod input;
+mod system;
+mod tree;
 
-pub struct WindowsAdapter;
-
-impl WindowsAdapter {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for WindowsAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PlatformAdapter for WindowsAdapter {}
+pub use adapter::WindowsAdapter;

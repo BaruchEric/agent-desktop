@@ -1,17 +1,7 @@
-use agent_desktop_core::adapter::PlatformAdapter;
+mod actions;
+mod adapter;
+mod input;
+mod system;
+mod tree;
 
-pub struct LinuxAdapter;
-
-impl LinuxAdapter {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for LinuxAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PlatformAdapter for LinuxAdapter {}
+pub use adapter::LinuxAdapter;
