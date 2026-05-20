@@ -20,6 +20,7 @@ pub(crate) fn ref_entry_from_node(
     node: &AccessibilityNode,
     pid: i32,
     source_app: Option<&str>,
+    source_window_id: Option<&str>,
     source_window_title: Option<&str>,
     root_ref: Option<String>,
     path: &[usize],
@@ -38,6 +39,7 @@ pub(crate) fn ref_entry_from_node(
             node.available_actions.clone()
         },
         source_app: source_app.map(str::to_string),
+        source_window_id: source_window_id.map(str::to_string),
         source_window_title: source_window_title.map(str::to_string),
         root_ref,
         path: smallvec::SmallVec::from_slice(path),
@@ -104,6 +106,7 @@ pub(crate) struct RefAllocConfig<'a> {
     pub compact: bool,
     pub pid: i32,
     pub source_app: Option<&'a str>,
+    pub source_window_id: Option<&'a str>,
     pub source_window_title: Option<&'a str>,
     pub root_ref_id: Option<&'a str>,
 }
@@ -125,14 +128,16 @@ fn allocate_refs_at_path(
     let is_interactive = INTERACTIVE_ROLES.contains(&node.role.as_str());
 
     if is_interactive {
-        let entry = ref_entry_from_node(
+        let mut entry = ref_entry_from_node(
             &node,
             config.pid,
             config.source_app,
+            config.source_window_id,
             config.source_window_title,
             config.root_ref_id.map(str::to_string),
             path,
         );
+        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -148,11 +153,13 @@ fn allocate_refs_at_path(
             &node,
             config.pid,
             config.source_app,
+            config.source_window_id,
             config.source_window_title,
             None,
             path,
         );
         entry.available_actions = vec![];
+        strip_ref_bounds_when_hidden(&mut entry, config.include_bounds);
         node.ref_id = Some(refmap.allocate(entry));
     }
 
@@ -187,123 +194,13 @@ fn allocate_refs_at_path(
     node
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::node::{AccessibilityNode, Rect};
-
-    fn node(role: &str, name: Option<&str>) -> AccessibilityNode {
-        AccessibilityNode {
-            ref_id: None,
-            role: role.into(),
-            name: name.map(str::to_string),
-            value: None,
-            description: None,
-            hint: None,
-            states: vec![],
-            available_actions: vec![],
-            bounds: Some(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 10.0,
-                height: 10.0,
-            }),
-            children_count: None,
-            children: vec![],
-        }
-    }
-
-    #[test]
-    fn transform_tree_include_bounds_false_strips_bounds() {
-        let n = node("group", None);
-        let out = transform_tree(n, false, false, false);
-        assert!(out.bounds.is_none());
-    }
-
-    #[test]
-    fn transform_tree_include_bounds_true_preserves_bounds() {
-        let n = node("group", None);
-        let out = transform_tree(n, true, false, false);
-        assert!(out.bounds.is_some());
-    }
-
-    #[test]
-    fn transform_tree_interactive_only_prunes_noninteractive_leaves() {
-        let mut root = node("window", Some("w"));
-        root.children = vec![node("group", None), node("button", Some("OK"))];
-        let out = transform_tree(root, true, true, false);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "button");
-    }
-
-    #[test]
-    fn transform_tree_interactive_only_keeps_named_containers_with_children() {
-        let mut labeled = node("group", Some("Toolbar"));
-        labeled.children = vec![node("button", Some("Save"))];
-        let mut root = node("window", Some("w"));
-        root.children = vec![labeled];
-        let out = transform_tree(root, true, true, false);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].children.len(), 1);
-    }
-
-    #[test]
-    fn transform_tree_compact_collapses_empty_single_child_chain() {
-        let mut outer = node("group", None);
-        let mut inner = node("group", None);
-        inner.children = vec![node("button", Some("Go"))];
-        outer.children = vec![inner];
-        let mut root = node("window", Some("w"));
-        root.children = vec![outer];
-        let out = transform_tree(root, true, false, true);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "button");
-    }
-
-    #[test]
-    fn transform_tree_compact_preserves_labeled_containers() {
-        let mut named = node("group", Some("Toolbar"));
-        named.children = vec![node("button", Some("Save"))];
-        let mut root = node("window", Some("w"));
-        root.children = vec![named];
-        let out = transform_tree(root, true, false, true);
-        assert_eq!(out.children.len(), 1);
-        assert_eq!(out.children[0].role, "group");
-        assert_eq!(out.children[0].name.as_deref(), Some("Toolbar"));
-    }
-
-    #[test]
-    fn ref_entry_prefers_platform_actions() {
-        let mut button = node("button", Some("Save"));
-        button.available_actions = vec!["SetFocus".into()];
-
-        let entry = ref_entry_from_node(&button, 7, None, None, None, &[0]);
-
-        assert_eq!(entry.available_actions, vec!["SetFocus"]);
-    }
-
-    #[test]
-    fn allocate_refs_records_structural_paths() {
-        let mut root = node("window", Some("w"));
-        let mut group = node("group", Some("List"));
-        group.children = vec![node("button", Some("Open"))];
-        root.children = vec![node("button", Some("Save")), group];
-
-        let mut refmap = RefMap::new();
-        let config = RefAllocConfig {
-            include_bounds: true,
-            interactive_only: false,
-            compact: false,
-            pid: 7,
-            source_app: Some("Finder"),
-            source_window_title: Some("Documents"),
-            root_ref_id: None,
-        };
-        let out = allocate_refs(root, &mut refmap, &config);
-
-        let save_ref = out.children[0].ref_id.as_deref().unwrap();
-        let open_ref = out.children[1].children[0].ref_id.as_deref().unwrap();
-        assert_eq!(refmap.get(save_ref).unwrap().path.as_slice(), [0]);
-        assert_eq!(refmap.get(open_ref).unwrap().path.as_slice(), [1, 0]);
+fn strip_ref_bounds_when_hidden(entry: &mut RefEntry, include_bounds: bool) {
+    if !include_bounds {
+        entry.bounds = None;
+        entry.bounds_hash = None;
     }
 }
+
+#[cfg(test)]
+#[path = "ref_alloc_tests.rs"]
+mod tests;

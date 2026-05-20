@@ -31,6 +31,7 @@ fn drill_config<'a>(
         compact,
         pid,
         source_app,
+        source_window_id: None,
         source_window_title: Some("Drill Window"),
         root_ref_id: Some(root_ref_id),
     }

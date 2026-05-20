@@ -8,8 +8,8 @@ use rustc_hash::FxHashSet;
 use super::AXElement;
 use super::builder::window_element_for;
 use super::element::{
-    child_attributes, copy_ax_array, copy_element_attr, copy_string_attr, element_for_pid,
-    resolve_element_name,
+    child_attributes, copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr,
+    element_for_pid, resolve_element_name,
 };
 
 #[cfg(target_os = "macos")]
@@ -25,13 +25,20 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let attempts = 4;
     for attempt in 0..attempts {
-        let roots = candidate_roots(entry);
         if can_use_path_fast_path(entry) {
-            if let Ok(handle) = find_entry_by_path(&roots, entry) {
+            let path_roots = path_candidate_roots(entry);
+            if let Ok(handle) = find_entry_by_path(&path_roots, entry) {
                 tracing::debug!("resolve: found path match");
                 return Ok(handle);
             }
+            if requires_scoped_path_resolution(entry) {
+                if attempt + 1 < attempts && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(75));
+                }
+                continue;
+            }
         }
+        let roots = candidate_roots(entry);
         if let Ok(handle) = find_entry_in_roots(&roots, entry, resolve_depth, deadline) {
             tracing::debug!("resolve: found exact match");
             return Ok(handle);
@@ -56,7 +63,55 @@ pub fn resolve_element_impl(entry: &RefEntry) -> Result<NativeHandle, AdapterErr
 
 #[cfg(target_os = "macos")]
 fn can_use_path_fast_path(entry: &RefEntry) -> bool {
-    entry.root_ref.is_none() && entry.bounds_hash.is_some()
+    entry.root_ref.is_none()
+        && !entry.path.is_empty()
+        && (entry.bounds_hash.is_some()
+            || entry.source_window_id.is_some()
+            || entry.source_window_title.is_some())
+}
+
+#[cfg(target_os = "macos")]
+fn requires_scoped_path_resolution(entry: &RefEntry) -> bool {
+    entry.root_ref.is_none()
+        && entry.bounds_hash.is_none()
+        && !entry.path.is_empty()
+        && (entry.source_window_id.is_some() || entry.source_window_title.is_some())
+}
+
+#[cfg(target_os = "macos")]
+fn path_candidate_roots(entry: &RefEntry) -> Vec<AXElement> {
+    if entry.bounds_hash.is_some() {
+        return candidate_roots(entry);
+    }
+    exact_source_window_root(entry).into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+fn exact_source_window_root(entry: &RefEntry) -> Option<AXElement> {
+    let root = element_for_pid(entry.pid);
+    let windows = copy_ax_array(&root, "AXWindows")?;
+    if let Some(source_window_number) = source_window_number(entry) {
+        if let Some(window) = windows
+            .iter()
+            .find(|win| copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number))
+        {
+            return Some(window.clone());
+        }
+    }
+    let source_window_title = entry.source_window_title.as_deref()?;
+    windows
+        .into_iter()
+        .find(|win| copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title))
+}
+
+#[cfg(target_os = "macos")]
+fn source_window_number(entry: &RefEntry) -> Option<i64> {
+    entry
+        .source_window_id
+        .as_deref()?
+        .strip_prefix("w-")?
+        .parse()
+        .ok()
 }
 
 #[cfg(target_os = "macos")]
@@ -286,33 +341,8 @@ fn resolve_children(el: &AXElement, ax_role: Option<&str>) -> Vec<AXElement> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(bounds_hash: Option<u64>, root_ref: Option<&str>) -> RefEntry {
-        RefEntry {
-            pid: 1,
-            role: "cell".into(),
-            name: Some("Investors".into()),
-            value: None,
-            states: vec![],
-            bounds: None,
-            bounds_hash,
-            available_actions: vec![],
-            source_app: None,
-            source_window_title: None,
-            root_ref: root_ref.map(String::from),
-            path: smallvec::smallvec![0, 1],
-        }
-    }
-
-    #[test]
-    fn path_fast_path_requires_bounds_identity() {
-        assert!(!can_use_path_fast_path(&entry(None, None)));
-        assert!(!can_use_path_fast_path(&entry(Some(42), Some("@e1"))));
-        assert!(can_use_path_fast_path(&entry(Some(42), None)));
-    }
-}
+#[path = "resolve_tests.rs"]
+mod tests;
 
 #[cfg(not(target_os = "macos"))]
 pub fn resolve_element_impl(_entry: &RefEntry) -> Result<NativeHandle, AdapterError> {

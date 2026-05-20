@@ -33,6 +33,8 @@ pub struct RefEntry {
     pub available_actions: Vec<String>,
     pub source_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_window_title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_ref: Option<String>,

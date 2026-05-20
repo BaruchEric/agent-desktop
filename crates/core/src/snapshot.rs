@@ -84,6 +84,7 @@ pub fn build(
         compact: opts.compact,
         pid: window.pid,
         source_app: Some(window.app.as_str()),
+        source_window_id: Some(window.id.as_str()),
         source_window_title: Some(window.title.as_str()),
         root_ref_id: None,
     };
@@ -140,6 +141,7 @@ pub fn append_surface_refs(
         compact: false,
         pid,
         source_app,
+        source_window_id: Some(window.id.as_str()),
         source_window_title: Some(window.title.as_str()),
         root_ref_id: None,
     };

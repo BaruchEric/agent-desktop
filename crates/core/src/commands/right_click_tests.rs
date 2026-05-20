@@ -85,6 +85,7 @@ fn save_refmap(source_app: Option<String>) -> String {
         bounds_hash: None,
         available_actions: vec!["RightClick".into()],
         source_app,
+        source_window_id: None,
         source_window_title: None,
         root_ref: None,
         path: smallvec::SmallVec::new(),

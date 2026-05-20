@@ -113,6 +113,7 @@ fn seed_skeleton_refmap() -> RefMap {
         Some("TestApp"),
         None,
         None,
+        None,
         &[0],
     );
     let _ = map.allocate(anchor);
@@ -120,6 +121,7 @@ fn seed_skeleton_refmap() -> RefMap {
         &named("button", "Toolbar"),
         42,
         Some("TestApp"),
+        None,
         None,
         None,
         &[1],
@@ -278,12 +280,14 @@ fn test_drilldown_refmap_matches_golden_fixture() {
         Some("Fixture"),
         None,
         None,
+        None,
         &[0],
     ));
     seed.allocate(ref_entry_from_node(
         &named("group", "Toolbar"),
         42,
         Some("Fixture"),
+        None,
         None,
         None,
         &[1],
