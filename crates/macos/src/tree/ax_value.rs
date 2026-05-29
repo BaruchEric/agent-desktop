@@ -6,6 +6,9 @@ mod imp {
     use core_foundation_sys::base::{CFGetTypeID, CFRelease};
 
     pub(crate) fn created_ax_element(value: CFTypeRef) -> Option<AXElement> {
+        if value.is_null() {
+            return None;
+        }
         if !is_ax_element(value) {
             unsafe { CFRelease(value) };
             return None;
@@ -30,6 +33,11 @@ mod imp {
     mod tests {
         use super::*;
         use core_foundation::{base::CFRetain, string::CFString};
+
+        #[test]
+        fn created_ax_element_rejects_null_without_releasing() {
+            assert!(created_ax_element(std::ptr::null()).is_none());
+        }
 
         #[test]
         fn created_ax_element_rejects_created_non_ax_ref() {
