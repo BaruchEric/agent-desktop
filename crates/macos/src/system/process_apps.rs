@@ -8,7 +8,14 @@ pub(crate) fn list_apps() -> Vec<AppInfo> {
     command.args(["-axo", "pid=,comm="]);
     let output = match crate::system::process::run_with_timeout(&mut command, "ps", PS_TIMEOUT) {
         Ok(output) if output.status.success() => output,
-        Ok(_) | Err(_) => return Vec::new(),
+        Ok(output) => {
+            tracing::debug!(status = ?output.status, "system: ps app inventory failed");
+            return Vec::new();
+        }
+        Err(error) => {
+            tracing::debug!(message = %error.message, "system: ps app inventory failed");
+            return Vec::new();
+        }
     };
     let text = String::from_utf8_lossy(&output.stdout);
     let mut seen_pids = std::collections::HashSet::new();

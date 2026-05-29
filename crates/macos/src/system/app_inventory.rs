@@ -6,13 +6,10 @@ use agent_desktop_core::{
 use crate::system::{process_apps, window_inventory, workspace_apps};
 
 pub(crate) fn list_apps() -> Vec<AppInfo> {
-    let mut apps = workspace_apps::list_apps();
-    merge_apps(&mut apps, window_inventory::visible_apps());
-
+    let mut apps = primary_apps();
     if apps.is_empty() {
         merge_apps(&mut apps, process_apps::list_apps());
     }
-
     sort_apps(&mut apps);
     apps
 }
@@ -22,14 +19,29 @@ pub(crate) fn list_windows(filter: &WindowFilter) -> Vec<WindowInfo> {
 }
 
 pub(crate) fn pid_for_app_name(app_name: &str) -> Option<i32> {
-    let mut apps = workspace_apps::list_apps();
-    merge_apps(&mut apps, window_inventory::visible_apps());
+    let apps = primary_apps();
+    find_pid_with_process_fallback(&apps, process_apps::list_apps(), app_name)
+}
 
-    if apps.is_empty() {
-        merge_apps(&mut apps, process_apps::list_apps());
-    }
+fn primary_apps() -> Vec<AppInfo> {
+    merge_primary_sources(
+        workspace_apps::list_apps(),
+        window_inventory::visible_apps(),
+    )
+}
 
-    find_pid_in_apps(&apps, app_name)
+fn merge_primary_sources(workspace: Vec<AppInfo>, visible: Vec<AppInfo>) -> Vec<AppInfo> {
+    let mut apps = workspace;
+    merge_apps(&mut apps, visible);
+    apps
+}
+
+fn find_pid_with_process_fallback(
+    primary: &[AppInfo],
+    process: Vec<AppInfo>,
+    app_name: &str,
+) -> Option<i32> {
+    find_pid_in_apps(primary, app_name).or_else(|| find_pid_in_apps(&process, app_name))
 }
 
 fn merge_apps(apps: &mut Vec<AppInfo>, incoming: Vec<AppInfo>) {

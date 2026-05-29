@@ -64,6 +64,28 @@ fn find_pid_in_apps_falls_back_to_contains_match() {
 }
 
 #[test]
+fn find_pid_with_process_fallback_uses_process_entries_after_primary_miss() {
+    let primary = vec![app("Finder", 10)];
+    let process = vec![app("Mail", 11)];
+
+    assert_eq!(
+        find_pid_with_process_fallback(&primary, process, "Mail"),
+        Some(11)
+    );
+}
+
+#[test]
+fn find_pid_with_process_fallback_prefers_primary_entries() {
+    let primary = vec![app("Mail", 10)];
+    let process = vec![app("Mail", 11)];
+
+    assert_eq!(
+        find_pid_with_process_fallback(&primary, process, "Mail"),
+        Some(10)
+    );
+}
+
+#[test]
 fn sort_apps_orders_by_name_then_pid() {
     let mut apps = vec![app("Terminal", 3), app("Finder", 2), app("Finder", 1)];
 

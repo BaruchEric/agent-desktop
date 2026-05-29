@@ -138,66 +138,23 @@ mod imp {
     }
 
     fn find_cg_window_id_for_pid(pid: i32) -> Option<u32> {
-        use crate::cf_type::{borrowed_cf_dictionary, borrowed_cf_number, created_cf_array};
-        use core_foundation::{
-            base::{CFTypeRef, TCFType},
-            string::CFString,
-        };
-
-        unsafe extern "C" {
-            fn CGWindowListCopyWindowInfo(option: u32, window_id: u32) -> CFTypeRef;
-        }
-
-        let info_ref = unsafe { CGWindowListCopyWindowInfo(17, 0) };
-        if info_ref.is_null() {
-            return None;
-        }
-
-        let array = created_cf_array(info_ref)?;
-
         let mut best_id: Option<u32> = None;
         let mut best_area: f64 = 0.0;
 
-        for item in array.iter() {
-            let Some(dict) = borrowed_cf_dictionary(item.as_concrete_TypeRef()) else {
-                continue;
-            };
-
-            let int_field = |key: &str| -> Option<i32> {
-                let k = CFString::new(key);
-                dict.find(&k)
-                    .and_then(|v| borrowed_cf_number(v.as_concrete_TypeRef()))
-                    .and_then(|n| n.to_i32())
-            };
-
-            if int_field("kCGWindowOwnerPID") != Some(pid) {
+        for dict in crate::system::cg_window::window_dictionaries() {
+            if crate::system::cg_window::int_field(&dict, "kCGWindowOwnerPID") != Some(pid as i64) {
                 continue;
             }
-            if int_field("kCGWindowLayer").unwrap_or(99) != 0 {
+            if crate::system::cg_window::int_field(&dict, "kCGWindowLayer").unwrap_or(99) != 0 {
                 continue;
             }
 
-            let wid = match int_field("kCGWindowNumber") {
+            let wid = match crate::system::cg_window::int_field(&dict, "kCGWindowNumber") {
                 Some(n) => n as u32,
                 None => continue,
             };
-
-            let bounds_key = CFString::new("kCGWindowBounds");
-            let area = if let Some(bounds_val) = dict.find(&bounds_key) {
-                let Some(bounds_dict) = borrowed_cf_dictionary(bounds_val.as_concrete_TypeRef())
-                else {
-                    continue;
-                };
-                let w = bounds_dict.find(CFString::new("Width")).and_then(|v| {
-                    borrowed_cf_number(v.as_concrete_TypeRef()).and_then(|n| n.to_f64())
-                });
-                let h = bounds_dict.find(CFString::new("Height")).and_then(|v| {
-                    borrowed_cf_number(v.as_concrete_TypeRef()).and_then(|n| n.to_f64())
-                });
-                w.unwrap_or(0.0) * h.unwrap_or(0.0)
-            } else {
-                0.0
-            };
+            let area =
+                crate::system::cg_window::area_field(&dict, "kCGWindowBounds").unwrap_or(0.0);
 
             if area > best_area {
                 best_area = area;

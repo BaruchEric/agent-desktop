@@ -4,6 +4,8 @@ use agent_desktop_core::{
 };
 use std::time::Duration;
 
+use crate::system::cg_window;
+
 pub(crate) fn visible_apps() -> Vec<AppInfo> {
     let mut seen_pids = std::collections::HashSet::new();
     let mut apps = Vec::new();
@@ -45,26 +47,26 @@ pub(crate) fn list_windows(
     filter: &WindowFilter,
     pid_for_app_name: impl Fn(&str) -> Option<i32>,
 ) -> Vec<WindowInfo> {
+    let app_pid = filter.app.as_deref().and_then(pid_for_app_name);
+
     for attempt in 0..3 {
         let windows = visible_windows_once(filter);
-        if !windows.is_empty() || attempt == 2 {
-            if !windows.is_empty() {
-                return windows;
-            }
+        if !windows.is_empty() {
+            return windows;
+        }
+
+        if let Some(window) = ax_window_for_filter(filter, app_pid) {
+            return vec![window];
+        }
+
+        if attempt == 2 || !should_retry_empty(filter, app_pid) {
             break;
         }
+
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    if let Some(app_name) = filter.app.as_deref() {
-        pid_for_app_name(app_name)
-            .and_then(|pid| ax_window_for_app(app_name, pid))
-            .filter(|window| !filter.focused_only || window.is_focused)
-            .into_iter()
-            .collect()
-    } else {
-        Vec::new()
-    }
+    Vec::new()
 }
 
 fn visible_windows_once(filter: &WindowFilter) -> Vec<WindowInfo> {
@@ -139,31 +141,22 @@ fn windows_from_candidates(
     windows
 }
 
-#[cfg(test)]
-fn apps_from_windows(windows: &[WindowInfo]) -> Vec<AppInfo> {
-    let mut seen_pids = std::collections::HashSet::new();
-    let mut apps = Vec::new();
-
-    for window in windows {
-        if window.pid > 0 && seen_pids.insert(window.pid) {
-            apps.push(AppInfo {
-                name: window.app.clone(),
-                pid: window.pid,
-                bundle_id: None,
-            });
-        }
-    }
-
-    apps
-}
-
 fn matches_app_filter(app_name: &str, app_filter: &str) -> bool {
     app_filter.is_empty() || app_name.to_ascii_lowercase().contains(app_filter)
 }
 
+fn should_retry_empty(filter: &WindowFilter, app_pid: Option<i32>) -> bool {
+    filter.app.is_none() || app_pid.is_some()
+}
+
+fn ax_window_for_filter(filter: &WindowFilter, app_pid: Option<i32>) -> Option<WindowInfo> {
+    let app_name = filter.app.as_deref()?;
+    ax_window_for_app(app_name, app_pid?).filter(|window| !filter.focused_only || window.is_focused)
+}
+
 fn ax_window_for_app(app_name: &str, pid: i32) -> Option<WindowInfo> {
     let app = crate::tree::element_for_pid(pid);
-    let window = crate::tree::copy_element_attr(&app, "AXFocusedWindow")
+    let window = focused_window_element(&app)
         .or_else(|| crate::tree::copy_element_attr(&app, "AXMainWindow"))
         .or_else(|| {
             crate::tree::copy_ax_array(&app, "AXWindows")
@@ -193,7 +186,7 @@ fn focused_window_identity(pid: i32) -> FocusedWindowIdentity {
     if crate::tree::copy_bool_attr(&app, "AXFrontmost") != Some(true) {
         return None;
     }
-    let window = crate::tree::copy_element_attr(&app, "AXFocusedWindow")?;
+    let window = focused_window_element(&app)?;
     Some((
         crate::tree::copy_string_attr(&window, "AXTitle"),
         crate::tree::copy_i64_attr(&window, "AXWindowNumber"),
@@ -215,48 +208,16 @@ fn matches_focused_window(
     focused_title.as_deref() == Some(title) && same_title_count == 1
 }
 
-mod cg_window {
-    use core_foundation::{base::CFType, dictionary::CFDictionary, string::CFString};
-
-    type WindowDictionary = CFDictionary<CFString, CFType>;
-
-    pub(super) fn window_dictionaries() -> Vec<WindowDictionary> {
-        use crate::cf_type::borrowed_cf_dictionary;
-        use core_graphics::display::CGDisplay;
-        use core_graphics::window::{
-            kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly,
-        };
-
-        let options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements;
-        let Some(array) = CGDisplay::window_list_info(options, None) else {
-            return Vec::new();
-        };
-
-        array
-            .get_all_values()
-            .into_iter()
-            .filter_map(|raw| borrowed_cf_dictionary(raw as core_foundation::base::CFTypeRef))
-            .collect()
+fn focused_window_element(app: &crate::tree::AXElement) -> Option<crate::tree::AXElement> {
+    let focused = crate::tree::copy_element_attr(app, "AXFocusedWindow")?;
+    if crate::tree::copy_string_attr(&focused, "AXRole").as_deref() == Some("AXWindow") {
+        return Some(focused);
     }
-
-    pub(super) fn int_field(dict: &WindowDictionary, key: &str) -> Option<i64> {
-        use crate::cf_type::borrowed_cf_number;
-        use core_foundation::base::TCFType;
-
-        let key = CFString::new(key);
-        dict.find(&key)
-            .and_then(|value| borrowed_cf_number(value.as_concrete_TypeRef()))
-            .and_then(|number| number.to_i64())
-    }
-
-    pub(super) fn string_field(dict: &WindowDictionary, key: &str) -> Option<String> {
-        use crate::cf_type::borrowed_cf_string;
-        use core_foundation::base::TCFType;
-
-        let key = CFString::new(key);
-        dict.find(&key)
-            .and_then(|value| borrowed_cf_string(value.as_concrete_TypeRef()))
-            .map(|value| value.to_string())
+    let parent_window = crate::tree::copy_element_attr(&focused, "AXWindow")?;
+    if crate::tree::copy_string_attr(&parent_window, "AXRole").as_deref() == Some("AXWindow") {
+        Some(parent_window)
+    } else {
+        None
     }
 }
 

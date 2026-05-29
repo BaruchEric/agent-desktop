@@ -1,10 +1,25 @@
 use agent_desktop_core::node::AppInfo;
-use core_foundation::{base::TCFType, string::CFString};
+use core_foundation::base::CFTypeRef;
 use std::{ffi::c_void, sync::OnceLock};
 
 type Id = *mut c_void;
 type Class = *mut c_void;
 type Sel = *mut c_void;
+const RTLD_LAZY: i32 = 1;
+
+struct AutoreleasePool(Id);
+
+impl AutoreleasePool {
+    unsafe fn new() -> Self {
+        Self(unsafe { objc_autoreleasePoolPush() })
+    }
+}
+
+impl Drop for AutoreleasePool {
+    fn drop(&mut self) {
+        unsafe { objc_autoreleasePoolPop(self.0) };
+    }
+}
 
 pub(crate) fn list_apps() -> Vec<AppInfo> {
     if !appkit_loaded() {
@@ -12,6 +27,7 @@ pub(crate) fn list_apps() -> Vec<AppInfo> {
     }
 
     unsafe {
+        let _pool = AutoreleasePool::new();
         let workspace_cls = objc_getClass(c"NSWorkspace".as_ptr());
         if workspace_cls.is_null() {
             return Vec::new();
@@ -38,14 +54,22 @@ pub(crate) fn list_apps() -> Vec<AppInfo> {
 }
 
 fn appkit_loaded() -> bool {
-    static APPKIT_LOADED: OnceLock<bool> = OnceLock::new();
-    *APPKIT_LOADED.get_or_init(|| unsafe {
+    static APPKIT_LOADED: OnceLock<()> = OnceLock::new();
+    if APPKIT_LOADED.get().is_some() {
+        return true;
+    }
+
+    let loaded = unsafe {
         !dlopen(
             c"/System/Library/Frameworks/AppKit.framework/AppKit".as_ptr(),
-            1,
+            RTLD_LAZY,
         )
         .is_null()
-    })
+    };
+    if loaded {
+        let _ = APPKIT_LOADED.set(());
+    }
+    loaded
 }
 
 fn apps_from_running_array(
@@ -97,20 +121,21 @@ fn apps_from_running_array(
 }
 
 unsafe fn ns_string(id: Id) -> Option<String> {
-    unsafe {
-        if id.is_null() {
-            return None;
-        }
-        Some(
-            CFString::wrap_under_get_rule(id as core_foundation_sys::string::CFStringRef)
-                .to_string(),
-        )
+    if id.is_null() {
+        return None;
     }
+    crate::cf_type::borrowed_cf_string(id as CFTypeRef).map(|value| value.to_string())
 }
 
 unsafe extern "C" {
+    fn objc_autoreleasePoolPush() -> Id;
+    fn objc_autoreleasePoolPop(pool: Id);
     fn dlopen(filename: *const core::ffi::c_char, flag: i32) -> Id;
     fn objc_getClass(name: *const core::ffi::c_char) -> Class;
     fn sel_registerName(name: *const core::ffi::c_char) -> Sel;
     fn objc_msgSend(receiver: Id, sel: Sel, ...) -> Id;
 }
+
+#[cfg(test)]
+#[path = "workspace_apps_tests.rs"]
+mod tests;
