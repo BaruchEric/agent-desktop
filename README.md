@@ -206,8 +206,8 @@ agent-desktop key-up shift               # release key
 ```bash
 agent-desktop hover @e3                  # move cursor to element
 agent-desktop hover --xy 500,300         # move cursor to coordinates
-agent-desktop drag @e3 --to @e8          # drag between elements
-agent-desktop drag --xy 100,200 --to-xy 400,200  # drag between coordinates
+agent-desktop drag --from @e3 --to @e8   # drag between elements
+agent-desktop drag --from-xy 100,200 --to-xy 400,200  # drag between coordinates
 agent-desktop mouse-click --xy 500,300   # click at coordinates
 agent-desktop mouse-down --xy 500,300    # press at coordinates
 agent-desktop mouse-up --xy 500,300      # release at coordinates

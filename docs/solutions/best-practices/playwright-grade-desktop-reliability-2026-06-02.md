@@ -36,8 +36,9 @@ Ref actions must pass through the shared reliability path:
 2. Resolve the ref with strict platform identity checks.
 3. Return `STALE_REF` when the old element no longer matches.
 4. Return `AMBIGUOUS_TARGET` when multiple candidates match.
-5. Run actionability checks before adapter dispatch.
-6. Emit trace events only to the requested JSONL trace path, never stdout.
+5. Run live actionability checks before adapter dispatch.
+6. Keep waits bounded by the caller timeout, including platform resolution retries.
+7. Emit trace events only to the requested JSONL trace path, never stdout.
 
 ## Cross-Platform Rule
 
@@ -47,6 +48,12 @@ identity fields into the same `RefEntry` concepts: role, name, value,
 description, state, bounds, supported actions, source surface, root ref, and
 tree path.
 
+Actionability should prefer one native live-state read that returns state,
+bounds, and supported actions together. Platform adapters may fall back to
+separate reads, but the CLI behavior must remain identical: empty transient
+action reads do not erase snapshot capabilities, while a non-empty live action
+set that lacks the required action can block dispatch.
+
 ## Review Rule
 
 Any change to ref resolution or action dispatch must include tests for:
@@ -54,6 +61,7 @@ Any change to ref resolution or action dispatch must include tests for:
 - stale ref rejection
 - ambiguous target rejection
 - actionability failure before dispatch
+- retrying waits that honor timeout and report last observed state
 - session isolation
 - FFI parity when the behavior is exposed through C ABI
 

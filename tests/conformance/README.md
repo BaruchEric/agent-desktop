@@ -12,8 +12,8 @@ expectations.
 | Snapshot refs | Refs are depth-first, snapshot-scoped, and persisted in the caller session |
 | Strict resolve | A ref resolves only when identity still matches; stale refs return `STALE_REF` |
 | Ambiguity | Multiple plausible matches return `AMBIGUOUS_TARGET`, never an arbitrary click |
-| Actionability | Ref actions check visibility, enabled state, supported action, policy, and editability before dispatch |
-| Wait recovery | `wait --element` can poll the latest session refmap when no snapshot is pinned |
+| Actionability | Ref actions check live visibility, enabled state, supported action, policy, and editability before dispatch |
+| Wait recovery | `wait --element` can poll the latest session refmap when no snapshot is pinned, honors the caller timeout while resolving, and reports the last observed predicate state |
 | Session scope | `--session <id>` and batch item `session` never read or write another session's refmap |
 | Trace | `--trace <path>` writes JSONL diagnostics outside stdout and is best-effort unless strict |
 | FFI parity | FFI ref actions use strict resolve and actionability checks before adapter dispatch |
