@@ -92,7 +92,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
-- **Actionability:** ref actions check visibility, enabled state, supported action, policy, and editability before dispatch.
+- **Actionability:** ref actions check live visibility, enabled state, supported action, policy, and editability before dispatch.
 - **Sessions:** use `--session <id>` for concurrent or multi-agent runs; batch entries may override with `"session": "id"`.
 - **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; add `--trace-strict` only when trace write failures should fail the command.
 
@@ -212,6 +212,7 @@ agent-desktop clipboard-clear                   # Clear clipboard
 agent-desktop wait 1000                         # Pause 1 second
 agent-desktop wait --element @e5 --snapshot <snapshot_id> --timeout 5000 # Wait for element
 agent-desktop wait --element @e5 --predicate actionable --timeout 5000 # Wait until actionable
+agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000 # Wait for value
 agent-desktop wait --window "Title"             # Wait for window
 agent-desktop wait --text "Done" --app "App"    # Wait for text
 agent-desktop wait --menu --app "App"           # Wait for menu surface
