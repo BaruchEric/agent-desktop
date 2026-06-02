@@ -13,17 +13,20 @@ pub(crate) fn child_attributes(ax_role: Option<&str>) -> &'static [&'static str]
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use crate::tree::ax_element::AXElement;
+    use crate::{
+        cf_type::created_cf_array,
+        tree::{NodeAttrs, ax_element::AXElement, ax_value, node_attrs::parse_enabled},
+    };
     use accessibility_sys::{
         AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
         AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication,
-        AXUIElementGetAttributeValueCount, AXUIElementRef, AXUIElementSetMessagingTimeout,
-        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute,
-        kAXTitleAttribute, kAXValueAttribute,
+        AXUIElementGetAttributeValueCount, AXUIElementSetMessagingTimeout, kAXDescriptionAttribute,
+        kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute, kAXTitleAttribute,
+        kAXValueAttribute,
     };
     use core_foundation::{
         array::CFArray,
-        base::{CFRetain, CFType, CFTypeRef, TCFType},
+        base::{CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
         number::CFNumber,
         string::CFString,
@@ -37,15 +40,7 @@ mod imp {
         el
     }
 
-    pub fn fetch_node_attrs(
-        el: &AXElement,
-    ) -> (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        bool,
-    ) {
+    pub fn fetch_node_attrs(el: &AXElement) -> NodeAttrs {
         let attr_names = [
             kAXRoleAttribute,
             kAXTitleAttribute,
@@ -68,15 +63,12 @@ mod imp {
         };
 
         if err != kAXErrorSuccess || result_ref.is_null() {
-            let role = copy_string_attr(el, kAXRoleAttribute);
-            let title = copy_string_attr(el, kAXTitleAttribute);
-            let desc = copy_string_attr(el, kAXDescriptionAttribute);
-            let val = copy_value_typed(el);
-            let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
-            return (role, title, desc, val, enabled);
+            return fetch_node_attrs_slow(el);
         }
 
-        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(result_ref as _) };
+        let Some(arr) = created_cf_array(result_ref) else {
+            return fetch_node_attrs_slow(el);
+        };
         let items: Vec<Option<String>> = arr
             .into_iter()
             .enumerate()
@@ -108,13 +100,28 @@ mod imp {
             .collect();
 
         let get = |i: usize| items.get(i).and_then(|v| v.clone());
-        let role = get(0);
-        let title = get(1);
-        let desc = get(2);
-        let val = get(3);
-        let enabled = get(4).map(|s| s == "true").unwrap_or(true);
+        NodeAttrs {
+            role: get(0),
+            title: get(1),
+            description: get(2),
+            value: get(3),
+            enabled: parse_enabled(get(4)),
+        }
+    }
 
-        (role, title, desc, val, enabled)
+    fn fetch_node_attrs_slow(el: &AXElement) -> NodeAttrs {
+        let role = copy_string_attr(el, kAXRoleAttribute);
+        let title = copy_string_attr(el, kAXTitleAttribute);
+        let desc = copy_string_attr(el, kAXDescriptionAttribute);
+        let val = copy_value_typed(el);
+        let enabled = copy_bool_attr(el, kAXEnabledAttribute).unwrap_or(true);
+        NodeAttrs {
+            role,
+            title,
+            description: desc,
+            value: val,
+            enabled,
+        }
     }
 
     pub fn resolve_element_name(el: &AXElement) -> Option<String> {
@@ -213,19 +220,8 @@ mod imp {
         if err != kAXErrorSuccess || value.is_null() {
             return None;
         }
-        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
-        let children: Vec<AXElement> = arr
-            .into_iter()
-            .filter_map(|item| {
-                let ptr = item.as_concrete_TypeRef() as AXUIElementRef;
-                if ptr.is_null() {
-                    return None;
-                }
-                unsafe { CFRetain(ptr as CFTypeRef) };
-                Some(AXElement(ptr))
-            })
-            .collect();
-        Some(children)
+        let arr = created_cf_array(value)?;
+        Some(ax_array_items(arr))
     }
 
     pub fn copy_ax_array_prefix(
@@ -250,7 +246,7 @@ mod imp {
         if err != kAXErrorSuccess || value.is_null() {
             return None;
         }
-        let arr = unsafe { CFArray::<CFType>::wrap_under_create_rule(value as _) };
+        let arr = created_cf_array(value as CFTypeRef)?;
         Some(ax_array_items(arr))
     }
 
@@ -263,8 +259,7 @@ mod imp {
         if err != kAXErrorSuccess || value.is_null() {
             return None;
         }
-        let ptr = value as AXUIElementRef;
-        Some(AXElement(ptr))
+        ax_value::created_ax_element(value)
     }
 
     pub fn count_children(element: &AXElement, ax_role: Option<&str>) -> u32 {
@@ -290,21 +285,14 @@ mod imp {
 
     fn ax_array_items(arr: CFArray<CFType>) -> Vec<AXElement> {
         arr.into_iter()
-            .filter_map(|item| {
-                let ptr = item.as_concrete_TypeRef() as AXUIElementRef;
-                if ptr.is_null() {
-                    return None;
-                }
-                unsafe { CFRetain(ptr as CFTypeRef) };
-                Some(AXElement(ptr))
-            })
+            .filter_map(|item| ax_value::retained_ax_element(&item))
             .collect()
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    use crate::tree::ax_element::AXElement;
+    use crate::tree::{NodeAttrs, ax_element::AXElement};
 
     pub fn element_for_pid(_pid: i32) -> AXElement {
         AXElement(std::ptr::null())
@@ -350,16 +338,11 @@ mod imp {
         None
     }
 
-    pub fn fetch_node_attrs(
-        _el: &AXElement,
-    ) -> (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        bool,
-    ) {
-        (None, None, None, None, true)
+    pub fn fetch_node_attrs(_el: &AXElement) -> NodeAttrs {
+        NodeAttrs {
+            enabled: true,
+            ..NodeAttrs::default()
+        }
     }
 }
 

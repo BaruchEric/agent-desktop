@@ -117,7 +117,7 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
     }
 
     let mut command = Command::new("/usr/bin/open");
-    command.arg("-a").arg(id);
+    command.args(open_app_args(id));
     crate::system::process::run_with_timeout(&mut command, "open", OPEN_TIMEOUT)?;
 
     let start = Instant::now();
@@ -149,10 +149,19 @@ pub fn launch_app_impl(id: &str, timeout_ms: u64) -> Result<WindowInfo, AdapterE
     .with_suggestion("The app may take longer to start, or it may not create a visible window"))
 }
 
+#[cfg(target_os = "macos")]
+fn open_app_args(id: &str) -> [&str; 3] {
+    ["-g", "-a", id]
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, AdapterError> {
     Err(AdapterError::not_supported("launch_app"))
 }
+
+#[cfg(test)]
+#[path = "app_ops_tests.rs"]
+mod tests;
 
 #[cfg(target_os = "macos")]
 pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {

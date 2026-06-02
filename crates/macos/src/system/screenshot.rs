@@ -138,78 +138,17 @@ mod imp {
     }
 
     fn find_cg_window_id_for_pid(pid: i32) -> Option<u32> {
-        use core_foundation::{
-            array::CFArray,
-            base::{CFType, CFTypeRef, TCFType},
-            dictionary::CFDictionary,
-            number::CFNumber,
-            string::CFString,
-        };
-
-        unsafe extern "C" {
-            fn CGWindowListCopyWindowInfo(option: u32, window_id: u32) -> CFTypeRef;
-        }
-
-        let info_ref = unsafe { CGWindowListCopyWindowInfo(17, 0) };
-        if info_ref.is_null() {
-            return None;
-        }
-
-        let array = unsafe { CFArray::<CFType>::wrap_under_create_rule(info_ref as _) };
-
         let mut best_id: Option<u32> = None;
         let mut best_area: f64 = 0.0;
 
-        for item in array.iter() {
-            let dict = unsafe {
-                CFDictionary::<CFString, CFType>::wrap_under_get_rule(
-                    item.as_concrete_TypeRef() as _
-                )
-            };
-
-            let int_field = |key: &str| -> Option<i32> {
-                let k = CFString::new(key);
-                dict.find(&k).and_then(|v| {
-                    let n = unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
-                    n.to_i32()
-                })
-            };
-
-            if int_field("kCGWindowOwnerPID") != Some(pid) {
-                continue;
-            }
-            if int_field("kCGWindowLayer").unwrap_or(99) != 0 {
+        for record in crate::system::cg_window::visible_window_records() {
+            if record.pid != pid {
                 continue;
             }
 
-            let wid = match int_field("kCGWindowNumber") {
-                Some(n) => n as u32,
-                None => continue,
-            };
-
-            let bounds_key = CFString::new("kCGWindowBounds");
-            let area = if let Some(bounds_val) = dict.find(&bounds_key) {
-                let bounds_dict = unsafe {
-                    CFDictionary::<CFString, CFType>::wrap_under_get_rule(
-                        bounds_val.as_concrete_TypeRef() as _,
-                    )
-                };
-                let w = bounds_dict.find(CFString::new("Width")).and_then(|v| {
-                    let n = unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
-                    n.to_f64()
-                });
-                let h = bounds_dict.find(CFString::new("Height")).and_then(|v| {
-                    let n = unsafe { CFNumber::wrap_under_get_rule(v.as_concrete_TypeRef() as _) };
-                    n.to_f64()
-                });
-                w.unwrap_or(0.0) * h.unwrap_or(0.0)
-            } else {
-                0.0
-            };
-
-            if area > best_area {
-                best_area = area;
-                best_id = Some(wid);
+            if record.area > best_area {
+                best_area = record.area;
+                best_id = Some(record.window_number as u32);
             }
         }
 
