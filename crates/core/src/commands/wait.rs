@@ -318,7 +318,7 @@ fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
 }
 
 fn is_retryable_wait_app_error(err: &AppError) -> bool {
-    matches!(err.code(), "TIMEOUT" | "ELEMENT_NOT_FOUND")
+    matches!(err, AppError::Adapter(err) if is_retryable_wait_poll_error(&err.code))
 }
 
 fn wait_for_notification(

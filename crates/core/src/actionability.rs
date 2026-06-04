@@ -118,7 +118,7 @@ fn stability_check(expected_bounds_hash: Option<u64>, bounds: Option<Rect>) -> A
         return unknown("stable", "live bounds unavailable");
     };
     if bounds.bounds_hash() != expected {
-        return fail("stable", "bounds changed since snapshot");
+        return unknown("stable", "bounds changed since snapshot");
     }
     pass("stable")
 }

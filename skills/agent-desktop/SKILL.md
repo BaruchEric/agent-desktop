@@ -92,9 +92,9 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
-- **Actionability:** ref actions check live visibility, enabled state, supported action, policy, and editability before dispatch.
+- **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
 - **Sessions:** use `--session <id>` for concurrent or multi-agent runs; batch entries may override with `"session": "id"`.
-- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; add `--trace-strict` only when trace write failures should fail the command.
+- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened.
 
 ## JSON Output Contract
 

@@ -299,7 +299,7 @@ mod imp {
         def: &ChainDef,
         _ctx: &ChainContext,
         _policy: InteractionPolicy,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<Vec<ActionStep>, AdapterError> {
         Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "Chain execution not supported on this platform",

@@ -131,7 +131,7 @@ fn find_entry_by_path(
     let mut dedupe = ElementDedupe;
     for root in roots {
         ensure_before_deadline(deadline)?;
-        if matches.len() > 1 {
+        if should_stop_collecting(matches.len(), entry) {
             break;
         }
         let Some(candidate) = element_at_path(root, &entry.path, deadline)? else {
@@ -175,7 +175,7 @@ fn find_entry_in_roots(
     let mut matches = Vec::new();
     let mut seen_matches = ElementDedupe;
     for root in roots {
-        if matches.len() > 1 {
+        if should_stop_collecting(matches.len(), entry) {
             break;
         }
         let mut visited = FxHashSet::default();
@@ -197,32 +197,61 @@ fn classify_candidates(
     mut matches: Vec<AXElement>,
     entry: &RefEntry,
 ) -> Result<NativeHandle, AdapterError> {
-    use core_foundation::base::{CFRetain, CFTypeRef};
-
     match matches.len() {
         0 => Err(AdapterError::element_not_found("element")),
         1 => {
             let candidate = matches.remove(0);
-            unsafe { CFRetain(candidate.0 as CFTypeRef) };
-            Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) })
+            if has_meaningful_identity(entry) || bounds_match(&candidate, entry) {
+                retained_handle(candidate)
+            } else {
+                Err(AdapterError::element_not_found("element"))
+            }
         }
-        count => Err(AdapterError::ambiguous_target(format!(
-            "Ambiguous target: {count} candidates matched role={}, name={:?}, description={:?}",
-            entry.role,
-            entry.name.as_deref().unwrap_or("(none)"),
-            entry.description.as_deref().unwrap_or("(none)")
-        ))
-        .with_details(serde_json::json!({
-            "candidate_count": count,
-            "role": entry.role,
-            "name": entry.name,
-            "description": entry.description,
-            "source_app": entry.source_app,
-            "source_window_id": entry.source_window_id,
-            "source_window_title": entry.source_window_title,
-            "candidates": candidate_summaries(&matches)
-        }))),
+        _ => classify_ambiguous_candidates(matches, entry),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn classify_ambiguous_candidates(
+    matches: Vec<AXElement>,
+    entry: &RefEntry,
+) -> Result<NativeHandle, AdapterError> {
+    let mut bounds_matches: Vec<_> = matches
+        .iter()
+        .filter(|candidate| bounds_match(candidate, entry))
+        .cloned()
+        .collect();
+    if bounds_matches.len() == 1 {
+        return retained_handle(bounds_matches.remove(0));
+    }
+    let count = matches.len();
+    Err(AdapterError::ambiguous_target(format!(
+        "Ambiguous target: {count} candidates matched role={}, name={:?}, description={:?}",
+        entry.role,
+        entry.name.as_deref().unwrap_or("(none)"),
+        entry.description.as_deref().unwrap_or("(none)")
+    ))
+    .with_details(serde_json::json!({
+        "candidate_count": count,
+        "role": entry.role,
+        "name": entry.name,
+        "description": entry.description,
+        "source_app": entry.source_app,
+        "source_window_id": entry.source_window_id,
+        "source_window_title": entry.source_window_title,
+        "candidates": candidate_summaries(&matches)
+    })))
+}
+
+#[cfg(target_os = "macos")]
+fn retained_handle(candidate: AXElement) -> Result<NativeHandle, AdapterError> {
+    use core_foundation::base::{CFRetain, CFTypeRef};
+    #[cfg(test)]
+    if candidate.0.is_null() {
+        return Ok(NativeHandle::null());
+    }
+    unsafe { CFRetain(candidate.0 as CFTypeRef) };
+    Ok(unsafe { NativeHandle::from_ptr(candidate.0 as *const _) })
 }
 
 #[cfg(target_os = "macos")]
@@ -269,7 +298,7 @@ fn collect_elements_recursive(
 ) -> Result<(), AdapterError> {
     use accessibility_sys::kAXRoleAttribute;
 
-    if context.matches.len() > 1 {
+    if should_stop_collecting(context.matches.len(), context.entry) {
         return Ok(());
     }
     ensure_before_deadline(context.deadline)?;
@@ -283,16 +312,16 @@ fn collect_elements_recursive(
     let normalized = crate::tree::roles::normalized_role_for_element(el, ax_role.as_deref());
 
     if normalized == context.entry.role
-        && element_matches_entry_with_role(el, context.entry, ax_role.as_deref())
+        && element_matches_path_entry_with_role(el, context.entry, ax_role.as_deref())
         && context.seen_matches.push_clone(context.matches, el)
     {
-        if context.matches.len() > 1 {
+        if should_stop_collecting(context.matches.len(), context.entry) {
             context.ancestors.remove(&ptr_key);
             return Ok(());
         }
     }
 
-    if depth < context.max_depth && !should_prune_by_bounds(el, context.entry, depth) {
+    if depth < context.max_depth && !should_prune_for_resolution(el, context.entry, depth) {
         let children = resolve_children(el, ax_role.as_deref(), context.deadline)?;
         for child in &children {
             collect_elements_recursive(child, depth + 1, context)?;
@@ -306,16 +335,15 @@ fn collect_elements_recursive(
 #[cfg(target_os = "macos")]
 fn element_matches_entry(el: &AXElement, entry: &RefEntry) -> bool {
     let ax_role = copy_string_attr(el, accessibility_sys::kAXRoleAttribute);
-    element_matches_entry_with_role(el, entry, ax_role.as_deref())
+    element_matches_path_entry_with_role(el, entry, ax_role.as_deref())
 }
 
-#[cfg(target_os = "macos")]
-fn element_matches_entry_with_role(
-    el: &AXElement,
-    entry: &RefEntry,
-    ax_role: Option<&str>,
-) -> bool {
-    element_matches_path_entry_with_role(el, entry, ax_role) && bounds_match(el, entry)
+fn should_stop_collecting(match_count: usize, entry: &RefEntry) -> bool {
+    match_count > 1 && entry.bounds_hash.is_none()
+}
+
+fn should_prune_for_resolution(el: &AXElement, entry: &RefEntry, depth: u8) -> bool {
+    !has_meaningful_identity(entry) && should_prune_by_bounds(el, entry, depth)
 }
 
 #[cfg(target_os = "macos")]

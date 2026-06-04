@@ -388,7 +388,7 @@ Static elements (labels, groups, containers) appear in the tree for context but 
 Reliability contract:
 
 - `--session <id>` scopes snapshots, refs, and the latest snapshot pointer to one caller or agent team.
-- Ref actions use strict re-identification and return `STALE_REF` instead of acting on a changed target.
+- Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed identity returns `STALE_REF`.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.
 - `wait --element @e3 --predicate actionable` polls until the target can be acted on.

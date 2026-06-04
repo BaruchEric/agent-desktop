@@ -97,7 +97,8 @@ pub(crate) fn resolve_ref_with_context<'a>(
                 "ref": ref_id,
                 "snapshot_id": snapshot_id,
                 "code": err.code.as_str(),
-                "message": err.message.clone()
+                "message": err.message.clone(),
+                "details": err.details.clone()
             })
         });
     })?;
@@ -204,7 +205,8 @@ fn check_actionability_with_trace(input: ActionabilityTraceInput<'_>) -> Result<
                     "ref": input.ref_id,
                     "action": input.request.action.name(),
                     "code": err.code.as_str(),
-                    "message": err.message.clone()
+                    "message": err.message.clone(),
+                    "details": err.details.clone()
                 })
             });
         })?;

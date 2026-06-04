@@ -5,9 +5,10 @@ adapter is the first implementation, but the tests are written against
 `PlatformAdapter` semantics so Windows UIA and Linux AT-SPI can reuse the same
 expectations.
 
-The executable smoke harness lives in `src/tests/conformance.rs`. It uses the
-public `PlatformAdapter` contract to prove stale live identity blocks dispatch
-and stable live identity permits dispatch.
+The reusable command-path helper lives in `tests/conformance/ref_action_contract.rs`.
+The executable smoke harness in `src/tests/conformance.rs` uses it with a mock
+adapter; future Windows and Linux fixtures can call the same helper with real
+adapter-provided refs.
 
 ## Required Gates
 
@@ -16,7 +17,7 @@ and stable live identity permits dispatch.
 | Snapshot refs | Refs are depth-first, snapshot-scoped, and persisted in the caller session |
 | Strict resolve | A ref resolves only when identity still matches; stale refs return `STALE_REF` |
 | Ambiguity | Multiple plausible matches return `AMBIGUOUS_TARGET`, never an arbitrary click |
-| Actionability | Ref actions check live visibility, enabled state, supported action, policy, and editability before dispatch |
+| Actionability | Ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch |
 | Wait recovery | `wait --element` can poll the latest session refmap when no snapshot is pinned, honors the caller timeout while resolving, and reports the last observed predicate state |
 | Session scope | `--session <id>` and batch item `session` never read or write another session's refmap |
 | Trace | `--trace <path>` writes JSONL diagnostics outside stdout and is best-effort unless strict |
