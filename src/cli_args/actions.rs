@@ -25,7 +25,7 @@ pub(crate) struct TypeArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
@@ -40,7 +40,7 @@ pub(crate) struct SetValueArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -59,7 +59,7 @@ pub(crate) struct SelectArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(value_name = "VALUE", help = "Option to select")]
@@ -74,7 +74,7 @@ pub(crate) struct ScrollArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -119,7 +119,7 @@ pub(crate) struct HoverArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(long, help = "Absolute coordinates as x,y")]
@@ -142,7 +142,7 @@ pub(crate) struct DragCliArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(long, help = "Drag duration in milliseconds")]

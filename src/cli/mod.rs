@@ -42,7 +42,7 @@ pub(crate) struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Scope snapshots, refs, and latest pointer to a session id"
+        help = "Select the latest-snapshot namespace; explicit --snapshot IDs do not require it"
     )]
     pub session: Option<String>,
 

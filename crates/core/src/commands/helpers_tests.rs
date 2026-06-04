@@ -153,6 +153,47 @@ fn resolved_element_releases_handle_once_on_drop() {
 }
 
 #[test]
+fn explicit_session_snapshot_resolves_without_session_context() {
+    let _guard = HomeGuard::new();
+    let mut refmap = RefMap::new();
+    refmap.allocate(entry());
+    let snapshot_id = RefStore::for_session(Some("agent-a"))
+        .unwrap()
+        .save_new_snapshot(&refmap)
+        .unwrap();
+    let adapter = ReleaseCountingAdapter {
+        releases: AtomicU32::new(0),
+    };
+
+    let (_entry, resolved) = resolve_ref_with_context(
+        "@e1",
+        Some(&snapshot_id),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+    let _handle = resolved.handle();
+
+    assert_eq!(adapter.releases.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn missing_snapshot_keeps_snapshot_not_found_error() {
+    let _guard = HomeGuard::new();
+    let adapter = ReleaseCountingAdapter {
+        releases: AtomicU32::new(0),
+    };
+
+    let err = match resolve_ref("@e1", Some("smissing"), &adapter) {
+        Ok(_) => panic!("expected missing snapshot to fail"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
+    assert!(err.suggestion().unwrap().contains("snapshot_id"));
+}
+
+#[test]
 fn execute_ref_action_preserves_action_and_policy() {
     let _guard = HomeGuard::new();
     let mut refmap = RefMap::new();

@@ -173,7 +173,7 @@ agent-desktop wait --element @e5 --predicate actionable --timeout 5000
 agent-desktop wait --element @e5 --predicate value --value "Done" --timeout 5000
 ```
 Blocks until the element ref appears in the accessibility tree. Useful after triggering UI changes.
-When `--snapshot` is omitted, the command polls the caller's latest session refmap and refreshes it on the built-in debounce. When `--snapshot` is passed, it stays pinned to that refmap. Element resolution is capped by the remaining `--timeout`, and timeout errors include the last observed predicate/actionability state.
+When `--snapshot` is omitted, the command polls the caller's latest session refmap and refreshes it on the built-in debounce. When `--snapshot` is passed, it resolves that pinned refmap directly. Element resolution is capped by the remaining `--timeout`, and timeout errors include the last observed predicate/actionability state.
 
 ### wait (window)
 ```bash

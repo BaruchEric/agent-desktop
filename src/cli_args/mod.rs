@@ -170,7 +170,7 @@ pub(crate) struct GetArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -190,7 +190,7 @@ pub(crate) struct IsArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(
@@ -210,7 +210,7 @@ pub(crate) struct RefArgs {
     #[arg(
         long = "snapshot",
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot; omit to use latest"
+        help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     #[serde(rename = "snapshot", alias = "snapshot_id")]
     pub snapshot_id: Option<String>,

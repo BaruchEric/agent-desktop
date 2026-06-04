@@ -11,7 +11,7 @@ A structured representation of an application's user interface exposed by the op
 An observation of an accessibility tree at a point in time, persisted with the element refs allocated from that observation.
 
 ### Snapshot ID
-A compact identifier for one persisted snapshot inside a session.
+A compact identifier for one persisted snapshot. Explicit snapshot IDs are direct handles; callers do not need the original session when they pass the ID.
 
 ### Surface
 A scoped UI layer that can be observed separately from the whole window, such as an open menu, sheet, popover, alert, or focused area.
@@ -40,9 +40,9 @@ Strict ref resolution rejects missing, stale, and ambiguous matches instead of g
 ## Coordination
 
 ### Session
-A namespace for snapshots, ref maps, and the latest-snapshot pointer shared by one agent or a coordinated group of agents.
+A coordination key for one agent or a coordinated group of agents that share a latest-snapshot pointer.
 
-A session can contain many snapshots. The latest-snapshot pointer is a convenience for fluid workflows, not a replacement for explicit snapshot IDs when deterministic replay matters.
+Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
 
 ## Action Reliability
 
@@ -76,4 +76,4 @@ The requirement that language bindings using refs follow the same strict resolut
 
 ## Relationships
 
-A session contains many snapshots and owns one latest-snapshot pointer. A snapshot persists a ref map. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch. FFI ref-action parity keeps that same relationship true for language bindings.
