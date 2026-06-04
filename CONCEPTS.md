@@ -49,6 +49,11 @@ A session can contain many snapshots. The latest-snapshot pointer is a convenien
 ### Actionability
 The pre-dispatch judgement that a resolved element is safe to act on, based on native evidence such as visibility, stability, enabled state, supported action, policy, and editability.
 
+### Capability Vocabulary
+The platform-neutral set of supported action names that core uses to compare command intent with native adapter evidence.
+
+Each adapter maps native primitives into this shared vocabulary before core evaluates actionability. New commands should extend the central vocabulary first, then reuse it from actionability, ref allocation, predicates, FFI tests, and platform adapters.
+
 ### Interaction Policy
 The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input fallbacks.
 
@@ -59,6 +64,9 @@ Headless ref actions may still fail when the native accessibility API cannot per
 
 ### Wait Predicate
 The condition a wait command polls for before returning, such as element actionability, text presence, window appearance, menu state, or notification arrival.
+
+### Resolver Deadline
+The remaining time budget carried through strict ref resolution so every native read can fail with a structured timeout instead of using an unrelated platform default timeout.
 
 ### Coordinate Fallback
 An explicit opt-in path that uses screen coordinates or physical input when semantic accessibility operations cannot perform the requested action.

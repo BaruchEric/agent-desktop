@@ -17,6 +17,7 @@ tags:
   - ref-actions
   - strict-resolution
   - actionability
+  - capabilities
   - wait
   - sessions
   - tracing
@@ -95,6 +96,23 @@ Unavailable native evidence should be `unknown`, not a false failure, when the
 platform cannot provide it. A non-empty live action list can narrow capabilities;
 an empty transient live action list should not erase snapshot capabilities.
 
+### Own Capability Vocabulary in Core
+
+Supported action names are part of the cross-platform contract, not incidental
+strings. Put the canonical vocabulary, action-to-capability mapping, role
+defaults, and membership helpers in one core module. Actionability, ref
+allocation, `is` predicates, FFI tests, and platform adapters should refer to
+that vocabulary instead of re-declaring string literals.
+
+Platform adapters may discover capabilities differently. macOS maps AX actions
+and settable attributes; Windows should map UIA patterns; Linux should map
+AT-SPI actions and states. Those native differences must converge into the same
+core capability names before core evaluates actionability.
+
+Do not keep pass-through wrappers such as `Action::semantic_capabilities()` when
+call sites can use the canonical capability helper directly. Thin wrappers make
+future command additions touch multiple files without clarifying ownership.
+
 ### Keep Waits Bounded and Honest
 
 Wait commands must not hide permanent adapter failures behind timeout polling.
@@ -110,6 +128,12 @@ The reliable split is:
 
 This keeps `wait` useful for changing desktop state without making it a blanket
 error suppressor.
+
+Resolver deadline checks should also have one owner. If both root selection and
+tree traversal need the same timeout error and remaining-budget logic, share a
+small resolver-deadline helper instead of copying the deadline branch into each
+module. That keeps `wait --element` bounded through every native AX read without
+growing resolver files toward the size limit.
 
 ### Make Tracing Diagnostic, Not Behavioral
 
@@ -160,6 +184,8 @@ this repo:
   the 400 LOC limit or duplicate a shared contract.
 - Centralizing strict ref-action behavior in core is better than moving it only
   into FFI because CLI and FFI parity is the invariant.
+- Splitting tests by owner is better than letting one broad test file become the
+  dumping ground for ref maps, ref stores, sessions, and legacy migration.
 - Windows/Linux portability means platform-neutral contracts in core, not
   pretending current macOS AX evidence already exists on other platforms.
 
@@ -194,6 +220,8 @@ Any change to ref resolution or action dispatch must include tests for:
 - session isolation
 - FFI parity when the behavior is exposed through C ABI
 - compact snapshot output preserving hidden identity evidence in the refmap
+- capability mappings using the central vocabulary instead of copied strings
+- resolver deadlines applied before native reads and shared by resolver modules
 - trace strictness without post-mutation false failures
 
 If a platform needs a coordinate fallback, the fallback must be explicit and
