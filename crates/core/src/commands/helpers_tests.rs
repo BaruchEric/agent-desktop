@@ -57,7 +57,14 @@ struct AmbiguousAdapter {
 
 impl PlatformAdapter for AmbiguousAdapter {
     fn resolve_element_strict(&self, _entry: &RefEntry) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::ambiguous_target("2 candidates matched"))
+        Err(
+            AdapterError::ambiguous_target("2 candidates matched").with_details(
+                serde_json::json!({
+                    "candidate_count": 2,
+                    "candidates": [{ "name": "Private OK" }]
+                }),
+            ),
+        )
     }
 
     fn execute_action(
@@ -185,6 +192,43 @@ fn execute_ref_action_does_not_dispatch_ambiguous_target() {
 
     assert_eq!(err.code(), "AMBIGUOUS_TARGET");
     assert_eq!(adapter.executed.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn ref_action_trace_includes_ambiguous_details_without_candidate_names() {
+    let _guard = HomeGuard::new();
+    let mut refmap = RefMap::new();
+    refmap.allocate(entry());
+    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
+    let adapter = AmbiguousAdapter {
+        executed: AtomicU32::new(0),
+    };
+    let trace_path = std::env::temp_dir().join(format!(
+        "agent-desktop-ambiguous-trace-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let context = CommandContext::new(None, Some(trace_path.clone()), true).unwrap();
+    let args = RefArgs {
+        ref_id: "@e1".into(),
+        snapshot_id: Some(snapshot_id),
+    };
+
+    let err = execute_ref_action_with_context(
+        args,
+        &adapter,
+        ActionRequest::headless(Action::Click),
+        &context,
+    )
+    .expect_err("ambiguous targets fail before action dispatch");
+
+    assert_eq!(err.code(), "AMBIGUOUS_TARGET");
+    let trace = std::fs::read_to_string(&trace_path).unwrap();
+    assert!(trace.contains("\"candidate_count\":2"));
+    assert!(!trace.contains("Private OK"));
+    let _ = std::fs::remove_file(trace_path);
 }
 
 #[test]

@@ -39,13 +39,17 @@ pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
 
 fn element_state_from_attrs(attrs: crate::tree::NodeAttrs, role: String) -> ElementState {
     let value = attrs.value;
-    let focused = attrs.focused.unwrap_or(false);
-    let expanded = attrs.expanded.or(attrs.disclosing).unwrap_or(false);
+    let focused = attrs.states.focused.unwrap_or(false);
+    let expanded = attrs
+        .states
+        .expanded
+        .or(attrs.states.disclosing)
+        .unwrap_or(false);
     let mut states = Vec::new();
     if focused {
         states.push("focused".into());
     }
-    if !attrs.enabled {
+    if !attrs.states.enabled {
         states.push("disabled".into());
     }
     if expanded {

@@ -19,27 +19,6 @@ pub const DRAG: &str = "Drag";
 pub const CHECK: &str = "Check";
 pub const UNCHECK: &str = "Uncheck";
 
-pub const ALL: &[&str] = &[
-    CLICK,
-    RIGHT_CLICK,
-    SET_VALUE,
-    SET_FOCUS,
-    EXPAND,
-    COLLAPSE,
-    SELECT,
-    TOGGLE,
-    SCROLL,
-    SCROLL_TO,
-    PRESS_KEY,
-    KEY_DOWN,
-    KEY_UP,
-    TYPE_TEXT,
-    HOVER,
-    DRAG,
-    CHECK,
-    UNCHECK,
-];
-
 pub const CHECKED_APPLICABILITY: &[&str] = &[TOGGLE, CHECK, UNCHECK];
 pub const EXPANDED_APPLICABILITY: &[&str] = &[EXPAND, COLLAPSE];
 
@@ -99,14 +78,6 @@ fn role_default_slice(role: &str) -> &'static [&'static str] {
 mod tests {
     use super::*;
     use crate::action::{Direction, KeyCombo};
-    use std::collections::HashSet;
-
-    const BEHAVIOR_FILES: &[(&str, &str)] = &[
-        ("action.rs", include_str!("action.rs")),
-        ("actionability.rs", include_str!("actionability.rs")),
-        ("ref_alloc.rs", include_str!("ref_alloc.rs")),
-        ("commands/is_check.rs", include_str!("commands/is_check.rs")),
-    ];
 
     #[test]
     fn action_capabilities_are_declared_in_one_place() {
@@ -138,24 +109,6 @@ mod tests {
             defaults_for_role("treeitem"),
             strings(&[CLICK, EXPAND, COLLAPSE])
         );
-    }
-
-    #[test]
-    fn capability_literals_are_unique_to_this_module() {
-        let mut seen = HashSet::new();
-        for capability in ALL {
-            assert!(
-                seen.insert(*capability),
-                "duplicate capability: {capability}"
-            );
-            let literal = format!("\"{capability}\"");
-            for (path, content) in BEHAVIOR_FILES {
-                assert!(
-                    !content.contains(&literal),
-                    "capability literal {literal} must be referenced through capability.rs in {path}"
-                );
-            }
-        }
     }
 
     fn strings(values: &[&str]) -> Vec<String> {

@@ -294,7 +294,7 @@ fn live_actionability_fails_when_action_disappears_after_snapshot() {
 }
 
 #[test]
-fn live_actionability_fails_stale_when_bounds_changed_after_snapshot() {
+fn live_actionability_allows_identity_resolved_bounds_change() {
     let stale = entry();
     let adapter = LiveAdapter {
         state: None,
@@ -307,16 +307,21 @@ fn live_actionability_fails_stale_when_bounds_changed_after_snapshot() {
         actions: Some(vec!["Click".into()]),
     };
 
-    let err = check_live(
+    let report = check_live(
         &stale,
         &NativeHandle::null(),
         &adapter,
         &ActionRequest::headless(Action::Click),
     )
-    .unwrap_err();
+    .unwrap();
 
-    assert_eq!(err.code, ErrorCode::StaleRef);
-    assert!(err.message.contains("stable"));
+    assert!(report.actionable);
+    let stable = report
+        .checks
+        .iter()
+        .find(|check| check.name == "stable")
+        .unwrap();
+    assert_eq!(stable.status, ActionabilityStatus::Unknown);
 }
 
 #[test]

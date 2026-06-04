@@ -1,14 +1,16 @@
 use agent_desktop_core::{
-    action::Action,
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
     element_state::ElementState,
-    error::{AdapterError, ErrorCode},
+    error::AdapterError,
     node::Rect,
     refs::RefEntry,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
+
+#[path = "../../tests/conformance/ref_action_contract.rs"]
+mod ref_action_contract;
 
 struct ContractAdapter {
     live_bounds: Option<Rect>,
@@ -64,7 +66,7 @@ fn entry(bounds: Rect) -> RefEntry {
 }
 
 #[test]
-fn adapter_contract_blocks_stale_live_bounds_before_dispatch() {
+fn adapter_contract_dispatches_when_live_identity_moved() {
     let snapshot_bounds = Rect {
         x: 1.0,
         y: 1.0,
@@ -81,15 +83,10 @@ fn adapter_contract_blocks_stale_live_bounds_before_dispatch() {
         dispatches: AtomicU32::new(0),
     };
 
-    let err = agent_desktop_core::ref_action::execute_entry(
-        &adapter,
-        &entry(snapshot_bounds),
-        ActionRequest::headless(Action::Click),
-    )
-    .unwrap_err();
+    let result = ref_action_contract::run_click_command(&adapter, entry(snapshot_bounds)).unwrap();
 
-    assert_eq!(err.code, ErrorCode::StaleRef);
-    assert_eq!(adapter.dispatches.load(Ordering::SeqCst), 0);
+    assert_eq!(result["action"], "click");
+    assert_eq!(adapter.dispatches.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -105,13 +102,8 @@ fn adapter_contract_dispatches_when_live_identity_is_stable() {
         dispatches: AtomicU32::new(0),
     };
 
-    let result = agent_desktop_core::ref_action::execute_entry(
-        &adapter,
-        &entry(bounds),
-        ActionRequest::headless(Action::Click),
-    )
-    .unwrap();
+    let result = ref_action_contract::run_click_command(&adapter, entry(bounds)).unwrap();
 
-    assert_eq!(result.action, "click");
+    assert_eq!(result["action"], "click");
     assert_eq!(adapter.dispatches.load(Ordering::SeqCst), 1);
 }

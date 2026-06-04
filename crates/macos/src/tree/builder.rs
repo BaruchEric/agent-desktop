@@ -163,15 +163,16 @@ pub fn build_subtree(
     {
         states.push("focused".into());
     }
-    if !attrs.enabled {
+    if !attrs.states.enabled {
         states.push("disabled".into());
     }
     if is_secure_text {
         states.push("secure".into());
     }
     if attrs
+        .states
         .expanded
-        .or(attrs.disclosing)
+        .or(attrs.states.disclosing)
         .unwrap_or_else(|| element_is_expanded(el))
     {
         states.push("expanded".into());

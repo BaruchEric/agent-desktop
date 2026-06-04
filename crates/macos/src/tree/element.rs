@@ -19,7 +19,7 @@ mod imp {
             NodeAttrs,
             attributes::{copy_ax_array, copy_bool_attr, copy_string_attr, copy_value_typed},
             ax_element::AXElement,
-            node_attrs::{parse_bool_attr, parse_enabled},
+            node_attrs::{NodeAttrStates, parse_bool_attr, parse_enabled},
         },
     };
     use accessibility_sys::{
@@ -112,10 +112,12 @@ mod imp {
             title: get(1),
             description: get(2),
             value: get(3),
-            enabled: parse_enabled(get(4)),
-            focused: parse_bool_attr(get(5)),
-            expanded: parse_bool_attr(get(6)),
-            disclosing: parse_bool_attr(get(7)),
+            states: NodeAttrStates {
+                enabled: parse_enabled(get(4)),
+                focused: parse_bool_attr(get(5)),
+                expanded: parse_bool_attr(get(6)),
+                disclosing: parse_bool_attr(get(7)),
+            },
         }
     }
 
@@ -130,10 +132,12 @@ mod imp {
             title,
             description: desc,
             value: val,
-            enabled,
-            focused: copy_bool_attr(el, "AXFocused"),
-            expanded: copy_bool_attr(el, "AXExpanded"),
-            disclosing: copy_bool_attr(el, "AXDisclosing"),
+            states: NodeAttrStates {
+                enabled,
+                focused: copy_bool_attr(el, "AXFocused"),
+                expanded: copy_bool_attr(el, "AXExpanded"),
+                disclosing: copy_bool_attr(el, "AXDisclosing"),
+            },
         }
     }
 
@@ -197,10 +201,7 @@ mod imp {
     }
 
     pub fn fetch_node_attrs(_el: &AXElement) -> NodeAttrs {
-        NodeAttrs {
-            enabled: true,
-            ..NodeAttrs::default()
-        }
+        NodeAttrs::default()
     }
 }
 

@@ -184,6 +184,24 @@ fn ambiguous_candidate_classification_reports_structured_details() {
     assert_eq!(details["source_window_id"], "w-42");
 }
 
+#[test]
+fn single_meaningful_identity_candidate_resolves_after_bounds_change() {
+    let _handle = classify_candidates(
+        vec![AXElement(std::ptr::null_mut())],
+        &entry(Some(42), Some("w-42"), Some("Documents"), None),
+    )
+    .expect("unique identity should resolve even when old bounds no longer match");
+}
+
+#[test]
+fn bounds_hash_keeps_collecting_to_disambiguate_identity_matches() {
+    assert!(!should_stop_collecting(
+        2,
+        &entry(Some(42), None, None, None)
+    ));
+    assert!(should_stop_collecting(2, &entry(None, None, None, None)));
+}
+
 fn description_entry() -> RefEntry {
     let mut entry = entry(None, Some("w-10"), Some("Freeform"), None);
     entry.role = "button".into();

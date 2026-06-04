@@ -3,28 +3,32 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionStep {
-    pub label: String,
+    label: String,
     pub outcome: ActionStepOutcome,
 }
 
 impl ActionStep {
-    pub fn attempted(label: impl Into<String>) -> Self {
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn attempted(label: &'static str) -> Self {
         Self {
-            label: label.into(),
+            label: label.to_string(),
             outcome: ActionStepOutcome::Attempted,
         }
     }
 
-    pub fn skipped(label: impl Into<String>) -> Self {
+    pub fn skipped(label: &'static str) -> Self {
         Self {
-            label: label.into(),
+            label: label.to_string(),
             outcome: ActionStepOutcome::Skipped,
         }
     }
 
-    pub fn succeeded(label: impl Into<String>) -> Self {
+    pub fn succeeded(label: &'static str) -> Self {
         Self {
-            label: label.into(),
+            label: label.to_string(),
             outcome: ActionStepOutcome::Succeeded,
         }
     }
