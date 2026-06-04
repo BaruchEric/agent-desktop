@@ -1,5 +1,5 @@
 use super::*;
-use crate::tree::resolve_roots::{source_window_number, source_window_title_fallback_allowed};
+use crate::tree::resolve_roots::{single_window_fallback_allowed, source_window_number};
 use agent_desktop_core::adapter::SnapshotSurface;
 
 fn entry(
@@ -225,28 +225,22 @@ fn non_window_identity_candidate_without_bounds_fails_closed() {
 }
 
 #[test]
-fn source_window_title_fallback_requires_bounds_hash() {
-    assert!(source_window_title_fallback_allowed(&entry(
-        Some(42),
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
-    assert!(!source_window_title_fallback_allowed(&entry(
-        None,
-        Some("w-10"),
-        Some("Documents"),
-        None
-    )));
-    assert!(!source_window_title_fallback_allowed(&entry(
+fn single_window_fallback_requires_bounds_hash_not_title() {
+    assert!(single_window_fallback_allowed(&entry(
         Some(42),
         Some("w-10"),
         None,
+        None
+    )));
+    assert!(!single_window_fallback_allowed(&entry(
+        None,
+        Some("w-10"),
+        Some("Documents"),
         None
     )));
     let mut menu_entry = entry(Some(42), Some("w-10"), Some("Documents"), None);
     menu_entry.source_surface = SnapshotSurface::Menu;
-    assert!(!source_window_title_fallback_allowed(&menu_entry));
+    assert!(!single_window_fallback_allowed(&menu_entry));
 }
 
 #[test]

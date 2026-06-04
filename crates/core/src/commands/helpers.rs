@@ -50,17 +50,16 @@ pub(crate) fn resolve_ref_with_context<'a>(
         "ref.resolve.start",
         || json!({ "ref": ref_id, "snapshot_id": snapshot_id }),
     )?;
-    let refmap = store.load(snapshot_id).map_err(|e| {
+    let refmap = store.load(snapshot_id).inspect_err(|e| {
         tracing::debug!("refmap load failed: {e}");
         let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
                 "ref": ref_id,
                 "snapshot_id": snapshot_id,
-                "code": "STALE_REF",
+                "code": e.code(),
                 "message": e.to_string()
             })
         });
-        AppError::stale_ref(ref_id)
     })?;
     let entry = match refmap.get(ref_id) {
         Some(entry) => entry.clone(),

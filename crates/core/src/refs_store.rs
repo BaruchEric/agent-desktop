@@ -4,8 +4,8 @@ use crate::{
     refs::{RefMap, home_dir, new_snapshot_id, validate_snapshot_id, write_private_file},
     refs_lock::RefStoreLock,
 };
-use std::io::Read;
-use std::path::PathBuf;
+use std::io::{ErrorKind, Read};
+use std::path::{Path, PathBuf};
 
 const LATEST_SNAPSHOT_FILE: &str = "latest_snapshot_id";
 const MAX_SAVED_SNAPSHOTS: usize = 512;
@@ -64,7 +64,18 @@ impl RefStore {
         snapshot_id: &str,
         refmap: &RefMap,
     ) -> Result<(), AppError> {
-        self.with_write_lock(|| self.save_snapshot_unlocked(snapshot_id, refmap))
+        validate_snapshot_id(snapshot_id)?;
+        let base_dir = if self.snapshot_path(snapshot_id).is_file() {
+            self.base_dir.clone()
+        } else {
+            self.discover_snapshot_base(snapshot_id)?
+                .unwrap_or_else(|| self.base_dir.clone())
+        };
+        let store = Self {
+            base_dir,
+            allow_legacy_migration: false,
+        };
+        store.with_write_lock(|| store.save_snapshot_unlocked(snapshot_id, refmap))
     }
 
     pub fn load(&self, snapshot_id: Option<&str>) -> Result<RefMap, AppError> {
@@ -78,7 +89,7 @@ impl RefStore {
         if let Ok(id) = std::fs::read_to_string(self.latest_path()) {
             let id = id.trim();
             if !id.is_empty() {
-                return self.load_snapshot(id);
+                return self.load_snapshot_from_base(&self.base_dir, id);
             }
         }
         if let Some(refmap) = self.migrate_legacy_latest()? {
@@ -91,9 +102,38 @@ impl RefStore {
 
     pub fn load_snapshot(&self, snapshot_id: &str) -> Result<RefMap, AppError> {
         validate_snapshot_id(snapshot_id)?;
-        let path = self.snapshot_path(snapshot_id);
-        let mut file = std::fs::File::open(&path)
-            .map_err(|_| AppError::Adapter(AdapterError::snapshot_not_found(snapshot_id)))?;
+        if let Some(refmap) = self.read_snapshot_if_present(&self.base_dir, snapshot_id)? {
+            return Ok(refmap);
+        }
+        match self.discover_snapshot_base(snapshot_id)? {
+            Some(base_dir) => self.load_snapshot_from_base(&base_dir, snapshot_id),
+            None => Err(AppError::Adapter(AdapterError::snapshot_not_found(
+                snapshot_id,
+            ))),
+        }
+    }
+
+    fn load_snapshot_from_base(
+        &self,
+        base_dir: &Path,
+        snapshot_id: &str,
+    ) -> Result<RefMap, AppError> {
+        validate_snapshot_id(snapshot_id)?;
+        self.read_snapshot_if_present(base_dir, snapshot_id)?
+            .ok_or_else(|| AppError::Adapter(AdapterError::snapshot_not_found(snapshot_id)))
+    }
+
+    fn read_snapshot_if_present(
+        &self,
+        base_dir: &Path,
+        snapshot_id: &str,
+    ) -> Result<Option<RefMap>, AppError> {
+        let path = Self::snapshot_path_for_base(base_dir, snapshot_id);
+        let mut file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
         let metadata = file.metadata()?;
         if metadata.len() > crate::refs::MAX_REFMAP_BYTES {
             return Err(AppError::Internal(
@@ -107,7 +147,7 @@ impl RefStore {
                 "RefMap file exceeds 1MB size limit".into(),
             ));
         }
-        Ok(serde_json::from_str(&json)?)
+        Ok(Some(serde_json::from_str(&json)?))
     }
 
     pub fn set_latest(&self, snapshot_id: &str) -> Result<(), AppError> {
@@ -138,7 +178,11 @@ impl RefStore {
     }
 
     fn snapshot_path(&self, snapshot_id: &str) -> PathBuf {
-        self.base_dir
+        Self::snapshot_path_for_base(&self.base_dir, snapshot_id)
+    }
+
+    fn snapshot_path_for_base(base_dir: &Path, snapshot_id: &str) -> PathBuf {
+        base_dir
             .join("snapshots")
             .join(snapshot_id)
             .join("refmap.json")
@@ -188,6 +232,41 @@ impl RefStore {
         self.base_dir.join("refstore.lock")
     }
 
+    fn discover_snapshot_base(&self, snapshot_id: &str) -> Result<Option<PathBuf>, AppError> {
+        let home =
+            home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
+        let agent_dir = home.join(".agent-desktop");
+        let mut matches = Vec::new();
+        if agent_dir != self.base_dir
+            && Self::snapshot_path_for_base(&agent_dir, snapshot_id).is_file()
+        {
+            matches.push(agent_dir.clone());
+        }
+        let sessions_dir = agent_dir.join("sessions");
+        let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+            return Ok(matches.into_iter().next());
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path == self.base_dir {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() && Self::snapshot_path_for_base(&path, snapshot_id).is_file() {
+                matches.push(path);
+            }
+        }
+        if matches.len() > 1 {
+            return Err(AppError::invalid_input_with_suggestion(
+                format!("Snapshot '{snapshot_id}' exists in more than one session"),
+                "Pass the matching --session for this rare snapshot id collision.",
+            ));
+        }
+        Ok(matches.into_iter().next())
+    }
+
     fn with_write_lock<T>(&self, f: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
         let _lock = RefStoreLock::acquire(&self.lock_path())?;
         f()
@@ -201,7 +280,7 @@ impl RefStore {
             if let Ok(id) = std::fs::read_to_string(self.latest_path()) {
                 let id = id.trim();
                 if !id.is_empty() {
-                    return self.load_snapshot(id).map(Some);
+                    return self.load_snapshot_from_base(&self.base_dir, id).map(Some);
                 }
             }
             let refmap = match RefMap::load() {

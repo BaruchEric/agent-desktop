@@ -80,19 +80,25 @@ fn source_window_scoped_roots(
     entry: &RefEntry,
     deadline: Instant,
 ) -> Result<CandidateRoots, AdapterError> {
-    if let Some(window) = exact_source_window_number_root(entry, deadline)? {
+    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
+        return Ok(CandidateRoots {
+            roots: Vec::new(),
+            scope_verified: false,
+        });
+    };
+    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline) {
         return Ok(CandidateRoots {
             roots: vec![window],
             scope_verified: true,
         });
     }
-    if source_window_title_fallback_allowed(entry) {
-        return Ok(CandidateRoots {
-            roots: exact_source_window_root(entry, deadline)?
-                .into_iter()
-                .collect(),
-            scope_verified: false,
-        });
+    if single_window_fallback_allowed(entry) {
+        if let Some(window) = fallback_source_window_root(&windows, entry, deadline) {
+            return Ok(CandidateRoots {
+                roots: vec![window],
+                scope_verified: false,
+            });
+        }
     }
     Ok(CandidateRoots {
         roots: Vec::new(),
@@ -126,18 +132,14 @@ fn exact_source_window_number_root(
     entry: &RefEntry,
     deadline: Instant,
 ) -> Result<Option<AXElement>, AdapterError> {
-    let Some(source_window_number) = source_window_number(entry) else {
+    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
         return Ok(None);
     };
-    let root = element_for_pid(entry.pid);
-    prepare_for_read(&root, deadline)?;
-    let Some(windows) = copy_ax_array(&root, "AXWindows") else {
-        return Ok(None);
-    };
-    Ok(windows.into_iter().find(|win| {
-        prepare_for_read(win, deadline).is_ok()
-            && copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number)
-    }))
+    Ok(window_by_number(
+        &windows,
+        source_window_number(entry),
+        deadline,
+    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -145,26 +147,80 @@ fn exact_source_window_root(
     entry: &RefEntry,
     deadline: Instant,
 ) -> Result<Option<AXElement>, AdapterError> {
-    let root = element_for_pid(entry.pid);
-    prepare_for_read(&root, deadline)?;
-    let Some(windows) = copy_ax_array(&root, "AXWindows") else {
+    let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
         return Ok(None);
     };
-    if let Some(source_window_number) = source_window_number(entry) {
-        if let Some(window) = windows.iter().find(|win| {
+    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline) {
+        return Ok(Some(window));
+    }
+    Ok(window_by_title(
+        &windows,
+        entry.source_window_title.as_deref(),
+        deadline,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn windows_for_pid(pid: i32, deadline: Instant) -> Result<Option<Vec<AXElement>>, AdapterError> {
+    let root = element_for_pid(pid);
+    prepare_for_read(&root, deadline)?;
+    Ok(copy_ax_array(&root, "AXWindows"))
+}
+
+#[cfg(target_os = "macos")]
+fn window_by_number(
+    windows: &[AXElement],
+    source_window_number: Option<i64>,
+    deadline: Instant,
+) -> Option<AXElement> {
+    let source_window_number = source_window_number?;
+    windows
+        .iter()
+        .find(|win| {
             prepare_for_read(win, deadline).is_ok()
                 && copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number)
-        }) {
-            return Ok(Some(window.clone()));
-        }
+        })
+        .cloned()
+}
+
+#[cfg(target_os = "macos")]
+fn window_by_title(
+    windows: &[AXElement],
+    source_window_title: Option<&str>,
+    deadline: Instant,
+) -> Option<AXElement> {
+    let source_window_title = source_window_title?;
+    windows
+        .iter()
+        .find(|win| {
+            prepare_for_read(win, deadline).is_ok()
+                && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
+        })
+        .cloned()
+}
+
+#[cfg(target_os = "macos")]
+fn fallback_source_window_root(
+    windows: &[AXElement],
+    entry: &RefEntry,
+    deadline: Instant,
+) -> Option<AXElement> {
+    if let Some(window) = window_by_title(windows, entry.source_window_title.as_deref(), deadline) {
+        return Some(window);
     }
-    let Some(source_window_title) = entry.source_window_title.as_deref() else {
-        return Ok(None);
-    };
-    Ok(windows.into_iter().find(|win| {
+    if !single_window_fallback_allowed(entry) {
+        return None;
+    }
+    let mut candidates = windows.iter().filter(|win| {
         prepare_for_read(win, deadline).is_ok()
-            && copy_string_attr(win, "AXTitle").as_deref() == Some(source_window_title)
-    }))
+            && copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow")
+    });
+    let first = candidates.next()?;
+    if candidates.next().is_none() {
+        Some(first.clone())
+    } else {
+        None
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -173,10 +229,8 @@ pub(super) fn source_window_scope_required(entry: &RefEntry) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn source_window_title_fallback_allowed(entry: &RefEntry) -> bool {
-    source_window_scope_required(entry)
-        && entry.bounds_hash.is_some()
-        && entry.source_window_title.is_some()
+pub(super) fn single_window_fallback_allowed(entry: &RefEntry) -> bool {
+    source_window_scope_required(entry) && entry.bounds_hash.is_some()
 }
 
 #[cfg(target_os = "macos")]

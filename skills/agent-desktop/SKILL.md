@@ -87,13 +87,13 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
 - Static text, groups, containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`
+- Every snapshot returns `snapshot_id`; ref-consuming commands accept `--snapshot <snapshot_id>`, and explicit snapshot IDs do not require also passing `--session`
 - `last_refmap.json` is only a latest-snapshot inspection artifact. The command path uses snapshot-scoped storage.
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
-- **Sessions:** use `--session <id>` for concurrent or multi-agent runs; batch entries may override with `"session": "id"`.
+- **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
 - **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened.
 
 ## JSON Output Contract

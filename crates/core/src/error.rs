@@ -93,7 +93,7 @@ impl AdapterError {
             format!("{ref_id} not found in current RefMap"),
         )
         .with_suggestion(
-            "Run 'snapshot' (or 'snapshot --skeleton') to refresh, then retry with updated ref",
+            "Use the snapshot_id returned with this ref, or run 'snapshot' / 'snapshot --skeleton' again for fresh refs",
         )
     }
 
@@ -150,7 +150,7 @@ impl AdapterError {
             ErrorCode::SnapshotNotFound,
             format!("Snapshot '{snapshot_id}' not found"),
         )
-        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id")
+        .with_suggestion("Run 'snapshot' again and retry with the returned snapshot_id; if you omitted --snapshot, use the same --session as the snapshot")
     }
 
     pub fn policy_denied(message: impl Into<String>) -> Self {

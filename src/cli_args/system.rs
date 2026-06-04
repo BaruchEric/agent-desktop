@@ -145,7 +145,7 @@ pub(crate) struct WaitPredicateArgs {
     #[arg(
         long,
         value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID returned by snapshot for --element waits; omit to use latest"
+        help = "Snapshot ID for --element waits; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
     #[arg(

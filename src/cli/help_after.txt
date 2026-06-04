@@ -85,10 +85,11 @@ BATCH
 REF IDs
   snapshot assigns @e1, @e2, ... to interactive elements in depth-first order.
   Use a ref wherever <ref> appears. Refs are snapshot-scoped. Pass
-  --snapshot <snapshot_id> to pin a command to a known snapshot; when omitted,
-  ref commands use the latest saved snapshot. Run snapshot again after UI changes.
-  Use --session <id> as a shared namespace for concurrent agents; each session
-  stores multiple snapshot IDs plus its own latest-snapshot pointer.
+  --snapshot <snapshot_id> to pin a command to a known snapshot; explicit
+  snapshot IDs do not require --session. When --snapshot is omitted, ref
+  commands use the active session's latest saved snapshot. Run snapshot again
+  after UI changes. Use --session <id> as a shared latest-snapshot namespace
+  for concurrent agents.
   Ref actions use strict resolution: stale targets return STALE_REF; duplicate
   plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
   Ref actions run actionability checks before dispatch. Use --trace <path> to

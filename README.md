@@ -158,7 +158,7 @@ Agent loop:  snapshot → decide → act → snapshot → decide → act → ...
 
 ### Shared sessions for multi-agent workflows
 
-Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session is the ref storage namespace, not a security boundary; each snapshot in that session gets its own `snapshot_id`, and the session also keeps a latest-snapshot pointer. Pass `--snapshot <id>` when an agent must act on a specific observation, or omit it when the agent should use that session's latest snapshot.
+Use the same `--session <id>` when multiple agents coordinate on one desktop task. A session owns a latest-snapshot pointer, not a security boundary. Each snapshot gets its own `snapshot_id`; pass `--snapshot <id>` when an agent must act on a specific observation. Explicit snapshot IDs can be used without repeating `--session`; keep `--session` when you omit `--snapshot` and want that session's latest snapshot.
 
 ```mermaid
 flowchart LR
@@ -167,12 +167,14 @@ flowchart LR
     A --> C["Agent A: click @e4 --snapshot s1"]
     B --> D["Agent B: wait --element @e9 --predicate actionable"]
     S --> E["latest_snapshot_id points at newest snapshot"]
+    C --> F["Explicit snapshot id works outside session too"]
 ```
 
 ```bash
 agent-desktop --session release-fix snapshot --app Xcode -i --compact
 agent-desktop --session release-fix wait --element @e9 --predicate actionable --timeout 5000
 agent-desktop --session release-fix click @e9
+agent-desktop click @e9 --snapshot s2
 ```
 
 ## Commands
@@ -379,7 +381,7 @@ Errors include machine-readable codes and recovery hints:
 
 ## Ref System
 
-`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the latest snapshot pointer, but passing the ID is more deterministic in multi-step flows.
+`snapshot` assigns refs to interactive elements in depth-first order: `@e1`, `@e2`, `@e3`, etc. Refs are scoped to a compact `snapshot_id` such as `s8f3k2p9`. Commands can omit `--snapshot` to use the active session's latest snapshot pointer, but passing the ID is more deterministic in multi-step flows and does not require also passing `--session`.
 
 Interactive roles that receive refs: `button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `incrementor`, `menubutton`, `switch`, `colorwell`, `dockitem`.
 
@@ -387,7 +389,7 @@ Static elements (labels, groups, containers) appear in the tree for context but 
 
 Reliability contract:
 
-- `--session <id>` scopes snapshots, refs, and the latest snapshot pointer to one caller or agent team.
+- `--session <id>` scopes the latest snapshot pointer to one caller or agent team; explicit `--snapshot <id>` resolves the saved snapshot directly.
 - Ref actions re-identify targets at action time: a moved unique target can proceed, while missing or changed identity returns `STALE_REF`.
 - Multiple plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - Actions run an actionability preflight before dispatch: visibility, stability, enabled state, supported action, policy, and editability.

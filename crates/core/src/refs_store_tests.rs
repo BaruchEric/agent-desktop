@@ -89,6 +89,97 @@ fn sessions_are_isolated_from_default_store() {
 }
 
 #[test]
+fn explicit_snapshot_id_loads_across_session_namespaces() {
+    let _guard = HomeGuard::new();
+    let default_store = RefStore::new().unwrap();
+    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
+    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
+
+    let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
+
+    assert_eq!(
+        default_store
+            .load(Some(&snapshot_id))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Session A")
+    );
+    assert_eq!(
+        session_b
+            .load(Some(&snapshot_id))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Session A")
+    );
+    assert!(default_store.load(None).is_err());
+    assert!(session_b.load(None).is_err());
+}
+
+#[test]
+fn save_existing_snapshot_updates_discovered_owner_without_promoting_latest() {
+    let _guard = HomeGuard::new();
+    let default_store = RefStore::new().unwrap();
+    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
+
+    let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
+    default_store
+        .save_existing_snapshot(&snapshot_id, &map_with("Updated"))
+        .unwrap();
+
+    assert_eq!(
+        session_a
+            .load(Some(&snapshot_id))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Updated")
+    );
+    assert!(default_store.latest_snapshot_id().is_none());
+    assert_eq!(
+        session_a.latest_snapshot_id().as_deref(),
+        Some(snapshot_id.as_str())
+    );
+}
+
+#[test]
+fn duplicate_explicit_snapshot_id_requires_session() {
+    let _guard = HomeGuard::new();
+    let default_store = RefStore::new().unwrap();
+    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
+    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
+
+    session_a
+        .save_snapshot("sdup1", &map_with("Session A"))
+        .unwrap();
+    session_b
+        .save_snapshot("sdup1", &map_with("Session B"))
+        .unwrap();
+
+    let err = default_store.load(Some("sdup1")).unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.suggestion().unwrap().contains("--session"));
+    assert_eq!(
+        session_a
+            .load(Some("sdup1"))
+            .unwrap()
+            .get("@e1")
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Session A")
+    );
+}
+
+#[test]
 fn save_existing_snapshot_does_not_promote_latest_pointer() {
     let _guard = HomeGuard::new();
     let store = RefStore::new().unwrap();

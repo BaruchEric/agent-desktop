@@ -118,6 +118,14 @@ fn snapshot_with_disabled_ref() -> String {
 }
 
 fn save_ref(states: Vec<String>) -> String {
+    save_ref_in_store(RefStore::new().unwrap(), states)
+}
+
+fn save_ref_in_session(session_id: &str, states: Vec<String>) -> String {
+    save_ref_in_store(RefStore::for_session(Some(session_id)).unwrap(), states)
+}
+
+fn save_ref_in_store(store: RefStore, states: Vec<String>) -> String {
     let mut refmap = RefMap::new();
     refmap.allocate(RefEntry {
         pid: 1,
@@ -137,7 +145,7 @@ fn save_ref(states: Vec<String>) -> String {
         path_is_absolute: false,
         path: smallvec::SmallVec::new(),
     });
-    RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap()
+    store.save_new_snapshot(&refmap).unwrap()
 }
 
 #[test]
@@ -185,6 +193,34 @@ fn element_wait_enabled_predicate_uses_live_state() {
 
     assert_eq!(value["predicate"], "enabled");
     assert_eq!(value["observed"]["enabled"], true);
+}
+
+#[test]
+fn element_wait_explicit_session_snapshot_without_session_context() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = save_ref_in_session("agent-a", Vec::new());
+    let adapter = PredicateAdapter {
+        state: Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: None,
+        }),
+        value: None,
+        bounds: None,
+    };
+
+    let value = wait_for_element_test(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Exists,
+        50,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["found"], true);
+    assert_eq!(value["predicate"], "exists");
 }
 
 #[test]
