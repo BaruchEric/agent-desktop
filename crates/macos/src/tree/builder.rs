@@ -31,8 +31,13 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
-                .is_some_and(|t| t.contains(win_title) || win_title.contains(t))
+                .is_some_and(|t| !t.is_empty() && (t.contains(win_title) || win_title.contains(t)))
             {
+                return win.clone();
+            }
+        }
+        for win in &windows {
+            if count_children(win, None) > 0 {
                 return win.clone();
             }
         }
