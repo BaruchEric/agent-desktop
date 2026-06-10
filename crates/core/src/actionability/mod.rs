@@ -7,30 +7,15 @@ use crate::{
     node::Rect,
     refs::RefEntry,
 };
-use serde::Serialize;
 use serde_json::json;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ActionabilityStatus {
-    Pass,
-    Fail,
-    Unknown,
-}
+mod check;
+mod report;
+mod status;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ActionabilityCheck {
-    pub name: &'static str,
-    pub status: ActionabilityStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ActionabilityReport {
-    pub actionable: bool,
-    pub checks: Vec<ActionabilityCheck>,
-}
+pub use check::ActionabilityCheck;
+pub use report::ActionabilityReport;
+pub use status::ActionabilityStatus;
 
 #[cfg(test)]
 pub fn check(
@@ -229,5 +214,5 @@ fn unknown(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck 
 }
 
 #[cfg(test)]
-#[path = "actionability_tests.rs"]
+#[path = "../actionability_tests.rs"]
 mod tests;
