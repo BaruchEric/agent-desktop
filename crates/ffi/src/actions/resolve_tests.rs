@@ -139,3 +139,70 @@ fn ffi_ref_entry_rejects_unknown_surface() {
     assert_eq!(err.code, ErrorCode::InvalidArgs);
     assert_eq!(err.message, "invalid source_surface discriminant");
 }
+
+fn string_array_of(len: usize) -> (Vec<CString>, Vec<*const std::os::raw::c_char>) {
+    let owned: Vec<CString> = (0..len)
+        .map(|i| CString::new(format!("item-{i}")).unwrap())
+        .collect();
+    let ptrs = owned.iter().map(|s| s.as_ptr()).collect();
+    (owned, ptrs)
+}
+
+#[test]
+fn ffi_ref_entry_rejects_oversized_state_count() {
+    let role = CString::new("button").unwrap();
+    let (_owned, ptrs) = string_array_of(crate::types::ref_entry::AD_MAX_REF_STATES + 1);
+    let mut entry = test_ref_entry();
+    entry.role = role.as_ptr();
+    entry.states = ptrs.as_ptr();
+    entry.state_count = ptrs.len();
+
+    let err = unsafe { core_ref_entry_from_ffi(&entry) }.unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+    assert!(err.message.contains("AD_MAX_REF_STATES"));
+}
+
+#[test]
+fn ffi_ref_entry_rejects_oversized_action_count() {
+    let role = CString::new("button").unwrap();
+    let (_owned, ptrs) = string_array_of(crate::types::ref_entry::AD_MAX_REF_ACTIONS + 1);
+    let mut entry = test_ref_entry();
+    entry.role = role.as_ptr();
+    entry.available_actions = ptrs.as_ptr();
+    entry.available_action_count = ptrs.len();
+
+    let err = unsafe { core_ref_entry_from_ffi(&entry) }.unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+    assert!(err.message.contains("AD_MAX_REF_ACTIONS"));
+}
+
+#[test]
+fn ffi_ref_entry_rejects_oversized_path_count() {
+    let role = CString::new("button").unwrap();
+    let path: Vec<u32> = (0..(crate::types::ref_entry::AD_MAX_REF_PATH_DEPTH as u32 + 1)).collect();
+    let mut entry = test_ref_entry();
+    entry.role = role.as_ptr();
+    entry.path = path.as_ptr();
+    entry.path_count = path.len();
+
+    let err = unsafe { core_ref_entry_from_ffi(&entry) }.unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+    assert!(err.message.contains("AD_MAX_REF_PATH_DEPTH"));
+}
+
+#[test]
+fn ffi_ref_entry_rejects_unterminated_name_within_byte_cap() {
+    let role = CString::new("button").unwrap();
+    let unterminated = vec![b'a'; crate::convert::string::MAX_C_STRING_BYTES + 1];
+    let mut entry = test_ref_entry();
+    entry.role = role.as_ptr();
+    entry.name = unterminated.as_ptr().cast();
+
+    let err = unsafe { core_ref_entry_from_ffi(&entry) }.unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::InvalidArgs);
+    assert!(err.message.contains("name exceeds AD_MAX_STRING_BYTES"));
+}

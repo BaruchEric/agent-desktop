@@ -223,6 +223,12 @@ uintptr_t ad_drag_params_size(void);
  * an out-of-range value is rejected with
  * `AD_RESULT_ERR_INVALID_ARGS` at the boundary. Valid values are the
  * discriminants of `AdActionKind`.
+ *
+ * `AdDragParams` is embedded by value, so any growth there grows this
+ * struct too. Zero-initialize the whole struct before setting fields and
+ * validate layout with `AD_ACTION_SIZE` / `ad_action_size()` — an
+ * under-allocated action makes the library read past your buffer, and
+ * stack garbage in the embedded `drag` fields becomes a live delay.
  */
 typedef struct AdAction {
   int32_t kind;
@@ -231,6 +237,10 @@ typedef struct AdAction {
   struct AdKeyCombo key;
   struct AdDragParams drag;
 } AdAction;
+
+#define AD_ACTION_SIZE (sizeof(AdAction))
+
+uintptr_t ad_action_size(void);
 
 typedef struct AdElementState {
   const char *role;
@@ -277,6 +287,23 @@ typedef struct AdRefEntry {
 } AdRefEntry;
 
 #define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
+
+/*
+ * Per-field input caps enforced when an `AdRefEntry` crosses the boundary
+ * (`ad_resolve_element`, `ad_execute_ref_action_with_policy`). Counts above
+ * a cap are rejected with `AD_RESULT_ERR_INVALID_ARGS`.
+ */
+#define AD_MAX_REF_STATES 64
+#define AD_MAX_REF_ACTIONS 32
+#define AD_MAX_REF_PATH_DEPTH 128
+
+/*
+ * Maximum byte length (excluding the NUL terminator) accepted for any C
+ * string field on any call. Longer or unterminated strings are rejected
+ * with `AD_RESULT_ERR_INVALID_ARGS`. Sized to roughly match the CLI's argv
+ * ceiling so payload-bearing calls (clipboard, type) keep CLI parity.
+ */
+#define AD_MAX_STRING_BYTES 1048576
 
 uintptr_t ad_ref_entry_size(void);
 

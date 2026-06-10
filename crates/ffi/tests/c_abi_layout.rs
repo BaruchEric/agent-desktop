@@ -1,7 +1,35 @@
 mod common;
 
-use common::{AdPoint, AdRect, AdRefEntry};
+use common::{AdAction, AdPoint, AdRect, AdRefEntry};
 use std::mem::{MaybeUninit, align_of, offset_of, size_of};
+
+#[test]
+fn action_layout_is_guarded_for_c_consumers() {
+    assert_eq!(agent_desktop_ffi::types::action::AD_ACTION_SIZE, 96);
+    assert_eq!(
+        unsafe { common::ad_action_size() },
+        agent_desktop_ffi::types::action::AD_ACTION_SIZE
+    );
+    assert_eq!(size_of::<AdAction>(), 96);
+    assert_eq!(align_of::<AdAction>(), align_of::<usize>());
+
+    let offsets = [
+        offset_of!(AdAction, kind),
+        offset_of!(AdAction, text),
+        offset_of!(AdAction, scroll),
+        offset_of!(AdAction, key),
+        offset_of!(AdAction, drag),
+    ];
+    assert_eq!(offsets[0], 0);
+    assert!(offsets.windows(2).all(|pair| pair[0] < pair[1]));
+
+    let copied = unsafe {
+        let action = MaybeUninit::<AdAction>::zeroed().assume_init();
+        std::ptr::read(&action as *const AdAction)
+    };
+    assert_eq!(copied.kind, 0);
+    assert_eq!(copied.drag.drop_delay_ms, 0);
+}
 
 #[test]
 fn rect_and_point_layouts_are_memcpyable() {
@@ -21,6 +49,16 @@ fn rect_and_point_layouts_are_memcpyable() {
     let copied = unsafe { std::ptr::read(&point as *const AdPoint) };
     assert_eq!(copied.x, 3.0);
     assert_eq!(copied.y, 4.0);
+}
+
+#[test]
+fn ref_entry_input_caps_match_the_published_header_values() {
+    assert_eq!(agent_desktop_ffi::types::ref_entry::AD_MAX_REF_STATES, 64);
+    assert_eq!(agent_desktop_ffi::types::ref_entry::AD_MAX_REF_ACTIONS, 32);
+    assert_eq!(
+        agent_desktop_ffi::types::ref_entry::AD_MAX_REF_PATH_DEPTH,
+        128
+    );
 }
 
 #[test]

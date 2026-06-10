@@ -1,5 +1,5 @@
 use crate::AdAdapter;
-use crate::convert::string::{c_to_string, try_c_to_string};
+use crate::convert::string::try_c_to_string;
 use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
@@ -52,21 +52,21 @@ pub unsafe extern "C" fn ad_resolve_element(
 pub(crate) unsafe fn core_ref_entry_from_ffi(
     entry: &AdRefEntry,
 ) -> Result<CoreRefEntry, agent_desktop_core::error::AdapterError> {
-    let role = unsafe { c_to_string(entry.role) }.ok_or_else(|| {
+    let role = unsafe { optional_string(entry.role, "role") }?.ok_or_else(|| {
         agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            "role is null or invalid UTF-8",
+            "role is null",
         )
     })?;
     let name = unsafe { optional_string(entry.name, "name") }?;
     let value = unsafe { optional_string(entry.value, "value") }?;
     let description = unsafe { optional_string(entry.description, "description") }?;
-    let states = unsafe { string_array(entry.states, entry.state_count, "states") }?;
+    let states = unsafe { string_array(entry.states, entry.state_count, &STATES_LIMIT) }?;
     let available_actions = unsafe {
         string_array(
             entry.available_actions,
             entry.available_action_count,
-            "available_actions",
+            &ACTIONS_LIMIT,
         )
     }?;
     let bounds = if entry.has_bounds {
@@ -113,45 +113,83 @@ unsafe fn optional_string(
     ptr: *const std::os::raw::c_char,
     field: &str,
 ) -> Result<Option<String>, agent_desktop_core::error::AdapterError> {
-    unsafe { try_c_to_string(ptr) }.map_err(|()| {
+    unsafe { try_c_to_string(ptr) }.map_err(|err| {
         agent_desktop_core::error::AdapterError::new(
             agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("{field} is not valid UTF-8"),
+            err.describe(field),
         )
     })
 }
 
-const MAX_REF_ARRAY_LEN: usize = 1024;
+/// Per-field cap for a counted array crossing the C boundary. `constant`
+/// names the header macro so the error message tells callers which
+/// published limit they exceeded.
+struct ArrayLimit {
+    field: &'static str,
+    constant: &'static str,
+    max: usize,
+}
+
+const STATES_LIMIT: ArrayLimit = ArrayLimit {
+    field: "states",
+    constant: "AD_MAX_REF_STATES",
+    max: crate::types::ref_entry::AD_MAX_REF_STATES,
+};
+
+const ACTIONS_LIMIT: ArrayLimit = ArrayLimit {
+    field: "available_actions",
+    constant: "AD_MAX_REF_ACTIONS",
+    max: crate::types::ref_entry::AD_MAX_REF_ACTIONS,
+};
+
+const PATH_LIMIT: ArrayLimit = ArrayLimit {
+    field: "path",
+    constant: "AD_MAX_REF_PATH_DEPTH",
+    max: crate::types::ref_entry::AD_MAX_REF_PATH_DEPTH,
+};
+
+fn check_array_len(
+    len: usize,
+    is_null: bool,
+    limit: &ArrayLimit,
+) -> Result<(), agent_desktop_core::error::AdapterError> {
+    if len > limit.max {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!(
+                "{} count {len} exceeds {} ({})",
+                limit.field, limit.constant, limit.max
+            ),
+        ));
+    }
+    if is_null {
+        return Err(agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            format!("{} count is nonzero but pointer is null", limit.field),
+        ));
+    }
+    Ok(())
+}
 
 unsafe fn string_array(
     ptr: *const *const std::os::raw::c_char,
     len: usize,
-    field: &str,
+    limit: &ArrayLimit,
 ) -> Result<Vec<String>, agent_desktop_core::error::AdapterError> {
     if len == 0 {
         return Ok(Vec::new());
     }
-    if len > MAX_REF_ARRAY_LEN {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("{field} count {len} exceeds MAX_REF_ARRAY_LEN ({MAX_REF_ARRAY_LEN})"),
-        ));
-    }
-    if ptr.is_null() {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("{field} count is nonzero but pointer is null"),
-        ));
-    }
+    check_array_len(len, ptr.is_null(), limit)?;
     let items = unsafe { std::slice::from_raw_parts(ptr, len) };
     items
         .iter()
         .enumerate()
-        .map(|(index, item)| unsafe {
-            c_to_string(*item).ok_or_else(|| {
+        .map(|(index, item)| {
+            let element = format!("{}[{index}]", limit.field);
+            unsafe { optional_string(*item, &element) }?.ok_or_else(|| {
                 agent_desktop_core::error::AdapterError::new(
                     agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    format!("{field}[{index}] is null or invalid UTF-8"),
+                    format!("{element} is null"),
                 )
             })
         })
@@ -165,18 +203,7 @@ unsafe fn ref_path(
     if len == 0 {
         return Ok(smallvec::SmallVec::new());
     }
-    if len > MAX_REF_ARRAY_LEN {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            format!("path_count {len} exceeds MAX_REF_ARRAY_LEN ({MAX_REF_ARRAY_LEN})"),
-        ));
-    }
-    if ptr.is_null() {
-        return Err(agent_desktop_core::error::AdapterError::new(
-            agent_desktop_core::error::ErrorCode::InvalidArgs,
-            "path_count is nonzero but path pointer is null",
-        ));
-    }
+    check_array_len(len, ptr.is_null(), &PATH_LIMIT)?;
     let mut path = smallvec::SmallVec::new();
     path.extend(
         unsafe { std::slice::from_raw_parts(ptr, len) }
