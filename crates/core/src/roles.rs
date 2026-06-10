@@ -22,76 +22,19 @@ pub const INTERACTIVE_ROLES: &[&str] = &[
     "treeitem",
 ];
 
-/// Every role the platform adapters can emit, sorted. This is the
-/// cross-platform vocabulary contract: each adapter's role-mapping
-/// conformance test asserts every role it emits is listed here (see the
-/// macOS `AX_ROLE_MAP` tests; Windows/Linux adapters must ship the same
-/// table + test pair). Role queries are validated against this list so an
-/// impossible role fails loudly instead of silently matching nothing.
-pub const CANONICAL_ROLES: &[&str] = &[
-    "application",
-    "browser",
-    "button",
-    "cell",
-    "checkbox",
-    "colorwell",
-    "column",
-    "combobox",
-    "datefield",
-    "dialog",
-    "disclosure",
-    "dockitem",
-    "drawer",
-    "grid",
-    "group",
-    "handle",
-    "helptag",
-    "image",
-    "incrementor",
-    "layoutitem",
-    "levelindicator",
-    "link",
-    "list",
-    "matte",
-    "menu",
-    "menubutton",
-    "menuitem",
-    "outline",
-    "popover",
-    "progressbar",
-    "radiobutton",
-    "relevanceindicator",
-    "ruler",
-    "rulermarker",
-    "scrollarea",
-    "sheet",
-    "slider",
-    "splitter",
-    "statictext",
-    "switch",
-    "tab",
-    "table",
-    "textfield",
-    "timefield",
-    "toolbar",
-    "treeitem",
-    "unknown",
-    "webarea",
-    "window",
-];
-
-/// Resolves a caller-supplied role to the canonical vocabulary,
-/// case-insensitively. Common text-input aliases (`textarea`, `textbox`,
-/// `searchfield`) normalize to `textfield`, matching how the platform
-/// adapters map native text roles. Returns `None` for roles no adapter
-/// can ever emit.
-pub fn canonical_role(role: &str) -> Option<&'static str> {
+/// Normalizes a caller-supplied role filter for comparison against tree
+/// roles: trims, lowercases, and folds a few high-frequency web-automation
+/// synonyms onto their canonical names so an agent's reflexive `textarea`
+/// matches the `textfield` the adapters emit. This is an ergonomic shim,
+/// not a vocabulary: it never rejects. Whether a role exists is answered
+/// by the live tree (see `find`'s `roles_present`), so a new adapter role
+/// works the instant the adapter emits it — nothing here to keep in sync.
+pub fn normalize_role_query(role: &str) -> String {
     let normalized = role.trim().to_ascii_lowercase();
-    let aliased = match normalized.as_str() {
-        "textarea" | "textbox" | "searchfield" => "textfield",
-        other => other,
-    };
-    CANONICAL_ROLES.iter().copied().find(|c| *c == aliased)
+    match normalized.as_str() {
+        "textarea" | "textbox" | "searchfield" => "textfield".to_string(),
+        _ => normalized,
+    }
 }
 
 /// Returns true when `role` is in [`INTERACTIVE_ROLES`].
@@ -128,40 +71,22 @@ mod tests {
     }
 
     #[test]
-    fn canonical_roles_are_sorted_and_unique() {
-        let mut sorted = CANONICAL_ROLES.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.as_slice(), CANONICAL_ROLES);
+    fn normalize_role_query_folds_text_input_synonyms() {
+        assert_eq!(normalize_role_query("textarea"), "textfield");
+        assert_eq!(normalize_role_query("textbox"), "textfield");
+        assert_eq!(normalize_role_query("searchfield"), "textfield");
     }
 
     #[test]
-    fn interactive_roles_are_a_subset_of_canonical() {
-        for role in INTERACTIVE_ROLES {
-            assert!(
-                CANONICAL_ROLES.contains(role),
-                "interactive role {role} missing from CANONICAL_ROLES"
-            );
-        }
+    fn normalize_role_query_is_case_insensitive_and_trimmed() {
+        assert_eq!(normalize_role_query("Button"), "button");
+        assert_eq!(normalize_role_query(" TEXTAREA "), "textfield");
     }
 
     #[test]
-    fn canonical_role_resolves_text_input_aliases() {
-        assert_eq!(canonical_role("textarea"), Some("textfield"));
-        assert_eq!(canonical_role("textbox"), Some("textfield"));
-        assert_eq!(canonical_role("searchfield"), Some("textfield"));
-    }
-
-    #[test]
-    fn canonical_role_is_case_insensitive_and_trimmed() {
-        assert_eq!(canonical_role("Button"), Some("button"));
-        assert_eq!(canonical_role(" TEXTAREA "), Some("textfield"));
-    }
-
-    #[test]
-    fn canonical_role_rejects_unknown_roles() {
-        assert_eq!(canonical_role("buttn"), None);
-        assert_eq!(canonical_role(""), None);
+    fn normalize_role_query_passes_unknown_roles_through_untouched() {
+        assert_eq!(normalize_role_query("navbar"), "navbar");
+        assert_eq!(normalize_role_query("buttn"), "buttn");
     }
 
     #[test]

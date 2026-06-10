@@ -118,7 +118,7 @@ agent-desktop find --app "App" --role button --limit 20
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
-| `--role` | Canonical role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, scrollarea, window, ...). Case-insensitive; `textarea`, `textbox`, and `searchfield` normalize to `textfield`. Unknown roles return `INVALID_ARGS` with `details.valid_roles` instead of silently matching nothing |
+| `--role` | Role to match against the live tree (button, textfield, checkbox, scrollarea, window, ...). Case-insensitive; `textarea`/`textbox`/`searchfield` fold to `textfield`. When a role filter matches nothing, the response carries `roles_present` — the roles actually in the searched tree — so you can tell "none on screen" from a wrong role name and retry |
 | `--name` | Accessible name or label |
 | `--value` | Current value |
 | `--text` | Fuzzy match across name, value, title, and description |
