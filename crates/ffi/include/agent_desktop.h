@@ -196,6 +196,12 @@ typedef struct AdPoint {
   double y;
 } AdPoint;
 
+/*
+ * Caller-allocated drag parameters. Zero-initialize the whole struct before
+ * setting fields: `duration_ms`/`drop_delay_ms` treat 0 as the adapter-default
+ * sentinel, so stack garbage in an unset field would become a real delay.
+ * Validate layout with `AD_DRAG_PARAMS_SIZE` / `ad_drag_params_size()`.
+ */
 typedef struct AdDragParams {
   struct AdPoint from;
   struct AdPoint to;
@@ -204,6 +210,10 @@ typedef struct AdDragParams {
    * target activates (macOS). Zero uses the adapter default (500ms). */
   uint64_t drop_delay_ms;
 } AdDragParams;
+
+#define AD_DRAG_PARAMS_SIZE (sizeof(AdDragParams))
+
+uintptr_t ad_drag_params_size(void);
 
 /**
  * Action dispatched by `ad_execute_action`.
