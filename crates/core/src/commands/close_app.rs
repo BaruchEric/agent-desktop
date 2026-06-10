@@ -14,7 +14,20 @@ pub fn execute(args: CloseAppArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         )));
     }
     adapter.close_app(&args.app, args.force)?;
-    Ok(json!({ "app": args.app, "closed": true }))
+    if args.force {
+        Ok(json!({
+            "app": args.app,
+            "method": "force",
+            "requested": true,
+            "closed": true
+        }))
+    } else {
+        Ok(json!({
+            "app": args.app,
+            "method": "graceful",
+            "requested": true
+        }))
+    }
 }
 
 #[cfg(test)]

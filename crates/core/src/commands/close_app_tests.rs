@@ -29,7 +29,7 @@ fn close_app_blocks_adapter_protected_process() {
 }
 
 #[test]
-fn close_app_allows_ordinary_process_via_adapter() {
+fn graceful_close_reports_request_without_claiming_termination() {
     let value = execute(
         CloseAppArgs {
             app: "TextEdit".into(),
@@ -39,6 +39,28 @@ fn close_app_allows_ordinary_process_via_adapter() {
     )
     .unwrap();
 
-    assert_eq!(value["closed"], true);
     assert_eq!(value["app"], "TextEdit");
+    assert_eq!(value["method"], "graceful");
+    assert_eq!(value["requested"], true);
+    assert!(
+        value.get("closed").is_none(),
+        "graceful close must not claim a termination it cannot guarantee"
+    );
+}
+
+#[test]
+fn forced_close_confirms_termination() {
+    let value = execute(
+        CloseAppArgs {
+            app: "TextEdit".into(),
+            force: true,
+        },
+        &ProtectiveAdapter,
+    )
+    .unwrap();
+
+    assert_eq!(value["app"], "TextEdit");
+    assert_eq!(value["method"], "force");
+    assert_eq!(value["requested"], true);
+    assert_eq!(value["closed"], true);
 }
