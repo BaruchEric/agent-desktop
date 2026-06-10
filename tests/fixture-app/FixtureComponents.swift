@@ -34,7 +34,7 @@ struct NativeSlider: NSViewRepresentable {
         let s = NSSlider(
             value: value, minValue: 0, maxValue: 100,
             target: context.coordinator, action: #selector(Coordinator.changed(_:)))
-        s.setAccessibilityLabel("native-slider")
+        s.setAccessibilityLabel("value-slider")
         return s
     }
     func updateNSView(_ view: NSSlider, context: Context) { view.doubleValue = value }
@@ -51,7 +51,7 @@ struct NativeStepper: NSViewRepresentable {
         s.valueWraps = false
         s.target = context.coordinator
         s.action = #selector(NativeControlCoordinator.changed(_:))
-        s.setAccessibilityLabel("native-stepper")
+        s.setAccessibilityLabel("value-stepper")
         return s
     }
     func updateNSView(_ view: NSStepper, context: Context) { view.doubleValue = value }
@@ -92,7 +92,8 @@ final class DragCanvasView: NSView {
         setAccessibilityLabel("drag-canvas")
     }
     override func accessibilityFrame() -> NSRect {
-        window?.convertToScreen(convert(bounds, to: nil)) ?? bounds
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
     }
     override func isAccessibilityElement() -> Bool { true }
     override func mouseDown(with e: NSEvent) { start = convert(e.locationInWindow, from: nil); dragged = false }

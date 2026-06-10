@@ -124,7 +124,25 @@ trap cleanup EXIT
 # --- Setup -----------------------------------------------------------------
 note "Setup"
 [ -x "$bin" ] || { echo "release binary missing; run 'cargo build --release'"; exit 2; }
-[ -d "$fixture_app" ] || "$repo/tests/fixture-app/build.sh" >/dev/null
+ax_state="$("$bin" permissions 2>/dev/null | field "['data']['accessibility']['state']")"
+if [ "$ax_state" != "granted" ]; then
+    echo "accessibility permission not granted (state='${ax_state:-unknown}')." >&2
+    echo "Grant Accessibility trust to this terminal/runner in System Settings > Privacy & Security, then retry." >&2
+    exit 2
+fi
+# Rebuild when the bundle is missing OR any fixture source is newer than it, so
+# the suite never silently exercises a stale fixture. Keep swiftc stderr
+# visible: a failed build must abort loudly, not cascade into launch noise.
+fixture_stale() {
+    [ ! -d "$fixture_app" ] ||
+        [ -n "$(find "$repo/tests/fixture-app" -maxdepth 1 -name '*.swift' -newer "$fixture_app" 2>/dev/null)" ]
+}
+if fixture_stale; then
+    "$repo/tests/fixture-app/build.sh" >/dev/null || {
+        echo "fixture build failed (swiftc output above); cannot run E2E" >&2
+        exit 2
+    }
+fi
 "$bin" close-app "$app" --force >/dev/null 2>&1 || true; sleep 1
 open "$fixture_app"
 ready=""; tries=0
@@ -202,10 +220,14 @@ def f(n):
     if r: return r
 print(f(d['data']['tree']) or '')" 2>/dev/null)"
 hv_b="$(read_value hover-status)"
-[ -n "$hv_xy" ] && "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.5
-hv_a="$(read_value hover-status)"
-assert "--headed hover triggers onHover" "$([ "$hv_a" = "hovered" ] && echo 1 || echo 0)" \
-    "xy='$hv_xy' hover-status before='$hv_b' after='$hv_a'"
+if [ -n "$hv_xy" ]; then
+    "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.5
+    hv_a="$(read_value hover-status)"
+    assert "--headed hover triggers onHover" "$([ "$hv_a" = "hovered" ] && echo 1 || echo 0)" \
+        "xy='$hv_xy' hover-status before='$hv_b' after='$hv_a'"
+else
+    assert "--headed hover triggers onHover" 0 "hover-target bounds not found in snapshot (no xy to hover)"
+fi
 
 # --- Strict resolution -----------------------------------------------------
 # Two buttons share role+name "twin-control" and each records a distinct effect
@@ -364,16 +386,21 @@ dr_a="$(read_value drag-canvas-status)"
 assert "drag delivered a gesture" "$(echo "$dr_a" | grep -q '^dragged-' && echo 1 || echo 0)" "from='$from_xy' to='$to_xy' canvas before='$dr_b' after='$dr_a'"
 
 note "expand a press-toggled disclosure (verified by disclosure value)"
+# Force-collapse first so the expand below proves a real state flip — an
+# already-expanded disclosure would make "expand succeeded" vacuous.
+"$bin" collapse "$(resolve disclosure disclosure-section)" >/dev/null 2>&1; sleep 0.4
 exp_b="$("$bin" get "$(resolve disclosure disclosure-section)" 2>/dev/null | field "['data']['value']")"
 eout="$("$bin" expand "$(resolve disclosure disclosure-section)" 2>&1)"; sleep 0.4
 exp_a="$("$bin" get "$(resolve disclosure disclosure-section)" 2>/dev/null | field "['data']['value']")"
 eok="$(echo "$eout" | field "['ok']")"
-if [ "$exp_a" = "true" ]; then
-    assert "expand set disclosure expanded" 1 "value before='$exp_b' after='$exp_a' cmd_ok=$eok"
+if [ "$exp_b" = "true" ]; then
+    skip "expand unprovable: pre-collapse did not land, disclosure already expanded  [value before='$exp_b' after='$exp_a' cmd_ok=$eok]"
+elif [ "$exp_a" = "true" ]; then
+    assert "expand flipped disclosure from collapsed to expanded" 1 "value before='$exp_b' after='$exp_a' cmd_ok=$eok"
 elif [ "$eok" = "False" ]; then
     skip "expand honestly failed (disclosure not AX-actionable)  [value before='$exp_b' after='$exp_a' cmd_ok=$eok]"
 else
-    assert "expand set disclosure expanded" 0 "claimed success but value before='$exp_b' after='$exp_a' cmd_ok=$eok"
+    assert "expand flipped disclosure from collapsed to expanded" 0 "claimed success but value before='$exp_b' after='$exp_a' cmd_ok=$eok"
 fi
 
 # --- Performance (CLI wall-clock per operation) ----------------------------

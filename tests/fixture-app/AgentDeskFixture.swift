@@ -166,11 +166,12 @@ struct ContentView: View {
 
             // Native AppKit slider and stepper: unlike SwiftUI's, these expose a
             // working AX value/increment interface, so set-value can drive them.
+            // The harness-facing labels (value-slider/value-stepper) live on the
+            // NSViews themselves — the AX-actionable elements — so exactly one
+            // label source exists regardless of how SwiftUI wraps them.
             NativeSlider(value: $nativeSliderValue).frame(width: 180, height: 20)
-                .accessibilityLabel("value-slider")
             StatusReadout(name: "slider-status", value: String(Int(nativeSliderValue)))
             NativeStepper(value: $nativeStepperValue)
-                .accessibilityLabel("value-stepper")
             StatusReadout(name: "stepper-status", value: String(Int(nativeStepperValue)))
 
             DisclosureGroup("Disclosure Section", isExpanded: $disclosureExpanded) {
