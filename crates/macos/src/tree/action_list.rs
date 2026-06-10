@@ -34,13 +34,16 @@ pub(crate) fn platform_available_actions(
     if has_scroll_mechanism(role, &has, has_scrollbars) {
         push_unique(&mut actions, capability::SCROLL);
     }
-    if has("AXIncrement") || has("AXDecrement") || is_attr_settable(el, kAXValueAttribute) {
+    if has("AXIncrement")
+        || has("AXDecrement")
+        || (role_may_bear_value(role) && is_attr_settable(el, kAXValueAttribute))
+    {
         push_unique(&mut actions, capability::SET_VALUE);
     }
     if is_attr_settable(el, kAXFocusedAttribute) {
         push_unique(&mut actions, capability::SET_FOCUS);
     }
-    if is_attr_settable(el, "AXExpanded")
+    if (role_may_expand(role) && is_attr_settable(el, "AXExpanded"))
         || (has("AXPress") && agent_desktop_core::roles::is_expandable_role(role))
     {
         push_unique(&mut actions, capability::EXPAND);
@@ -48,6 +51,38 @@ pub(crate) fn platform_available_actions(
     }
 
     actions
+}
+
+/// Whether a role could carry a settable `AXValue`, so the `is_settable` probe
+/// is worth an IPC. Click/navigation-only roles never do; `unknown` always
+/// probes so an unmapped role never loses a capability.
+fn role_may_bear_value(role: &str) -> bool {
+    matches!(
+        role,
+        "textfield"
+            | "combobox"
+            | "slider"
+            | "incrementor"
+            | "stepper"
+            | "spinbutton"
+            | "checkbox"
+            | "radiobutton"
+            | "switch"
+            | "colorwell"
+            | "scrollbar"
+            | "valueindicator"
+            | "unknown"
+    )
+}
+
+/// Whether a role could expose a settable `AXExpanded`. Leaf/interactive roles
+/// never expand; `unknown` always probes.
+fn role_may_expand(role: &str) -> bool {
+    agent_desktop_core::roles::is_expandable_role(role)
+        || matches!(
+            role,
+            "group" | "outline" | "row" | "browser" | "table" | "list" | "cell" | "unknown"
+        )
 }
 
 #[cfg(not(target_os = "macos"))]

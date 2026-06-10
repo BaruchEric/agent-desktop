@@ -54,11 +54,12 @@ fn element_at_path(
     deadline: Instant,
 ) -> Result<Option<AXElement>, AdapterError> {
     let mut current = root.clone();
+    let mut seen = FxHashSet::default();
     for idx in path {
         ensure_before_deadline(deadline)?;
         set_messaging_timeout(&current, remaining_before_deadline(deadline)?);
         let ax_role = copy_string_attr(&current, accessibility_sys::kAXRoleAttribute);
-        let children = resolve_children(&current, ax_role.as_deref(), deadline)?;
+        let children = resolve_children(&current, ax_role.as_deref(), deadline, &mut seen)?;
         let Some(child) = children.get(*idx) else {
             return Ok(None);
         };
@@ -77,6 +78,7 @@ pub(super) fn find_entry_in_roots(
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
     let mut seen_matches = ElementDedupe;
+    let mut child_scratch = FxHashSet::default();
     for root in roots {
         if should_stop_collecting(matches.len(), entry) {
             break;
@@ -88,6 +90,7 @@ pub(super) fn find_entry_in_roots(
             ancestors: &mut visited,
             seen_matches: &mut seen_matches,
             matches: &mut matches,
+            child_scratch: &mut child_scratch,
             deadline,
         };
         collect_elements_recursive(root, 0, &mut context)?;
@@ -102,6 +105,7 @@ struct CollectContext<'a> {
     ancestors: &'a mut FxHashSet<usize>,
     seen_matches: &'a mut ElementDedupe,
     matches: &'a mut Vec<AXElement>,
+    child_scratch: &'a mut FxHashSet<usize>,
     deadline: Instant,
 }
 
@@ -136,7 +140,12 @@ fn collect_elements_recursive(
     }
 
     if depth < context.max_depth && !should_prune_for_resolution(el, context.entry, depth) {
-        let children = resolve_children(el, ax_role.as_deref(), context.deadline)?;
+        let children = resolve_children(
+            el,
+            ax_role.as_deref(),
+            context.deadline,
+            context.child_scratch,
+        )?;
         for child in &children {
             collect_elements_recursive(child, depth + 1, context)?;
         }
@@ -187,8 +196,9 @@ fn resolve_children(
     el: &AXElement,
     ax_role: Option<&str>,
     deadline: Instant,
+    seen: &mut FxHashSet<usize>,
 ) -> Result<Vec<AXElement>, AdapterError> {
-    let mut seen = FxHashSet::default();
+    seen.clear();
     let mut result = Vec::new();
     for attr in child_attributes(ax_role) {
         ensure_before_deadline(deadline)?;
