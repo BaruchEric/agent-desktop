@@ -33,6 +33,23 @@ assert() { if [ "$2" = "1" ]; then okmsg "$1  [$3]"; else badmsg "$1  [$3]"; fi;
 MODE_FLAG=""
 act() { "$bin" $MODE_FLAG "$@"; }
 
+# timed <label> <cmd...> : run the command, append its wall-clock ms to
+# $PERF_FILE, and echo stdout. Timing brackets only the subprocess (perf_counter
+# inside python), so the python interpreter's own startup is excluded.
+PERF_FILE="$(mktemp -t agentdesk-perf.XXXXXX)"
+timed() {
+    python3 - "$PERF_FILE" "$@" <<'PY'
+import sys, time, subprocess
+perf, label, cmd = sys.argv[1], sys.argv[2], sys.argv[3:]
+t = time.perf_counter()
+r = subprocess.run(cmd, capture_output=True, text=True)
+ms = (time.perf_counter() - t) * 1000
+with open(perf, "a") as fh:
+    fh.write(f"{label}\t{ms:.1f}\n")
+sys.stdout.write(r.stdout)
+PY
+}
+
 field() { python3 -c "import json,sys
 try: d=json.load(sys.stdin)
 except Exception: print(''); sys.exit()
@@ -68,7 +85,16 @@ interaction_suite() {
     "$bin" focus-window --app "$app" >/dev/null 2>&1
 
     note "[$MODE] click / type / set-value / clear"
-    verify "click sets click-status" click-status clicked     click "$(resolve button primary-button)"
+    # click-status is a counter ("click-N"); assert it INCREMENTS in this mode so
+    # a no-op click cannot pass by inheriting a value the other mode already set.
+    local cb ca nb na
+    cb="$(read_value click-status)"
+    act click "$(resolve button primary-button)" >/dev/null 2>&1; sleep 0.35
+    ca="$(read_value click-status)"
+    nb="$(printf '%s' "$cb" | grep -oE '[0-9]+$' || true)"; nb="${nb:-0}"
+    na="$(printf '%s' "$ca" | grep -oE '[0-9]+$' || true)"; na="${na:-0}"
+    assert "[$MODE] click incremented counter" "$([ "$na" -gt "$nb" ] && echo 1 || echo 0)" \
+        "click-status before='$cb' after='$ca'"
     verify "type sets field"         text-echo "typed-$MODE"  type "$(resolve textfield text-input)" "typed-$MODE"
     verify "set-value sets field"    text-echo "set-$MODE"    set-value "$(resolve textfield text-input)" "set-$MODE"
     verify "clear empties field"     text-echo ""             clear "$(resolve textfield text-input)"
@@ -92,7 +118,7 @@ interaction_suite() {
         "offset before='$so_b' after='$so_a' dir=$dir"
 }
 
-cleanup() { "$bin" close-app "$app" --force >/dev/null 2>&1 || true; }
+cleanup() { "$bin" close-app "$app" --force >/dev/null 2>&1 || true; rm -f "$PERF_FILE"; }
 trap cleanup EXIT
 
 # --- Setup -----------------------------------------------------------------
@@ -139,6 +165,10 @@ interaction_suite headed
 note "radio (one-way, headless)"
 verify "click radio option Two"   radio-status  Two  click "$(resolve radiobutton Two)"
 
+note "tab selection (TabView tabs are radiobuttons; observe tab-status switch)"
+verify "select Tab Two switches body"  tab-status 1  click "$(resolve radiobutton 'Tab Two')"
+verify "select Tab One switches back"  tab-status 0  click "$(resolve radiobutton 'Tab One')"
+
 note "double-click: the headless/headed discriminator (gesture-only target, no AXOpen)"
 dt="$(resolve button double-target)"
 "$bin" focus-window --app "$app" >/dev/null 2>&1
@@ -155,14 +185,48 @@ assert "--headed double-click completes (physical fallback unlocked)" \
     "$([ "$hd_a" = "double-clicked" ] && echo 1 || echo 0)" \
     "before='$hl_a' after='$hd_a' cmd_ok=$hd_ok"
 
+note "triple-click + hover (headed gestures, observed effect)"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+tp_b="$(read_value triple-status)"
+"$bin" --headed triple-click "$(resolve button triple-target)" >/dev/null 2>&1; sleep 0.4
+tp_a="$(read_value triple-status)"
+assert "--headed triple-click fires 3-tap gesture" "$([ "$tp_a" = "triple-clicked" ] && echo 1 || echo 0)" \
+    "triple-status before='$tp_b' after='$tp_a'"
+hv_xy="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin)
+def f(n):
+  if n.get('name')=='hover-target' and n.get('bounds'):
+    b=n['bounds']; return f\"{b['x']+b['width']/2},{b['y']+b['height']/2}\"
+  for c in n.get('children',[]):
+    r=f(c)
+    if r: return r
+print(f(d['data']['tree']) or '')" 2>/dev/null)"
+hv_b="$(read_value hover-status)"
+[ -n "$hv_xy" ] && "$bin" --headed hover --xy "$hv_xy" >/dev/null 2>&1; sleep 0.5
+hv_a="$(read_value hover-status)"
+assert "--headed hover triggers onHover" "$([ "$hv_a" = "hovered" ] && echo 1 || echo 0)" \
+    "xy='$hv_xy' hover-status before='$hv_b' after='$hv_a'"
+
 # --- Strict resolution -----------------------------------------------------
-note "ambiguous twins do not silently act"
-out="$("$bin" click "$(resolve button twin-control)" 2>&1)"
+# Two buttons share role+name "twin-control" and each records a distinct effect
+# (twin-a / twin-b). `--first` addresses the first in document order, which the
+# resolver must map to twin-a by path. Honest contract: it either fires the
+# ADDRESSED twin or fails closed with AMBIGUOUS_TARGET — but must NEVER silently
+# fire the other twin or no-op while claiming success.
+note "strict resolution acts on the addressed twin, never the other"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+tw="$(resolve button twin-control)"
+tw_b="$(read_value twin-status)"
+out="$("$bin" click "$tw" 2>&1)"; sleep 0.3
+tw_a="$(read_value twin-status)"
 acode="$(echo "$out" | field "['error']['code']")"; aok="$(echo "$out" | field "['ok']")"
-if [ "$acode" = "AMBIGUOUS_TARGET" ] || [ "$aok" = "True" ]; then
-    assert "twin did not silently act" 1 "code='$acode' ok=$aok (ambiguous or resolved-by-bounds)"
+if [ "$aok" = "True" ]; then
+    assert "addressed twin fired (not the other)" "$([ "$tw_a" = "twin-a" ] && echo 1 || echo 0)" \
+        "ref='$tw' twin-status before='$tw_b' after='$tw_a' (must be twin-a)"
+elif [ "$acode" = "AMBIGUOUS_TARGET" ]; then
+    assert "twins fail closed on ambiguity" 1 "ref='$tw' code='$acode' (no silent pick)"
 else
-    assert "twin did not silently act" 0 "code='$acode' ok=$aok out=${out:0:80}"
+    assert "twin resolution honest" 0 "ref='$tw' code='$acode' ok=$aok after='$tw_a'"
 fi
 
 note "removed element fails closed"
@@ -222,10 +286,21 @@ assert "skeleton + drill-down" "$([ -n "$anchor" ] && [ -n "$drilled" ] && [ "$d
     "skeleton_refs=$sk_refs anchor='$anchor' drilled_refs='$drilled'"
 
 note "session isolation + session-independent explicit snapshot"
-sa="$("$bin" --session run-a snapshot --app "$app" 2>/dev/null | field "['data']['snapshot_id']")"
+# Take run-a's snapshot once and pull a ref FROM THAT SAME tree, so the ref is
+# guaranteed to live in snapshot sa's refmap. (Resolving a ref from a separate
+# find snapshot against sa is racy on any UI that re-renders between calls.)
+sa_out="$("$bin" --session run-a snapshot --app "$app" 2>/dev/null)"
+sa="$(echo "$sa_out" | field "['data']['snapshot_id']")"
 sb="$("$bin" --session run-b snapshot --app "$app" 2>/dev/null | field "['data']['snapshot_id']")"
 assert "sessions keep distinct latest pointers" "$([ -n "$sa" ] && [ -n "$sb" ] && [ "$sa" != "$sb" ] && echo 1 || echo 0)" "run-a='$sa' run-b='$sb'"
-ra="$("$bin" --session run-a find --app "$app" --role button --name primary-button --first 2>/dev/null | field "['data']['match']['ref']")"
+ra="$(echo "$sa_out" | python3 -c "import json,sys
+d=json.load(sys.stdin)
+def f(n):
+  if n.get('name')=='primary-button' and n.get('ref_id'): return n['ref_id']
+  for c in n.get('children',[]):
+    r=f(c)
+    if r: return r
+print(f(d['data']['tree']) or '')" 2>/dev/null)"
 xok="$("$bin" get "$ra" --snapshot "$sa" 2>/dev/null | field "['ok']")"
 assert "session-a snapshot resolves without --session" "$([ "$xok" = "True" ] && echo 1 || echo 0)" "ref='$ra' snapshot='$sa' get_ok=$xok"
 
@@ -251,6 +326,25 @@ assert "list-surfaces reports the sheet" "$surf_has_sheet" "surfaces=$(echo "$su
 "$bin" click "$(resolve button confirm-sheet)" >/dev/null 2>&1; sleep 0.5
 sheet_a="$(read_value sheet-status)"
 assert "acted inside the sheet" "$([ "$sheet_a" = "confirmed" ] && echo 1 || echo 0)" "sheet-status before='$sheet_b' after='$sheet_a'"
+
+note "context menu: right-click opens it, select an item, observe the effect"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+rc_b="$(read_value right-status)"
+rc_out="$("$bin" right-click "$(resolve button context-target)" 2>&1)"; sleep 0.5
+rc_menu="$(echo "$rc_out" | python3 -c "import json,sys;print(bool(json.load(sys.stdin).get('data',{}).get('menu')))" 2>/dev/null)"
+cc="$(resolve menuitem context-choice)"
+"$bin" click "$cc" >/dev/null 2>&1; sleep 0.4
+rc_a="$(read_value right-status)"
+assert "right-click opens a verifiable context menu" "$([ "$rc_menu" = "True" ] && echo 1 || echo 0)" "menu_in_response=$rc_menu"
+assert "selecting a context-menu item fires it" "$([ "$rc_a" = "context-picked" ] && echo 1 || echo 0)" \
+    "context-choice ref='$cc' right-status before='$rc_b' after='$rc_a'"
+
+note "menu bar: the app menu bar is enumerable via --surface menubar"
+mb_snap="$("$bin" snapshot --app "$app" --surface menubar --max-depth 5 2>/dev/null)"
+mb_items="$(echo "$mb_snap" | grep -oc '"role":"menuitem"')"
+has_fixture="$(echo "$mb_snap" | grep -qc '"name":"Fixture"' && echo 1 || echo 0)"
+assert "menu bar exposes the custom 'Fixture' menu" "$has_fixture" \
+    "menuitems=$mb_items custom_menu=$([ "$has_fixture" = 1 ] && echo found || echo MISSING)"
 
 note "drag: source-tracked gesture across a single view (verified by canvas)"
 dr_b="$(read_value drag-canvas-status)"
@@ -282,6 +376,26 @@ else
     assert "expand set disclosure expanded" 0 "claimed success but value before='$exp_b' after='$exp_a' cmd_ok=$eok"
 fi
 
+# --- Performance (CLI wall-clock per operation) ----------------------------
+note "performance (CLI execution time per operation, ms)"
+"$bin" focus-window --app "$app" >/dev/null 2>&1
+pbref="$(resolve button primary-button)"; tfref="$(resolve textfield text-input)"
+timed "snapshot (full, depth 30)" "$bin" snapshot --app "$app" --max-depth 30 >/dev/null
+timed "snapshot (skeleton)"       "$bin" snapshot --app "$app" --skeleton >/dev/null
+timed "find (role+name)"          "$bin" find --app "$app" --role button --name primary-button --first >/dev/null
+timed "get (element value)"       "$bin" get "$pbref" >/dev/null
+timed "click (AX press)"          "$bin" click "$pbref" >/dev/null
+timed "set-value (textfield)"     "$bin" set-value "$tfref" "perf-probe" >/dev/null
+timed "type (textfield)"          "$bin" type "$tfref" "perf" >/dev/null
+if [ -s "$PERF_FILE" ]; then
+    awk -F'\t' '{printf "  %-26s %9.1f ms\n",$1,$2; n++; s+=$2}
+                END{if(n) printf "  %-26s %9.1f ms (mean of %d ops)\n","[mean]",s/n,n}' "$PERF_FILE"
+    snapms="$(awk -F'\t' '/snapshot \(full/{print $2; exit}' "$PERF_FILE")"
+    assert "full snapshot under 2s target" \
+        "$(python3 -c "print(1 if float('${snapms:-99999}')<2000 else 0)")" \
+        "snapshot=${snapms}ms (documented target <2000ms)"
+fi
+
 note "close-app --force terminates (observed via list-apps)"
 run_b="$(running)"
 "$bin" close-app "$app" --force >/dev/null 2>&1; sleep 1.5
@@ -291,6 +405,7 @@ assert "force close removed app" "$([ "$run_a" = "False" ] && echo 1 || echo 0)"
 note "Documented limitations (tracked separately, not failures)"
 skip "cross-target native drag-and-drop (onDrop) needs the OS dragging-session/pasteboard protocol; synthetic mouse events route mouse-up to the drag origin, so they cannot drop onto a separate native target (works for source-tracked gestures, web/Electron mouse-DnD)"
 skip "SwiftUI Slider/Stepper/DisclosureGroup are not AX-actionable; native AppKit equivalents are (set-value/expand work on those)"
+skip "SwiftUI CommandMenu (menu-bar) items accept AXPress (verified_press succeeds) but do not route to their action closure, so firing a custom top-menu item has no effect; native AppKit menu items DO fire via AX. Menu-bar enumeration (--surface menubar), menu opening, and .contextMenu item selection all work."
 
 # --- Summary ---------------------------------------------------------------
 note "Summary"

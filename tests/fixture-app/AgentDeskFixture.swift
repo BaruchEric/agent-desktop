@@ -130,10 +130,12 @@ struct Card<Content: View>: View {
 struct ContentView: View {
     // interaction
     @State private var clickStatus = "idle"
+    @State private var clickCount = 0
     @State private var doubleStatus = "idle"
     @State private var tripleStatus = "idle"
     @State private var rightStatus = "idle"
     @State private var hoverStatus = "idle"
+    @State private var twinStatus = "idle"
     // text
     @State private var textValue = ""
     @State private var secureValue = ""
@@ -209,7 +211,7 @@ struct ContentView: View {
 
     private var clicksCard: some View {
         Card(title: "Clicks & Mouse") {
-            Button("Primary Action") { clickStatus = "clicked" }
+            Button("Primary Action") { clickCount += 1; clickStatus = "click-\(clickCount)" }
                 .accessibilityLabel("primary-button")
             StatusReadout(name: "click-status", value: clickStatus)
 
@@ -238,10 +240,12 @@ struct ContentView: View {
                 .onHover { inside in if inside { hoverStatus = "hovered" } }
             StatusReadout(name: "hover-status", value: hoverStatus)
 
-            // Two identical controls: resolution must report AMBIGUOUS_TARGET,
-            // never silently pick one.
-            Button("Twin Control") { }.accessibilityLabel("twin-control")
-            Button("Twin Control") { }.accessibilityLabel("twin-control")
+            /// Two controls sharing role and name. Each records a distinct
+            /// effect so the harness can prove strict resolution acts on the
+            /// addressed twin, never silently the other.
+            Button("Twin Control") { twinStatus = "twin-a" }.accessibilityLabel("twin-control")
+            Button("Twin Control") { twinStatus = "twin-b" }.accessibilityLabel("twin-control")
+            StatusReadout(name: "twin-status", value: twinStatus)
         }
     }
 
@@ -482,6 +486,16 @@ struct AgentDeskFixtureApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     var body: some Scene {
         WindowGroup("AgentDesk Fixture") { ContentView() }
+            .commands {
+                // Custom top menu so the harness can verify the app menu bar is
+                // enumerable via `snapshot --surface menubar`. (SwiftUI
+                // CommandMenu items accept AXPress but do not route to their
+                // action closure — a SwiftUI limitation, like its Slider; native
+                // AppKit menu items fire via AX.)
+                CommandMenu("Fixture") {
+                    Button("Fire Menu Item") {}.accessibilityLabel("menu-fire-item")
+                }
+            }
     }
 }
 
