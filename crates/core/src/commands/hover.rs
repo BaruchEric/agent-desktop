@@ -1,7 +1,10 @@
 use crate::{
-    action::{MouseButton, MouseEvent, MouseEventKind, Point},
+    action::{MouseButton, MouseEvent, MouseEventKind},
     adapter::PlatformAdapter,
-    commands::helpers::{PointResolveArgs, resolve_point_from_ref_or_xy_with_context},
+    commands::helpers::{
+        PointResolveArgs, ResolvedPoint, focus_for_physical_input,
+        resolve_point_from_ref_or_xy_with_context,
+    },
     context::CommandContext,
     error::AppError,
 };
@@ -19,23 +22,28 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let point = resolve_hover_point(&args, adapter, context)?;
+    let resolved = resolve_hover_point(&args, adapter, context)?;
+    let focused = focus_for_physical_input(resolved.pid, adapter, context)?;
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Move,
-        point: point.clone(),
+        point: resolved.point.clone(),
         button: MouseButton::Left,
     })?;
     if let Some(ms) = args.duration_ms {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
-    Ok(json!({ "hovered": true, "x": point.x, "y": point.y }))
+    let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
+    if focused {
+        response["focused"] = json!(true);
+    }
+    Ok(response)
 }
 
 fn resolve_hover_point(
     args: &HoverArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-) -> Result<Point, AppError> {
+) -> Result<ResolvedPoint, AppError> {
     resolve_point_from_ref_or_xy_with_context(
         PointResolveArgs {
             ref_id: args.ref_id.as_deref(),
@@ -47,3 +55,7 @@ fn resolve_hover_point(
         context,
     )
 }
+
+#[cfg(test)]
+#[path = "hover_tests.rs"]
+mod tests;

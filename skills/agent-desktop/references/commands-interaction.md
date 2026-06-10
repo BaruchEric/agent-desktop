@@ -197,6 +197,8 @@ agent-desktop hover @e5 --duration 2000
 Moves cursor to element center or absolute coordinates. Optional `--duration` holds position for N ms.
 This is an explicit cursor-moving command.
 
+With `--headed`, a ref-addressed hover raises the target app frontmost before moving the cursor, and the response includes `"focused": true` when the raise happened. Headless (default) never changes the frontmost app. `--xy` input never focuses — the caller owns the target there.
+
 ### drag
 ```bash
 agent-desktop drag --from @e1 --to @e5
@@ -215,6 +217,8 @@ agent-desktop drag --from @e1 --to @e5 --drop-delay 800
 | `--drop-delay` | Milliseconds to hold over the destination before releasing; default 500 |
 
 Can mix ref and coordinate sources (e.g., `--from @e1 --to-xy 400,500`).
+
+With `--headed`, a ref-addressed `--from` raises the source app frontmost before the mouse-down (the destination app is never pre-focused — raising it could cover the source point), and the response includes `"focused": true` when the raise happened. Headless (default) never changes the frontmost app; coordinate-only drags never focus.
 
 macOS drop targets often need the dragged item to dwell over them before they register as the drop destination — too short and the gesture lands as a drag with no drop. The default 500ms dwell suits most targets; raise `--drop-delay` (e.g. 800–1200) for sluggish destinations like list reorders or cross-window drops. The dwell posts continuous drag events over the destination so it stays highlighted, rather than a dead pause.
 

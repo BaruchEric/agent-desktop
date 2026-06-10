@@ -12,12 +12,14 @@ use std::sync::Mutex;
 
 struct DragCaptureAdapter {
     captured: Mutex<Option<DragParams>>,
+    focused_pids: Mutex<Vec<i32>>,
 }
 
 impl DragCaptureAdapter {
     fn new() -> Self {
         Self {
             captured: Mutex::new(None),
+            focused_pids: Mutex::new(Vec::new()),
         }
     }
 }
@@ -34,6 +36,11 @@ impl PlatformAdapter for DragCaptureAdapter {
             width: 40.0,
             height: 60.0,
         }))
+    }
+
+    fn focus_app(&self, pid: i32) -> Result<(), AdapterError> {
+        self.focused_pids.lock().unwrap().push(pid);
+        Ok(())
     }
 
     fn drag(&self, params: DragParams) -> Result<(), AdapterError> {
@@ -79,13 +86,9 @@ fn drop_delay_omitted_uses_adapter_default_and_no_response_field() {
     assert_eq!(captured.drop_delay_ms, None);
 }
 
-#[test]
-fn drag_resolves_ref_bounds_to_center_point() {
-    let _guard = HomeGuard::new();
-    let store = RefStore::new().unwrap();
-    let mut refmap = RefMap::new();
-    refmap.allocate(RefEntry {
-        pid: 1,
+fn ref_entry(pid: i32) -> RefEntry {
+    RefEntry {
+        pid,
         role: "button".into(),
         name: Some("Item".into()),
         value: None,
@@ -101,7 +104,35 @@ fn drag_resolves_ref_bounds_to_center_point() {
         root_ref: None,
         path_is_absolute: false,
         path: smallvec::SmallVec::new(),
-    });
+    }
+}
+
+fn cross_app_snapshot() -> String {
+    let store = RefStore::new().unwrap();
+    let mut refmap = RefMap::new();
+    refmap.allocate(ref_entry(1));
+    refmap.allocate(ref_entry(2));
+    store.save_new_snapshot(&refmap).unwrap()
+}
+
+fn cross_app_args(snapshot_id: String) -> DragArgs {
+    DragArgs {
+        from_ref: Some("@e1".into()),
+        from_xy: None,
+        to_ref: Some("@e2".into()),
+        to_xy: None,
+        snapshot_id: Some(snapshot_id),
+        duration_ms: None,
+        drop_delay_ms: None,
+    }
+}
+
+#[test]
+fn drag_resolves_ref_bounds_to_center_point() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let mut refmap = RefMap::new();
+    refmap.allocate(ref_entry(1));
     let snapshot_id = store.save_new_snapshot(&refmap).unwrap();
     let adapter = DragCaptureAdapter::new();
 
@@ -118,4 +149,53 @@ fn drag_resolves_ref_bounds_to_center_point() {
 
     let captured = adapter.captured.lock().unwrap().clone().unwrap();
     assert_eq!((captured.from.x, captured.from.y), (30.0, 50.0));
+}
+
+#[test]
+fn headless_ref_drag_never_steals_focus() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = DragCaptureAdapter::new();
+
+    let value = execute(
+        cross_app_args(snapshot_id),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+
+    assert!(adapter.focused_pids.lock().unwrap().is_empty());
+    assert!(value.get("focused").is_none());
+}
+
+#[test]
+fn headed_ref_drag_focuses_only_the_from_app_once() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = cross_app_snapshot();
+    let adapter = DragCaptureAdapter::new();
+
+    let value = execute(
+        cross_app_args(snapshot_id),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert_eq!(*adapter.focused_pids.lock().unwrap(), vec![1]);
+    assert_eq!(value["focused"], true);
+}
+
+#[test]
+fn headed_xy_drag_never_steals_focus() {
+    let adapter = DragCaptureAdapter::new();
+
+    let value = execute(
+        xy_args(None),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+
+    assert!(adapter.focused_pids.lock().unwrap().is_empty());
+    assert!(value.get("focused").is_none());
 }

@@ -1,7 +1,9 @@
 use crate::{
     action::DragParams,
     adapter::PlatformAdapter,
-    commands::helpers::{PointResolveArgs, resolve_point_from_ref_or_xy_with_context},
+    commands::helpers::{
+        PointResolveArgs, focus_for_physical_input, resolve_point_from_ref_or_xy_with_context,
+    },
     context::CommandContext,
     error::AppError,
 };
@@ -42,20 +44,24 @@ pub fn execute(
         adapter,
         context,
     )?;
+    let focused = focus_for_physical_input(from.pid, adapter, context)?;
     let params = DragParams {
-        from: from.clone(),
-        to: to.clone(),
+        from: from.point.clone(),
+        to: to.point.clone(),
         duration_ms: args.duration_ms,
         drop_delay_ms: args.drop_delay_ms,
     };
     adapter.drag(params)?;
     let mut response = json!({
         "dragged": true,
-        "from": { "x": from.x, "y": from.y },
-        "to": { "x": to.x, "y": to.y }
+        "from": { "x": from.point.x, "y": from.point.y },
+        "to": { "x": to.point.x, "y": to.point.y }
     });
     if let Some(drop_delay_ms) = args.drop_delay_ms {
         response["drop_delay_ms"] = json!(drop_delay_ms);
+    }
+    if focused {
+        response["focused"] = json!(true);
     }
     Ok(response)
 }

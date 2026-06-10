@@ -43,12 +43,25 @@ impl CommandContext {
     /// because typing requires focus). `--headed` upgrades any base to `headed`,
     /// unlocking the cursor/OS-input fallbacks instead of failing closed.
     pub fn request(&self, action: Action, base: InteractionPolicy) -> ActionRequest {
-        let policy = if self.headed {
+        ActionRequest {
+            action,
+            policy: self.policy_with_base(base),
+        }
+    }
+
+    /// Policy for the raw physical-input commands (hover, drag, mouse-*).
+    /// They have no semantic action chain, so the base is fully headless:
+    /// a ref-addressed gesture may not steal focus unless `--headed` opts in.
+    pub fn physical_input_policy(&self) -> InteractionPolicy {
+        self.policy_with_base(InteractionPolicy::headless())
+    }
+
+    fn policy_with_base(&self, base: InteractionPolicy) -> InteractionPolicy {
+        if self.headed {
             InteractionPolicy::headed()
         } else {
             base
-        };
-        ActionRequest { action, policy }
+        }
     }
 
     pub fn for_batch_item(&self, session_id: Option<String>) -> Result<Self, AppError> {
