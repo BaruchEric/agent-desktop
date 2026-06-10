@@ -232,6 +232,14 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("close_app"))
     }
 
+    /// Reports whether closing `identifier` would terminate a process the OS
+    /// depends on (window server, login session, shell). The set is
+    /// inherently platform-specific, so each adapter owns its own list;
+    /// core only asks. The default denies nothing.
+    fn is_protected_process(&self, _identifier: &str) -> bool {
+        false
+    }
+
     fn screenshot(&self, _target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         Err(AdapterError::not_supported("screenshot"))
     }

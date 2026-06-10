@@ -127,6 +127,10 @@ impl PlatformAdapter for MacOSAdapter {
         crate::system::app_ops::close_app_impl(id, force)
     }
 
+    fn is_protected_process(&self, identifier: &str) -> bool {
+        crate::system::app_ops::is_protected_process(identifier)
+    }
+
     fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError> {
         match target {
             ScreenshotTarget::Window(pid) => crate::system::screenshot::capture_app(pid),

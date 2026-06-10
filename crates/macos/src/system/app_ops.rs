@@ -159,6 +159,18 @@ pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, Adapte
     Err(AdapterError::not_supported("launch_app"))
 }
 
+/// Processes whose termination would break the macOS session: the window
+/// server, login session, launchd, the Dock, and Finder. Matched as a
+/// lowercase substring so bundle-style identifiers (`com.apple.dock`) and
+/// display names (`Dock`) both resolve. Windows and Linux adapters define
+/// their own equivalents (`csrss.exe`/`winlogon.exe`, `gnome-shell`/`Xorg`).
+const PROTECTED_PROCESSES: &[&str] = &["loginwindow", "windowserver", "dock", "launchd", "finder"];
+
+pub fn is_protected_process(identifier: &str) -> bool {
+    let lower = identifier.to_lowercase();
+    PROTECTED_PROCESSES.iter().any(|p| lower.contains(p))
+}
+
 #[cfg(test)]
 #[path = "app_ops_tests.rs"]
 mod tests;

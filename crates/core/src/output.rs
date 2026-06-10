@@ -121,7 +121,7 @@ mod tests {
         let err = AppError::Adapter(
             AdapterError::new(ErrorCode::ActionFailed, "not actionable")
                 .with_suggestion("wait and retry")
-                .with_platform_detail("AXPress failed")
+                .with_platform_detail("native press action failed")
                 .with_details(json!({ "check": "visible" })),
         );
 
@@ -130,7 +130,10 @@ mod tests {
         assert_eq!(payload.code, "ACTION_FAILED");
         assert_eq!(payload.message, "not actionable");
         assert_eq!(payload.suggestion.as_deref(), Some("wait and retry"));
-        assert_eq!(payload.platform_detail.as_deref(), Some("AXPress failed"));
+        assert_eq!(
+            payload.platform_detail.as_deref(),
+            Some("native press action failed")
+        );
         assert_eq!(payload.details, Some(json!({ "check": "visible" })));
     }
 }
