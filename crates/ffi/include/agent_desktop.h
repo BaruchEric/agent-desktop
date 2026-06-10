@@ -630,7 +630,9 @@ const char *ad_last_error_platform_detail(void);
 /**
  * Returns a borrowed JSON string with structured details for the last
  * error, or null if the adapter didn't supply one. Same lifetime rules
- * as `ad_last_error_message`.
+ * as `ad_last_error_message`. Details may contain element names, values,
+ * and window titles from the user's screen; treat as sensitive
+ * diagnostics and avoid routing to shared log surfaces.
  */
 const char *ad_last_error_details(void);
 

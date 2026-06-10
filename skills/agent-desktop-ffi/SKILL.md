@@ -74,7 +74,9 @@ Four reference topics, loaded as needed:
   enabled, supported action, policy, editable) before dispatching — a disabled
   or unsupported target fails before any platform call. On
   `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as
-  JSON via `ad_last_error_details()`.
+  JSON via `ad_last_error_details()`. Details may carry element names, values,
+  and window titles from the user's screen — treat them as sensitive
+  diagnostics and keep them out of shared log surfaces.
 
 - **Tracing.** CLI `--trace` is not inherited by the C ABI; FFI hosts should
   record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs

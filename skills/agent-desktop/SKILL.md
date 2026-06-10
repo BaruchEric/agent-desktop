@@ -239,7 +239,7 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 4. **Prefer refs over coordinates.** `click @e5` > `mouse-click --xy 500,300`.
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use; screenshots also need Screen Recording.
-7. **Handle errors.** Parse `error.code` and follow `error.suggestion`.
+7. **Handle errors.** Branch on `error.code` only — `error.message` and `error.suggestion` text is informational and may change between versions.
 8. **Use `find` for targeted searches.** Faster than any snapshot when you know role/name.
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused.
 10. **Batch for performance.** Multiple commands in one invocation.

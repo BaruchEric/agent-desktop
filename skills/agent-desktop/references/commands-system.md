@@ -138,7 +138,7 @@ index-only behavior for callers that reconcile themselves.
 agent-desktop wait --notification --app "App" --timeout 10000
 agent-desktop wait --notification --text "build passed" --timeout 15000
 ```
-Blocks until a new notification appears (detects index-diff from previous state). Supports `--app` and `--text` filters.
+Blocks until a new notification appears (detects index-diff from a baseline captured at wait start). Supports `--app` and `--text` filters. Transient Notification Center errors (timeouts, element-not-found) are retried within the `--timeout` budget for both the baseline capture and polling; permanent errors (for example `PERM_DENIED`) fail immediately. Timeout errors include a `last_error` detail with the most recent transient failure.
 
 ## Clipboard
 
