@@ -53,8 +53,10 @@ Each command owns its policy:
 - Use `ActionRequest::focus_fallback` only for APIs that have explicitly opted
   into focus-changing behavior, such as CLI `type` after AXValue failure or FFI
   callers selecting `AD_POLICY_KIND_FOCUS_FALLBACK`.
-- Use `ActionRequest::physical` only for explicit physical interaction commands
-  or FFI callers selecting `AD_POLICY_KIND_PHYSICAL`.
+- Use `ActionRequest::headed` (formerly `physical`) only for explicit physical
+  interaction commands or FFI callers selecting `AD_POLICY_KIND_HEADED`. Ref
+  commands no longer select it directly — the global `--headed` flag upgrades
+  any command's base policy to headed via `CommandContext::request`.
 
 Do not infer policy from the fact that a command consumes a ref. `click`,
 `check`, `expand`, `collapse`, `scroll-to`, `clear`, and `type` all consume refs,

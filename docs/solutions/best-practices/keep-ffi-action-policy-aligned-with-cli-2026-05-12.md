@@ -22,10 +22,10 @@ tags:
 ## Context
 
 The CLI action path moved to `ActionRequest { action, policy }`, but the FFI
-`ad_execute_action` wrapper initially constructed `ActionRequest::physical` for
-every action. That meant C, Swift, Python, Go, and Node consumers received
-focus-stealing and cursor-moving behavior for actions that the CLI treats as
-headless by default.
+`ad_execute_action` wrapper initially constructed the cursor/focus policy (then
+named `physical`, since renamed `ActionRequest::headed`) for every action. That
+meant C, Swift, Python, Go, and Node consumers received focus-stealing and
+cursor-moving behavior for actions that the CLI treats as headless by default.
 
 ## Guidance
 
