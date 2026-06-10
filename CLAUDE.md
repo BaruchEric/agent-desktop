@@ -326,120 +326,32 @@ Error responses:
 
 ## PlatformAdapter Trait
 
-Platform-facing methods default to `not_supported()` unless implemented by an adapter:
+Core defines `PlatformAdapter`; platform crates implement it. Methods default to
+`not_supported()`, so an adapter only implements what it supports. Read the
+current signatures in `crates/core/src/adapter.rs` — notably strict resolution
+(`resolve_element_strict*` → STALE_REF on 0, AMBIGUOUS_TARGET on 2+), live reads
+for the actionability preflight (`get_live_*`), and `is_protected_process`
+(keeps platform-specific process names out of core).
 
-```rust
-pub trait PlatformAdapter {
-    fn list_windows(&self, filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError>;
-    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError>;
-    fn get_tree(&self, win: &WindowInfo, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn get_subtree(&self, handle: &NativeHandle, opts: &TreeOptions) -> Result<AccessibilityNode, AdapterError>;
-    fn execute_action(&self, handle: &NativeHandle, request: ActionRequest) -> Result<ActionResult, AdapterError>;
-    fn resolve_element(&self, entry: &RefEntry) -> Result<NativeHandle, AdapterError>;
-    fn permission_report(&self) -> PermissionReport;
-    fn request_permissions(&self) -> PermissionReport;
-    fn focus_window(&self, win: &WindowInfo) -> Result<(), AdapterError>;
-    fn launch_app(&self, id: &str, wait: bool) -> Result<WindowInfo, AdapterError>;
-    fn close_app(&self, id: &str, force: bool) -> Result<(), AdapterError>;
-    fn screenshot(&self, target: ScreenshotTarget) -> Result<ImageBuffer, AdapterError>;
-    fn get_clipboard(&self) -> Result<String, AdapterError>;
-    fn set_clipboard(&self, text: &str) -> Result<(), AdapterError>;
-}
-```
+## macOS Adapter Gotchas
 
-## Key Types
+- **Ancestor-path set, not a global visited set** — macOS reuses
+  `AXUIElementRef` pointers across sibling branches, so a global visited set
+  would prune real subtrees.
+- **`AXElement` memory safety** — inner field is `pub(crate)` (prevents
+  double-free via raw pointer extraction); `Clone` must `CFRetain`, `Drop` must
+  `CFRelease`.
+- **Batch attribute reads** — use `AXUIElementCopyMultipleAttributeValues`
+  (3-5x faster than per-attribute fetches).
 
-- `AccessibilityNode` — platform-agnostic tree node: `ref`, `role`, `name`, `value`, `description`, `states`, `available_actions`, `bounds`, `children`
-- `Action` — Click, DoubleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Scroll(Direction, Amount), PressKey(KeyCombo)
-- `ActionRequest` — `{ action, policy }`, where the default headless `InteractionPolicy` forbids focus stealing and cursor movement; the global `--headed` flag selects the headed policy that permits both so physical fallbacks can complete
-- `NativeHandle` — opaque platform pointer with `PhantomData<*const ()>` to prevent auto-Send/Sync. Inner field is `pub(crate)`.
-- `RefEntry` — `{ pid, role, name, bounds_hash, available_actions }`
-- `WindowInfo` — `{ id, title, app_name, pid, bounds }`
-- `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, or `{ "state": "unknown" }`
-- `ErrorCode` — machine-readable enum with `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]`
-- `AdapterError` — struct with `code`, `message`, `suggestion`, `platform_detail`
-- `AppError` — enum with `#[from]` impls for `AdapterError`, `std::io::Error`, `serde_json::Error`
+## Testing
 
-## macOS Adapter (Phase 1)
-
-### Tree Traversal
-- Entry: `AXUIElementCreateApplication(pid)` for app root
-- Children: `kAXChildrenAttribute` recursively with **ancestor-path set** (not global visited set — macOS reuses AXUIElementRef pointers across sibling branches)
-- **Use `AXUIElementCopyMultipleAttributeValues`** for batch attribute fetch (3-5x faster)
-- Role mapping: AXRole strings → unified role enum in `tree/roles.rs`
-- Max depth default: 10. Configurable via `--max-depth`
-
-### Action Execution
-- Click: `AXUIElementPerformAction(kAXPressAction)`
-- SetValue: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
-- SetFocus: `AXUIElementSetAttributeValue(kAXFocusedAttribute, true)`
-- Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent`
-- Clipboard: `NSPasteboard.generalPasteboard` via Cocoa FFI
-- Screenshot: `ScreenshotBackend` boundary with secure `screencapture` temp files
-
-### Permission Detection
-- Call `AXIsProcessTrusted()` on startup
-- If false, return `PERM_DENIED` with guidance: "Open System Settings > Privacy > Accessibility and add your terminal"
-- Optionally call `AXIsProcessTrustedWithOptions(prompt: true)` to trigger system dialog
-
-### AXElement Safety
-- Inner field: `pub(crate)` not `pub` (prevents double-free via raw pointer extraction)
-- `Clone` impl must call `CFRetain`
-- `Drop` impl must call `CFRelease`
-
-## Testing Strategy
-
-### Unit Tests (core)
-- `AccessibilityNode` ser/de roundtrips
-- Ref allocator assigns interactive roles and action-bearing elements (not `SetFocus`-only)
-- `SnapshotEngine` filtering
-- Error serialization
-- MockAdapter: in-memory `PlatformAdapter` returning hardcoded trees
-
-### Golden Fixtures (`tests/fixtures/`)
-- Real snapshots from Finder, TextEdit, etc. checked into repo
-- Regression-test serialization format changes
-
-### Integration Tests (macOS CI)
-- Snapshot Finder, TextEdit, System Settings — non-empty trees with refs
-- Click button in test app — verify action succeeded
-- Type text into TextEdit via ref — verify content changed
-- Clipboard get/set roundtrip
-- Permission denied scenario — correct error code and guidance
-- Large tree (Xcode) snapshot in under 2 seconds
-
-## Dependencies (Phase 1)
-
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| clap | 4.x | CLI parsing with derive macros |
-| serde + serde_json | 1.x | JSON serialization |
-| thiserror | 2.x | Error derive macros |
-| tracing | 0.1+ | Structured logging |
-| base64 | 0.22+ | Screenshot encoding |
-| accessibility-sys | 0.1+ | macOS AXUIElement FFI |
-| core-foundation | 0.10+ | macOS CF types |
-| core-graphics | 0.24+ | macOS CG types |
-
-### Deferred Dependencies
-- `tokio` — Phase 2/3 (all Phase 1 ops are synchronous)
-- `rmcp` (0.15.0) — Phase 3 (MCP server)
-- `schemars` — Phase 3 (JSON Schema generation)
-- `uiautomation` (0.24+) — Phase 2 (Windows)
-- `atspi` (0.28+) + `zbus` (5.x) — Phase 2 (Linux)
-
-## Build Configuration
-
-```toml
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"
-```
-
-Target binary size: <15MB per platform.
+- Unit tests use an in-memory `MockAdapter`; golden fixtures in `tests/fixtures/`
+  regression-test serialization.
+- macOS CI integration tests drive real apps (Finder, TextEdit, System Settings).
+- `tests/e2e/run.sh` drives the release binary against the SwiftUI fixture and
+  verifies every effect by independent observation in both headless and
+  `--headed` mode (see `tests/e2e/README.md`).
 
 ## CI Requirements
 
@@ -449,23 +361,13 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (54)
+## Commands
 
-> **Platform note:** All 54 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
-
-| Category | Commands |
-|----------|----------|
-| App/Window (10) | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` |
-| Observation (6) | `snapshot`, `screenshot`, `find`, `get`, `is`, `list-surfaces` |
-| Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
-| Scroll (2) | `scroll`, `scroll-to` |
-| Keyboard (3) | `press`, `key-down`, `key-up` |
-| Mouse (6) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
-| Notifications (4) *(macOS)* | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` |
-| Clipboard (3) | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
-| Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
-| System (4) | `status`, `permissions`, `version`, `skills` |
-| Batch (1) | `batch` |
+54 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+Mouse, Notifications (macOS), Clipboard, Wait, System, and Batch. The full
+surface and per-command reference live in `skills/agent-desktop/`. All 54 are
+implemented on macOS (Phase 1); Windows/Linux (Phase 2/3) target the same
+surface. Adding a command: see the Extensibility Pattern above.
 
 ## Non-Goals
 

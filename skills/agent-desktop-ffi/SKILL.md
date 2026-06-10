@@ -66,8 +66,8 @@ Four reference topics, loaded as needed:
   default, matching CLI ref commands: no focus stealing and no cursor
   movement. Use `ad_execute_action_with_policy(...,
   AD_POLICY_KIND_FOCUS_FALLBACK, ...)` only when focus-changing behavior is
-  intended, and `AD_POLICY_KIND_PHYSICAL` only for explicit physical/headed
-  input semantics.
+  intended, and `AD_POLICY_KIND_HEADED` only for explicit headed input
+  semantics (cursor movement and focus stealing).
 
 - **Ref-action preflight.** `ad_execute_ref_action_with_policy` resolves the
   ref strictly and runs the live actionability preflight (visible, stable,
@@ -82,8 +82,8 @@ Four reference topics, loaded as needed:
   record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
   in their own logs.
 
-- **Text input privacy.** On macOS, explicit focus/physical policy can use the
-  clipboard briefly for non-ASCII text insertion. Keep the default headless
+- **Text input privacy.** On macOS, the focus-fallback or headed policy can use
+  the clipboard briefly for non-ASCII text insertion. Keep the default headless
   policy or set values directly for sensitive text when the target supports it.
 
 - **Enum discriminants.** Every `#[repr(i32)]` enum field is validated

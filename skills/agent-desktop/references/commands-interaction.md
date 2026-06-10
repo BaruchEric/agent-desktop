@@ -13,6 +13,19 @@ Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) a
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
+#### Which gestures have a headless path
+
+The command surface is platform-agnostic: every ref action builds an `Action` and calls the platform adapter, which owns the headless-vs-physical implementation. The table below is the **macOS (Phase 1) adapter's** behavior — a gesture is headless-capable there only when macOS exposes an accessibility action for it. If a future Windows (UIA) or Linux (AT-SPI) adapter exposes a headless path for `double-click`/`triple-click`, that command lights up headlessly on that platform with **no change to the command or core** — only the adapter changes (`hover`/`drag` are modeled as raw cursor gestures, so they stay physical everywhere by design).
+
+| Command | Headless path (macOS) | Notes |
+|---------|---------------|-------|
+| `click`, `set-value`, `type`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions; the default and most reliable surface |
+| `double-click` | partial | `AXOpen` works headless on items that advertise it (Finder/list/outline rows, table cells). Falls back to `--headed` only for gesture-only targets with no `AXOpen`. |
+| `triple-click` | no | macOS exposes no triple-click action; it is purely 3 physical clicks → `--headed` only |
+| `hover` | no | hovering *is* moving the cursor over an element; no AX equivalent |
+| `drag` / drop | no | dragging *is* a cursor press-move-release; no general AX drag. Native cross-app drop needs the OS dragging-session/pasteboard protocol that synthetic events cannot start (works for same-view source-tracked gestures and web/Electron mouse-DnD) |
+| menu bar (`--surface menubar`) | enumerate/open | the app menu bar is readable and openable; SwiftUI `CommandMenu` items accept AXPress but do not route to their action closure (a SwiftUI limitation, like its Slider) — native AppKit menu items fire. `.contextMenu` item selection works. |
+
 All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it for the active session's latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed. Explicit snapshot IDs do not require also passing `--session`.
 
 Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.

@@ -214,6 +214,8 @@ agent-desktop scroll @e1 --direction down --amount 3  # scroll (AX-first)
 agent-desktop scroll-to @e20             # scroll element into view
 ```
 
+> **(macOS, Phase 1)** Pure cursor gestures have no accessibility equivalent, so `triple-click`, `hover`, and `drag` are always physical; `double-click` is headless via `AXOpen` and only needs `--headed` for gesture-only targets. Windows (UIA) and Linux (AT-SPI) adapters may expose different capabilities. See `skills/agent-desktop/references/commands-interaction.md`.
+
 ### Keyboard
 
 ```bash
