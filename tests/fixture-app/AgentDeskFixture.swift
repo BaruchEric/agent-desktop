@@ -1,0 +1,494 @@
+import SwiftUI
+
+// A deterministic, deliberately *diverse* accessibility surface for
+// agent-desktop end-to-end tests. The goal is to mirror how real macOS apps
+// vary — refs assigned to some elements and not others, state exposed as a
+// value here and as content there, draggable things that are not buttons,
+// nested tables and outlines, sheets and popovers and menus — so the CLI is
+// exercised against the real spread, not a happy path. This fixture is never
+// tuned to make a command pass; when a command fails against a realistic
+// pattern here, that is a finding about the CLI.
+//
+// Verification principle: interactive controls write their result into a
+// StatusReadout whose live state is the accessibility *value*, so the harness
+// reads the real outcome instead of trusting a command's self-report.
+
+struct StatusReadout: View {
+    let name: String
+    let value: String
+    var body: some View {
+        Text("\(name): \(value)")
+            .accessibilityLabel(name)
+            .accessibilityValue(value)
+    }
+}
+
+// Exposes a ScrollView's live scroll offset as an accessibility value so the
+// test harness can confirm `scroll` actually moved content, rather than
+// trusting the command's ok:true.
+struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// Native AppKit controls embedded alongside the SwiftUI ones. SwiftUI sliders
+// and steppers do not expose a settable AX value, so they cannot validate the
+// numeric set-value path; their AppKit counterparts do, exercising the same
+// command against a control that genuinely accepts a programmatic value.
+struct NativeSlider: NSViewRepresentable {
+    @Binding var value: Double
+    func makeNSView(context: Context) -> NSSlider {
+        let s = NSSlider(
+            value: value, minValue: 0, maxValue: 100,
+            target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        s.setAccessibilityLabel("native-slider")
+        return s
+    }
+    func updateNSView(_ view: NSSlider, context: Context) {}
+    func makeCoordinator() -> NativeControlCoordinator { NativeControlCoordinator { value = $0 } }
+}
+
+struct NativeStepper: NSViewRepresentable {
+    @Binding var value: Double
+    func makeNSView(context: Context) -> NSStepper {
+        let s = NSStepper()
+        s.minValue = 0
+        s.maxValue = 10
+        s.increment = 1
+        s.valueWraps = false
+        s.target = context.coordinator
+        s.action = #selector(NativeControlCoordinator.changed(_:))
+        s.setAccessibilityLabel("native-stepper")
+        return s
+    }
+    func updateNSView(_ view: NSStepper, context: Context) {}
+    func makeCoordinator() -> NativeControlCoordinator { NativeControlCoordinator { value = $0 } }
+}
+
+// Shared target for native controls; NSControl exposes doubleValue for both
+// NSSlider and NSStepper.
+final class NativeControlCoordinator: NSObject {
+    let onChange: (Double) -> Void
+    init(_ onChange: @escaping (Double) -> Void) { self.onChange = onChange }
+    @objc func changed(_ sender: NSControl) { onChange(sender.doubleValue) }
+}
+
+// A single view that tracks a mouse-drag gesture end to end (down, dragged,
+// up). Synthetic mouse events route to whoever received the mouse-down, so a
+// drag is observable when source and target are the same view — which is what
+// `agent-desktop drag` can do. Cross-target native drag-and-drop uses the OS
+// dragging-session/pasteboard protocol that synthetic events cannot start.
+struct DragCanvas: NSViewRepresentable {
+    @Binding var result: String
+    func makeNSView(context: Context) -> DragCanvasView {
+        let v = DragCanvasView()
+        v.onDrag = { result = $0 }
+        return v
+    }
+    func updateNSView(_ view: DragCanvasView, context: Context) {}
+}
+
+final class DragCanvasView: NSView {
+    var onDrag: ((String) -> Void)?
+    private var start: NSPoint?
+    private var dragged = false
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("drag-canvas")
+    }
+    override func accessibilityFrame() -> NSRect {
+        window?.convertToScreen(convert(bounds, to: nil)) ?? bounds
+    }
+    override func isAccessibilityElement() -> Bool { true }
+    override func mouseDown(with e: NSEvent) { start = convert(e.locationInWindow, from: nil); dragged = false }
+    override func mouseDragged(with e: NSEvent) { dragged = true }
+    override func mouseUp(with e: NSEvent) {
+        guard let s = start else { return }
+        let end = convert(e.locationInWindow, from: nil)
+        let dist = Int((hypot(end.x - s.x, end.y - s.y)).rounded())
+        onDrag?(dragged ? "dragged-\(dist)" : "click")
+        start = nil
+    }
+}
+
+struct Card<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
+            content
+        }
+        .padding(10)
+        .frame(width: 280, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.08)))
+    }
+}
+
+struct ContentView: View {
+    // interaction
+    @State private var clickStatus = "idle"
+    @State private var doubleStatus = "idle"
+    @State private var tripleStatus = "idle"
+    @State private var rightStatus = "idle"
+    @State private var hoverStatus = "idle"
+    // text
+    @State private var textValue = ""
+    @State private var secureValue = ""
+    @State private var multilineValue = "line one\nline two"
+    // state controls
+    @State private var toggleOn = false
+    @State private var pickerChoice = "Alpha"
+    @State private var radioChoice = "One"
+    @State private var disclosureExpanded = false
+    @State private var tabSelection = 0
+    // collections
+    @State private var tableSelection: Int?
+    // async / dynamic
+    @State private var delayedEnabled = false
+    @State private var delayedText = "waiting"
+    @State private var removableVisible = true
+    @State private var appearedText = ""
+    // drag
+    @State private var dropStatus = "empty"
+    @State private var rowDropStatus = "empty"
+    @State private var dragCanvasResult = "idle"
+    // scroll
+    @State private var scrollOffset = 0
+    // native AppKit controls (genuinely AX-settable, unlike SwiftUI's)
+    @State private var nativeSliderValue = 0.0
+    @State private var nativeStepperValue = 0.0
+    // surfaces
+    @State private var showSheet = false
+    @State private var showPopover = false
+    @State private var sheetStatus = "idle"
+
+    var body: some View {
+        ScrollView([.vertical, .horizontal]) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("AgentDesk Fixture")
+                    .font(.title2)
+                    .accessibilityLabel("fixture-title")
+                row1
+                row2
+                row3
+            }
+            .padding(20)
+        }
+        .frame(minWidth: 980, minHeight: 720)
+        .sheet(isPresented: $showSheet) { sheetContent }
+    }
+
+    private var row1: some View {
+        HStack(alignment: .top, spacing: 16) {
+            clicksCard
+            textCard
+            stateCard
+        }
+    }
+
+    private var row2: some View {
+        HStack(alignment: .top, spacing: 16) {
+            choiceCard
+            collectionsCard
+            asyncCard
+        }
+    }
+
+    private var row3: some View {
+        HStack(alignment: .top, spacing: 16) {
+            dragCard
+            surfacesCard
+            scrollCard
+        }
+    }
+
+    // MARK: clicks / mouse
+
+    private var clicksCard: some View {
+        Card(title: "Clicks & Mouse") {
+            Button("Primary Action") { clickStatus = "clicked" }
+                .accessibilityLabel("primary-button")
+            StatusReadout(name: "click-status", value: clickStatus)
+
+            Button("Double Target") { }
+                .accessibilityLabel("double-target")
+                .simultaneousGesture(TapGesture(count: 2).onEnded { doubleStatus = "double-clicked" })
+            StatusReadout(name: "double-status", value: doubleStatus)
+
+            Button("Triple Target") { }
+                .accessibilityLabel("triple-target")
+                .simultaneousGesture(TapGesture(count: 3).onEnded { tripleStatus = "triple-clicked" })
+            StatusReadout(name: "triple-status", value: tripleStatus)
+
+            Button("Context Target") { }
+                .accessibilityLabel("context-target")
+                .contextMenu {
+                    Button("Context Choice") { rightStatus = "context-picked" }
+                        .accessibilityLabel("context-choice")
+                }
+            StatusReadout(name: "right-status", value: rightStatus)
+
+            Text("Hover Target")
+                .padding(6)
+                .background(hoverStatus == "hovered" ? Color.yellow.opacity(0.4) : Color.clear)
+                .accessibilityLabel("hover-target")
+                .onHover { inside in if inside { hoverStatus = "hovered" } }
+            StatusReadout(name: "hover-status", value: hoverStatus)
+
+            // Two identical controls: resolution must report AMBIGUOUS_TARGET,
+            // never silently pick one.
+            Button("Twin Control") { }.accessibilityLabel("twin-control")
+            Button("Twin Control") { }.accessibilityLabel("twin-control")
+        }
+    }
+
+    // MARK: text input variety
+
+    private var textCard: some View {
+        Card(title: "Text Input") {
+            TextField("Text Input", text: $textValue)
+                .accessibilityLabel("text-input")
+            StatusReadout(name: "text-echo", value: textValue)
+
+            SecureField("Secure Input", text: $secureValue)
+                .accessibilityLabel("secure-input")
+            StatusReadout(name: "secure-echo", value: secureValue.isEmpty ? "empty" : "set")
+
+            TextEditor(text: $multilineValue)
+                .frame(height: 60)
+                .accessibilityLabel("multiline-input")
+
+            Link("Example Link", destination: URL(string: "https://example.com")!)
+                .accessibilityLabel("example-link")
+        }
+    }
+
+    // MARK: toggles / sliders / steppers / disclosure
+
+    private var stateCard: some View {
+        Card(title: "State Controls") {
+            Toggle("Toggle Box", isOn: $toggleOn).accessibilityLabel("toggle-box")
+            StatusReadout(name: "toggle-status", value: toggleOn ? "on" : "off")
+
+            // Native AppKit slider and stepper: unlike SwiftUI's, these expose a
+            // working AX value/increment interface, so set-value can drive them.
+            NativeSlider(value: $nativeSliderValue).frame(width: 180, height: 20)
+                .accessibilityLabel("value-slider")
+            StatusReadout(name: "slider-status", value: String(Int(nativeSliderValue)))
+            NativeStepper(value: $nativeStepperValue)
+                .accessibilityLabel("value-stepper")
+            StatusReadout(name: "stepper-status", value: String(Int(nativeStepperValue)))
+
+            DisclosureGroup("Disclosure Section", isExpanded: $disclosureExpanded) {
+                Text("Disclosed Content").accessibilityLabel("disclosed-content")
+            }
+            .accessibilityLabel("disclosure-section")
+        }
+    }
+
+    // MARK: pickers / radios / tabs
+
+    private var choiceCard: some View {
+        Card(title: "Choices") {
+            Picker("Option Picker", selection: $pickerChoice) {
+                Text("Alpha").tag("Alpha")
+                Text("Beta").tag("Beta")
+                Text("Gamma").tag("Gamma")
+            }
+            .accessibilityLabel("option-picker")
+            StatusReadout(name: "picker-status", value: pickerChoice)
+
+            Picker("Radio Group", selection: $radioChoice) {
+                Text("One").tag("One")
+                Text("Two").tag("Two")
+                Text("Three").tag("Three")
+            }
+            .pickerStyle(.radioGroup)
+            .accessibilityLabel("radio-group")
+            StatusReadout(name: "radio-status", value: radioChoice)
+
+            TabView(selection: $tabSelection) {
+                Text("Tab One Body").accessibilityLabel("tab-one-body").tabItem { Text("Tab One") }.tag(0)
+                Text("Tab Two Body").accessibilityLabel("tab-two-body").tabItem { Text("Tab Two") }.tag(1)
+            }
+            .frame(height: 90)
+            .accessibilityLabel("tab-view")
+            StatusReadout(name: "tab-status", value: String(tabSelection))
+        }
+    }
+
+    // MARK: table / outline
+
+    private var collectionsCard: some View {
+        Card(title: "Collections") {
+            List(selection: $tableSelection) {
+                ForEach(1...6, id: \.self) { i in
+                    Text("List Item \(i)").accessibilityLabel("list-item-\(i)").tag(i)
+                }
+            }
+            .frame(height: 120)
+            .accessibilityLabel("item-list")
+            StatusReadout(name: "list-selection", value: tableSelection.map(String.init) ?? "none")
+
+            DisclosureGroup("Outline Parent") {
+                Text("Outline Child A").accessibilityLabel("outline-child-a")
+                Text("Outline Child B").accessibilityLabel("outline-child-b")
+            }
+            .accessibilityLabel("outline-parent")
+        }
+    }
+
+    // MARK: async / dynamic
+
+    private var asyncCard: some View {
+        Card(title: "Async & Dynamic") {
+            Button("Enable Later") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    delayedEnabled = true
+                    delayedText = "ready"
+                }
+            }
+            .accessibilityLabel("enable-later")
+            Button("Delayed Button") { }
+                .disabled(!delayedEnabled)
+                .accessibilityLabel("delayed-button")
+            StatusReadout(name: "delayed-text", value: delayedText)
+
+            Button("Appear Later") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { appearedText = "appeared-text" }
+            }
+            .accessibilityLabel("appear-later")
+            if !appearedText.isEmpty {
+                Text(appearedText).accessibilityLabel("appeared-text")
+            }
+
+            if removableVisible {
+                Button("Removable Row") { }.accessibilityLabel("removable-row")
+            }
+            Button("Remove Row") { removableVisible = false }.accessibilityLabel("remove-row")
+        }
+    }
+
+    // MARK: drag (interactive row + non-interactive image)
+
+    private var dragCard: some View {
+        Card(title: "Drag & Drop") {
+            // Drag the canvas from one point to another within itself: a
+            // source-tracked gesture, which synthetic mouse events can drive.
+            DragCanvas(result: $dragCanvasResult)
+                .frame(width: 200, height: 80)
+                .background(Color.purple.opacity(0.12))
+                .accessibilityLabel("drag-canvas")
+            StatusReadout(name: "drag-canvas-status", value: dragCanvasResult)
+            // A non-interactive image drag source: realistic (file icons, custom
+            // views) and intentionally NOT a button, so the CLI is tested on a
+            // ref-less draggable.
+            Image(systemName: "doc.fill")
+                .resizable()
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("image-drag-source")
+                .onDrag { NSItemProvider(object: "image-item" as NSString) }
+
+            // An interactive row drag source (ref-able), the common case.
+            Text("Row Drag Source")
+                .padding(6)
+                .background(Color.blue.opacity(0.15))
+                .accessibilityLabel("row-drag-source")
+                .accessibilityAddTraits(.isButton)
+                .onDrag { NSItemProvider(object: "row-item" as NSString) }
+
+            // The drop-status readouts are siblings (not overlays) so the
+            // accessibilityLabel on the drop rectangle does not absorb them and
+            // the harness can read the drop result independently.
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(dropStatus == "dropped" ? Color.green : Color.gray)
+                .frame(width: 200, height: 60)
+                .accessibilityLabel("drop-zone")
+                .onDrop(of: ["public.text"], isTargeted: nil) { _ in dropStatus = "dropped"; return true }
+            StatusReadout(name: "drop-status", value: dropStatus)
+
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(rowDropStatus == "dropped" ? Color.green : Color.gray)
+                .frame(width: 200, height: 60)
+                .accessibilityLabel("row-drop-zone")
+                .onDrop(of: ["public.text"], isTargeted: nil) { _ in rowDropStatus = "dropped"; return true }
+            StatusReadout(name: "row-drop-status", value: rowDropStatus)
+        }
+    }
+
+    // MARK: surfaces (sheet / popover)
+
+    private var surfacesCard: some View {
+        Card(title: "Surfaces") {
+            Button("Open Sheet") { showSheet = true }.accessibilityLabel("open-sheet")
+            StatusReadout(name: "sheet-status", value: sheetStatus)
+
+            Button("Open Popover") { showPopover = true }
+                .accessibilityLabel("open-popover")
+                .popover(isPresented: $showPopover) {
+                    VStack {
+                        Text("Popover Body").accessibilityLabel("popover-body")
+                        Button("Close Popover") { showPopover = false }.accessibilityLabel("close-popover")
+                    }
+                    .padding()
+                }
+        }
+    }
+
+    private var sheetContent: some View {
+        VStack(spacing: 12) {
+            Text("Sheet Title").font(.headline).accessibilityLabel("sheet-title")
+            TextField("Sheet Field", text: .constant("")).accessibilityLabel("sheet-field").frame(width: 200)
+            Button("Confirm Sheet") { sheetStatus = "confirmed"; showSheet = false }
+                .accessibilityLabel("confirm-sheet")
+            Button("Cancel Sheet") { sheetStatus = "cancelled"; showSheet = false }
+                .accessibilityLabel("cancel-sheet")
+        }
+        .padding(24)
+        .frame(width: 320, height: 200)
+    }
+
+    // MARK: scroll
+
+    private var scrollCard: some View {
+        Card(title: "Scroll") {
+            StatusReadout(name: "scroll-offset", value: String(scrollOffset))
+            ScrollView {
+                VStack(alignment: .leading) {
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: ScrollOffsetKey.self,
+                            value: geo.frame(in: .named("scroll-space")).minY)
+                    }
+                    .frame(height: 0)
+                    ForEach(1...60, id: \.self) { i in
+                        Text("Scroll Row \(i)").accessibilityLabel("scroll-row-\(i)")
+                    }
+                }
+            }
+            .coordinateSpace(name: "scroll-space")
+            .onPreferenceChange(ScrollOffsetKey.self) { scrollOffset = Int(-$0) }
+            .frame(width: 220, height: 160)
+            .accessibilityLabel("scroll-area")
+        }
+    }
+}
+
+@main
+struct AgentDeskFixtureApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    var body: some Scene {
+        WindowGroup("AgentDesk Fixture") { ContentView() }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
