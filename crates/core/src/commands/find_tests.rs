@@ -130,3 +130,57 @@ fn count_matches_does_not_build_result_json() {
 
     assert_eq!(count_matches(&root, &query), 2);
 }
+
+#[test]
+fn textarea_alias_resolves_to_textfield_query() {
+    let query = FindQuery::from_args(&FindArgs {
+        app: None,
+        role: Some("textarea".into()),
+        name: None,
+        value: None,
+        text: None,
+        count: false,
+        first: false,
+        last: false,
+        nth: None,
+        limit: None,
+    })
+    .unwrap();
+
+    assert_eq!(query.role, Some("textfield"));
+
+    let root = node(None, Some("doc body"), None);
+    let mut matches = Vec::new();
+    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
+    assert_eq!(matches.len(), 1);
+}
+
+#[test]
+fn unknown_role_fails_with_valid_roles_in_details() {
+    let err = FindQuery::from_args(&FindArgs {
+        app: None,
+        role: Some("buttn".into()),
+        name: None,
+        value: None,
+        text: None,
+        count: false,
+        first: false,
+        last: false,
+        nth: None,
+        limit: None,
+    })
+    .unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+    let AppError::Adapter(adapter_err) = err else {
+        panic!("expected adapter error");
+    };
+    let details = adapter_err
+        .details
+        .expect("details should list valid roles");
+    assert!(
+        details["valid_roles"]
+            .as_array()
+            .is_some_and(|roles| { roles.iter().any(|role| role == "textfield") })
+    );
+}

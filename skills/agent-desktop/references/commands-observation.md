@@ -118,7 +118,7 @@ agent-desktop find --app "App" --role button --limit 20
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
-| `--role` | Accessibility role: button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell |
+| `--role` | Canonical role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, scrollarea, window, ...). Case-insensitive; `textarea`, `textbox`, and `searchfield` normalize to `textfield`. Unknown roles return `INVALID_ARGS` with `details.valid_roles` instead of silently matching nothing |
 | `--name` | Accessible name or label |
 | `--value` | Current value |
 | `--text` | Fuzzy match across name, value, title, and description |

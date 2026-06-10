@@ -22,6 +22,78 @@ pub const INTERACTIVE_ROLES: &[&str] = &[
     "treeitem",
 ];
 
+/// Every role the platform adapters can emit, sorted. This is the
+/// cross-platform vocabulary contract: each adapter's role-mapping
+/// conformance test asserts every role it emits is listed here (see the
+/// macOS `AX_ROLE_MAP` tests; Windows/Linux adapters must ship the same
+/// table + test pair). Role queries are validated against this list so an
+/// impossible role fails loudly instead of silently matching nothing.
+pub const CANONICAL_ROLES: &[&str] = &[
+    "application",
+    "browser",
+    "button",
+    "cell",
+    "checkbox",
+    "colorwell",
+    "column",
+    "combobox",
+    "datefield",
+    "dialog",
+    "disclosure",
+    "dockitem",
+    "drawer",
+    "grid",
+    "group",
+    "handle",
+    "helptag",
+    "image",
+    "incrementor",
+    "layoutitem",
+    "levelindicator",
+    "link",
+    "list",
+    "matte",
+    "menu",
+    "menubutton",
+    "menuitem",
+    "outline",
+    "popover",
+    "progressbar",
+    "radiobutton",
+    "relevanceindicator",
+    "ruler",
+    "rulermarker",
+    "scrollarea",
+    "sheet",
+    "slider",
+    "splitter",
+    "statictext",
+    "switch",
+    "tab",
+    "table",
+    "textfield",
+    "timefield",
+    "toolbar",
+    "treeitem",
+    "unknown",
+    "webarea",
+    "window",
+];
+
+/// Resolves a caller-supplied role to the canonical vocabulary,
+/// case-insensitively. Common text-input aliases (`textarea`, `textbox`,
+/// `searchfield`) normalize to `textfield`, matching how the platform
+/// adapters map native text roles. Returns `None` for roles no adapter
+/// can ever emit.
+pub fn canonical_role(role: &str) -> Option<&'static str> {
+    let normalized = role.trim().to_ascii_lowercase();
+    let aliased = match normalized.as_str() {
+        "textarea" | "textbox" | "searchfield" => "textfield",
+        other => other,
+    };
+    CANONICAL_ROLES.iter().copied().find(|c| *c == aliased)
+}
+
 /// Returns true when `role` is in [`INTERACTIVE_ROLES`].
 pub fn is_interactive_role(role: &str) -> bool {
     INTERACTIVE_ROLES.contains(&role)
@@ -53,6 +125,43 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.as_slice(), INTERACTIVE_ROLES);
+    }
+
+    #[test]
+    fn canonical_roles_are_sorted_and_unique() {
+        let mut sorted = CANONICAL_ROLES.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.as_slice(), CANONICAL_ROLES);
+    }
+
+    #[test]
+    fn interactive_roles_are_a_subset_of_canonical() {
+        for role in INTERACTIVE_ROLES {
+            assert!(
+                CANONICAL_ROLES.contains(role),
+                "interactive role {role} missing from CANONICAL_ROLES"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_role_resolves_text_input_aliases() {
+        assert_eq!(canonical_role("textarea"), Some("textfield"));
+        assert_eq!(canonical_role("textbox"), Some("textfield"));
+        assert_eq!(canonical_role("searchfield"), Some("textfield"));
+    }
+
+    #[test]
+    fn canonical_role_is_case_insensitive_and_trimmed() {
+        assert_eq!(canonical_role("Button"), Some("button"));
+        assert_eq!(canonical_role(" TEXTAREA "), Some("textfield"));
+    }
+
+    #[test]
+    fn canonical_role_rejects_unknown_roles() {
+        assert_eq!(canonical_role("buttn"), None);
+        assert_eq!(canonical_role(""), None);
     }
 
     #[test]

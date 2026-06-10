@@ -1,6 +1,9 @@
 use crate::{
-    adapter::PlatformAdapter, context::CommandContext, error::AppError, node::AccessibilityNode,
-    search_text, snapshot,
+    adapter::PlatformAdapter,
+    context::CommandContext,
+    error::{AdapterError, AppError, ErrorCode},
+    node::AccessibilityNode,
+    roles, search_text, snapshot,
 };
 use serde_json::{Value, json};
 
@@ -25,13 +28,13 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     validate_find_mode(&args)?;
+    let query = FindQuery::from_args(&args)?;
     let opts = crate::adapter::TreeOptions::default();
     let result = if args.count {
         snapshot::build(adapter, &opts, args.app.as_deref(), None)?
     } else {
         snapshot::run_with_context(adapter, &opts, args.app.as_deref(), None, context)?
     };
-    let query = FindQuery::from_args(&args);
 
     if args.count {
         return Ok(json!({ "count": count_matches(&result.tree, &query) }));
@@ -92,22 +95,42 @@ fn validate_find_mode(args: &FindArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-struct FindQuery<'a> {
-    role: Option<&'a str>,
+#[derive(Debug)]
+struct FindQuery {
+    role: Option<&'static str>,
     name: Option<String>,
     value: Option<String>,
     text: Option<String>,
 }
 
-impl<'a> FindQuery<'a> {
-    fn from_args(args: &'a FindArgs) -> Self {
-        Self {
-            role: args.role.as_deref(),
+impl FindQuery {
+    fn from_args(args: &FindArgs) -> Result<Self, AppError> {
+        let role = match args.role.as_deref() {
+            Some(input) => Some(resolve_role(input)?),
+            None => None,
+        };
+        Ok(Self {
+            role,
             name: args.name.as_deref().map(search_text::normalize),
             value: args.value.as_deref().map(search_text::normalize),
             text: args.text.as_deref().map(search_text::normalize),
-        }
+        })
     }
+}
+
+fn resolve_role(input: &str) -> Result<&'static str, AppError> {
+    roles::canonical_role(input).ok_or_else(|| {
+        AppError::Adapter(
+            AdapterError::new(
+                ErrorCode::InvalidArgs,
+                format!("Unknown role '{input}': no platform adapter emits it"),
+            )
+            .with_suggestion(
+                "Use a canonical role from details.valid_roles; text inputs (textarea, textbox, searchfield) normalize to 'textfield'.",
+            )
+            .with_details(json!({ "valid_roles": roles::CANONICAL_ROLES })),
+        )
+    })
 }
 
 fn search_tree(
