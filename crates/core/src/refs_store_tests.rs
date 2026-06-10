@@ -292,3 +292,60 @@ fn session_store_does_not_migrate_global_legacy_refmap() {
     assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
     assert!(store.latest_snapshot_id().is_none());
 }
+
+#[test]
+fn stale_tmp_files_are_swept_and_fresh_ones_kept() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let snapshot_id = store.save_new_snapshot(&map_with("Send")).unwrap();
+    let base_tmp = store.base_dir.join("latest_snapshot_id.tmp");
+    let snapshot_tmp = store.snapshots_dir().join("dead.tmp");
+    std::fs::write(&base_tmp, b"orphan").unwrap();
+    std::fs::write(&snapshot_tmp, b"orphan").unwrap();
+
+    store.remove_tmp_files_older_than(std::time::Duration::ZERO);
+
+    assert!(!base_tmp.exists());
+    assert!(!snapshot_tmp.exists());
+    assert!(store.snapshot_path(&snapshot_id).is_file());
+
+    std::fs::write(&base_tmp, b"fresh").unwrap();
+    store.remove_tmp_files_older_than(STALE_TMP_MAX_AGE);
+
+    assert!(base_tmp.exists());
+}
+
+#[test]
+fn save_existing_recreates_snapshot_pruned_from_every_store() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let snapshot_id = store.save_new_snapshot(&map_with("Original")).unwrap();
+    std::fs::remove_dir_all(store.snapshots_dir().join(&snapshot_id)).unwrap();
+
+    store
+        .save_existing_snapshot(&snapshot_id, &map_with("Recreated"))
+        .unwrap();
+
+    let reloaded = store.load_snapshot(&snapshot_id).unwrap();
+    assert_eq!(
+        reloaded.get("@e1").unwrap().name.as_deref(),
+        Some("Recreated")
+    );
+}
+
+#[test]
+fn duplicate_snapshot_id_across_sessions_is_rejected_on_load() {
+    let _guard = HomeGuard::new();
+    let store_a = RefStore::for_session(Some("agent-a")).unwrap();
+    let store_b = RefStore::for_session(Some("agent-b")).unwrap();
+    let snapshot_id = store_a.save_new_snapshot(&map_with("A")).unwrap();
+    store_b.save_snapshot(&snapshot_id, &map_with("B")).unwrap();
+
+    let err = RefStore::new()
+        .unwrap()
+        .load_snapshot(&snapshot_id)
+        .unwrap_err();
+
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("more than one session"));
+}

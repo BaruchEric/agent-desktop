@@ -17,24 +17,33 @@ mod imp {
         cf_type::created_cf_array,
         tree::{
             NodeAttrs,
-            attributes::{copy_ax_array, copy_bool_attr, copy_string_attr, copy_value_typed},
+            attributes::{
+                copy_ax_array, copy_bool_attr, copy_first_element_attr, copy_string_attr,
+                copy_value_typed,
+            },
             ax_element::AXElement,
+            ax_value,
+            element_bounds::{read_bounds, rect_from_parts},
             node_attrs::{NodeAttrStates, parse_bool_attr, parse_enabled},
         },
     };
     use accessibility_sys::{
         AXUIElementCopyMultipleAttributeValues, AXUIElementCreateApplication,
-        AXUIElementGetAttributeValueCount, AXUIElementSetMessagingTimeout, kAXDescriptionAttribute,
-        kAXEnabledAttribute, kAXErrorSuccess, kAXRoleAttribute, kAXTitleAttribute,
-        kAXValueAttribute,
+        AXUIElementGetAttributeValueCount, AXUIElementSetMessagingTimeout, AXValueGetValue,
+        kAXDescriptionAttribute, kAXEnabledAttribute, kAXErrorSuccess, kAXPositionAttribute,
+        kAXRoleAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXValueAttribute,
+        kAXValueTypeCGPoint, kAXValueTypeCGSize,
     };
     use core_foundation::{
         array::CFArray,
-        base::{CFTypeRef, TCFType},
+        base::{CFType, CFTypeRef, TCFType},
         boolean::CFBoolean,
         number::CFNumber,
         string::CFString,
     };
+    use core_graphics::geometry::{CGPoint, CGSize};
+
+    const SCROLLBAR_ATTRS: [&str; 2] = ["AXVerticalScrollBar", "AXHorizontalScrollBar"];
 
     pub fn element_for_pid(pid: i32) -> AXElement {
         let el = AXElement(unsafe { AXUIElementCreateApplication(pid) });
@@ -54,6 +63,10 @@ mod imp {
             "AXFocused",
             "AXExpanded",
             "AXDisclosing",
+            kAXPositionAttribute,
+            kAXSizeAttribute,
+            SCROLLBAR_ATTRS[0],
+            SCROLLBAR_ATTRS[1],
         ];
         let cf_names: Vec<CFString> = attr_names.iter().map(|a| CFString::new(a)).collect();
         let cf_refs: Vec<_> = cf_names.iter().map(|s| s.as_concrete_TypeRef()).collect();
@@ -76,37 +89,25 @@ mod imp {
         let Some(arr) = created_cf_array(result_ref) else {
             return fetch_node_attrs_slow(el);
         };
-        let items: Vec<Option<String>> = arr
-            .into_iter()
-            .enumerate()
-            .map(|(idx, item)| {
-                if let Some(s) = item.downcast::<CFString>() {
-                    return Some(s.to_string());
-                }
-                match idx {
-                    3 => {
-                        if let Some(b) = item.downcast::<CFBoolean>() {
-                            return Some(bool::from(b).to_string());
-                        }
-                        if let Some(n) = item.downcast::<CFNumber>() {
-                            if let Some(i) = n.to_i64() {
-                                return Some(i.to_string());
-                            }
-                            if let Some(f) = n.to_f64() {
-                                return Some(format!("{:.2}", f));
-                            }
-                        }
-                        None
-                    }
-                    4..=7 => item
-                        .downcast::<CFBoolean>()
-                        .map(|b| bool::from(b).to_string()),
-                    _ => None,
-                }
-            })
-            .collect();
 
-        let get = |i: usize| items.get(i).and_then(|v| v.clone());
+        let mut texts: [Option<String>; 8] = Default::default();
+        let mut position: Option<CGPoint> = None;
+        let mut size: Option<CGSize> = None;
+        let mut has_scrollbars = false;
+        for (idx, item) in arr.into_iter().enumerate() {
+            match idx {
+                0..=7 => texts[idx] = decode_text_attr(idx, &item),
+                8 => position = decode_ax_point(&item),
+                9 => size = decode_ax_size(&item),
+                10 | 11 => {
+                    has_scrollbars =
+                        has_scrollbars || ax_value::retained_ax_element(&item).is_some();
+                }
+                _ => {}
+            }
+        }
+
+        let get = |i: usize| texts.get(i).and_then(|v| v.clone());
         NodeAttrs {
             role: get(0),
             title: get(1),
@@ -118,7 +119,59 @@ mod imp {
                 expanded: parse_bool_attr(get(6)),
                 disclosing: parse_bool_attr(get(7)),
             },
+            bounds: position.zip(size).and_then(|(p, s)| rect_from_parts(p, s)),
+            has_scrollbars,
         }
+    }
+
+    fn decode_text_attr(idx: usize, item: &CFType) -> Option<String> {
+        if let Some(s) = item.downcast::<CFString>() {
+            return Some(s.to_string());
+        }
+        match idx {
+            3 => {
+                if let Some(b) = item.downcast::<CFBoolean>() {
+                    return Some(bool::from(b).to_string());
+                }
+                if let Some(n) = item.downcast::<CFNumber>() {
+                    if let Some(i) = n.to_i64() {
+                        return Some(i.to_string());
+                    }
+                    if let Some(f) = n.to_f64() {
+                        return Some(format!("{:.2}", f));
+                    }
+                }
+                None
+            }
+            4..=7 => item
+                .downcast::<CFBoolean>()
+                .map(|b| bool::from(b).to_string()),
+            _ => None,
+        }
+    }
+
+    fn decode_ax_point(item: &CFType) -> Option<CGPoint> {
+        let mut point = CGPoint::new(0.0, 0.0);
+        let decoded = unsafe {
+            AXValueGetValue(
+                item.as_CFTypeRef() as _,
+                kAXValueTypeCGPoint,
+                &mut point as *mut _ as *mut std::ffi::c_void,
+            )
+        };
+        decoded.then_some(point)
+    }
+
+    fn decode_ax_size(item: &CFType) -> Option<CGSize> {
+        let mut size = CGSize::new(0.0, 0.0);
+        let decoded = unsafe {
+            AXValueGetValue(
+                item.as_CFTypeRef() as _,
+                kAXValueTypeCGSize,
+                &mut size as *mut _ as *mut std::ffi::c_void,
+            )
+        };
+        decoded.then_some(size)
     }
 
     fn fetch_node_attrs_slow(el: &AXElement) -> NodeAttrs {
@@ -138,6 +191,8 @@ mod imp {
                 expanded: copy_bool_attr(el, "AXExpanded"),
                 disclosing: copy_bool_attr(el, "AXDisclosing"),
             },
+            bounds: read_bounds(el),
+            has_scrollbars: copy_first_element_attr(el, &SCROLLBAR_ATTRS).is_some(),
         }
     }
 

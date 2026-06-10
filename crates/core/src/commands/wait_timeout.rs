@@ -68,6 +68,7 @@ pub(crate) fn notification(
     app: Option<&String>,
     text: Option<&String>,
     timeout_ms: u64,
+    last_error: Option<Value>,
 ) -> Result<Value, AppError> {
     timeout_err(
         format!("No new notification within {timeout_ms}ms"),
@@ -75,7 +76,8 @@ pub(crate) fn notification(
             "predicate": "notification",
             "timeout_ms": timeout_ms,
             "app": app,
-            "text_chars": text.map(|text| text.chars().count())
+            "text_chars": text.map(|text| text.chars().count()),
+            "last_error": last_error
         }),
     )
 }

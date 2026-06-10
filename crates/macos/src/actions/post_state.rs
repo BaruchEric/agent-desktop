@@ -27,14 +27,24 @@ pub(crate) fn read_element_state(el: &crate::tree::AXElement) -> ElementState {
 pub(crate) fn read_live_element(el: &crate::tree::AXElement) -> LiveElement {
     let attrs = crate::tree::element::fetch_node_attrs(el);
     let role = normalized_role(attrs.role.as_deref());
+    let bounds = attrs.bounds;
+    let has_scrollbars = attrs.has_scrollbars;
     let state = element_state_from_attrs(attrs, role.clone());
     LiveElement {
         state: Some(state),
-        bounds: crate::tree::read_bounds(el),
+        bounds,
         available_actions: Some(crate::tree::action_list::platform_available_actions(
-            el, &role,
+            el,
+            &role,
+            has_scrollbars,
         )),
     }
+}
+
+pub(crate) fn read_live_actions(el: &crate::tree::AXElement) -> Vec<String> {
+    let attrs = crate::tree::element::fetch_node_attrs(el);
+    let role = normalized_role(attrs.role.as_deref());
+    crate::tree::action_list::platform_available_actions(el, &role, attrs.has_scrollbars)
 }
 
 fn element_state_from_attrs(attrs: crate::tree::NodeAttrs, role: String) -> ElementState {

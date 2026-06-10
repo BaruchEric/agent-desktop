@@ -43,11 +43,7 @@ pub struct WaitPredicateArgs {
     pub count: Option<usize>,
 }
 
-pub fn execute(args: WaitArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    execute_with_context(args, adapter, &CommandContext::default())
-}
-
-pub fn execute_with_context(
+pub fn execute(
     args: WaitArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
@@ -335,36 +331,43 @@ fn wait_for_notification(
         text: text.clone(),
         ..Default::default()
     };
-    let baseline = adapter
-        .list_notifications(&filter)
-        .map_err(AppError::Adapter)?;
-    let baseline_indices: std::collections::HashSet<usize> =
-        baseline.iter().map(|n| n.index).collect();
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
+    let mut baseline_indices: Option<std::collections::HashSet<usize>> = None;
+    let mut last_error = None;
 
     loop {
+        match adapter.list_notifications(&filter) {
+            Ok(current) => match &baseline_indices {
+                None => {
+                    baseline_indices = Some(current.iter().map(|n| n.index).collect());
+                }
+                Some(baseline) => {
+                    if let Some(notif) = current.iter().find(|n| !baseline.contains(&n.index)) {
+                        let elapsed = start.elapsed().as_millis();
+                        return Ok(json!({
+                            "condition": "notification",
+                            "matched": true,
+                            "notification": notif,
+                            "elapsed_ms": elapsed,
+                        }));
+                    }
+                }
+            },
+            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+                last_error = Some(json!({
+                    "code": err.code.as_str(),
+                    "message": err.message
+                }));
+            }
+            Err(err) => return Err(AppError::Adapter(err)),
+        }
+
         let remaining = timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms);
+            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
         }
-        let current = adapter
-            .list_notifications(&filter)
-            .map_err(AppError::Adapter)?;
-        let Some(notif) = current
-            .iter()
-            .find(|n| !baseline_indices.contains(&n.index))
-        else {
-            std::thread::sleep(remaining.min(Duration::from_millis(500)));
-            continue;
-        };
-        let elapsed = start.elapsed().as_millis();
-        return Ok(json!({
-            "condition": "notification",
-            "matched": true,
-            "notification": notif,
-            "elapsed_ms": elapsed,
-        }));
+        std::thread::sleep(remaining.min(Duration::from_millis(500)));
     }
 }
 

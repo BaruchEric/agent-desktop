@@ -108,7 +108,7 @@ fn default_ref_commands_are_headless() {
     double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     let before_right_click = adapter.requests.lock().unwrap().len();
-    let _ = right_click::execute(ref_args(&snapshot_id), &adapter);
+    let _ = right_click::execute(ref_args(&snapshot_id), &adapter, &context);
     assert_eq!(
         adapter.requests.lock().unwrap().len(),
         before_right_click + 1

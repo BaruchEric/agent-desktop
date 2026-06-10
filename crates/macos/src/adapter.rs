@@ -195,10 +195,10 @@ impl PlatformAdapter for MacOSAdapter {
     fn get_live_actions(&self, handle: &NativeHandle) -> Result<Option<Vec<String>>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(Some(with_borrowed_ax_element(handle, |el| {
-                let state = crate::actions::post_state::read_element_state(el);
-                crate::tree::action_list::platform_available_actions(el, &state.role)
-            })))
+            Ok(Some(with_borrowed_ax_element(
+                handle,
+                crate::actions::post_state::read_live_actions,
+            )))
         }
         #[cfg(not(target_os = "macos"))]
         Err(AdapterError::not_supported("get_live_actions"))

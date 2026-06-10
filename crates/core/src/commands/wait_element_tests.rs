@@ -337,3 +337,26 @@ fn element_wait_propagates_live_read_errors_after_releasing_handle() {
     assert_eq!(err.code(), "PERM_DENIED");
     assert_eq!(adapter.releases.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn zero_timeout_returns_timeout_before_any_resolution_attempt() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+
+    let err = wait_for_element_test(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Exists,
+        0,
+        &NoopAdapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    let AppError::Adapter(adapter_err) = err else {
+        panic!("expected adapter error");
+    };
+    assert_eq!(adapter_err.code, crate::error::ErrorCode::Timeout);
+    let details = adapter_err.details.expect("timeout should carry details");
+    assert!(details["last_observed"].is_null());
+}

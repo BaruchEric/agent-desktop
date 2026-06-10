@@ -32,7 +32,7 @@ pub fn run_wait_element_command(
     context: &CommandContext,
 ) -> Result<serde_json::Value, agent_desktop_core::AppError> {
     with_saved_entry(entry, context, |snapshot_id| {
-        wait::execute_with_context(
+        wait::execute(
             wait::WaitArgs {
                 mode: wait::WaitModeArgs {
                     ms: None,

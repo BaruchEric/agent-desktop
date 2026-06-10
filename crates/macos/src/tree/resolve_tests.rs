@@ -1,8 +1,11 @@
 use super::*;
+use crate::tree::AXElement;
+use crate::tree::resolve_classify::classify_candidates;
 use crate::tree::resolve_roots::{
     single_window_fallback_allowed, sole_source_window_fallback_allowed, source_window_number,
     unique_fallible_matching_index,
 };
+use crate::tree::resolve_search::should_stop_collecting;
 use agent_desktop_core::adapter::SnapshotSurface;
 
 fn entry(

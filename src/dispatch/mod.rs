@@ -32,7 +32,7 @@ pub(crate) fn dispatch(
 ) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
     match cmd {
-        Commands::Snapshot(a) => snapshot::execute_with_context(
+        Commands::Snapshot(a) => snapshot::execute(
             snapshot::SnapshotArgs {
                 app: a.app,
                 window_id: a.window_id,
@@ -85,7 +85,7 @@ pub(crate) fn dispatch(
             context,
         ),
 
-        Commands::Is(a) => is_check::execute_with_context(
+        Commands::Is(a) => is_check::execute(
             is_check::IsArgs {
                 ref_id: a.ref_id,
                 snapshot_id: a.snapshot,
@@ -98,7 +98,7 @@ pub(crate) fn dispatch(
         Commands::Click(a) => click::execute(ref_args(a), adapter, context),
         Commands::DoubleClick(a) => double_click::execute(ref_args(a), adapter, context),
         Commands::TripleClick(a) => triple_click::execute(ref_args(a), adapter, context),
-        Commands::RightClick(a) => right_click::execute_with_context(ref_args(a), adapter, context),
+        Commands::RightClick(a) => right_click::execute(ref_args(a), adapter, context),
 
         Commands::Type(a) => type_text::execute(
             type_text::TypeArgs {
@@ -302,7 +302,7 @@ pub(crate) fn dispatch(
         Commands::ClipboardSet(a) => clipboard_set::execute(a.text, adapter),
         Commands::ClipboardClear => clipboard_clear::execute(adapter),
 
-        Commands::Wait(a) => wait::execute_with_context(
+        Commands::Wait(a) => wait::execute(
             wait::WaitArgs {
                 mode: wait::WaitModeArgs {
                     ms: a.mode.ms,

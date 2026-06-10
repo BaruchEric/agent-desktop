@@ -2,7 +2,7 @@ use crate::{
     action::{Point, WindowOp},
     action_request::ActionRequest,
     action_result::ActionResult,
-    adapter::{NativeHandle, PlatformAdapter, WindowFilter},
+    adapter::{PlatformAdapter, WindowFilter},
     context::CommandContext,
     error::AppError,
     node::WindowInfo,
@@ -27,15 +27,6 @@ pub(crate) struct PointResolveArgs<'a> {
     pub xy: Option<(f64, f64)>,
     pub snapshot_id: Option<&'a str>,
     pub missing_input_message: &'a str,
-}
-
-#[cfg(test)]
-pub(crate) fn resolve_ref<'a>(
-    ref_id: &str,
-    snapshot_id: Option<&str>,
-    adapter: &'a dyn PlatformAdapter,
-) -> Result<(RefEntry, ResolvedElement<'a>), AppError> {
-    resolve_ref_with_context(ref_id, snapshot_id, adapter, &CommandContext::default())
 }
 
 pub(crate) fn resolve_ref_with_context<'a>(
@@ -129,15 +120,6 @@ pub(crate) fn resolve_app_pid(
     }
 }
 
-#[cfg(test)]
-pub(crate) fn execute_ref_action(
-    args: RefArgs,
-    adapter: &dyn PlatformAdapter,
-    request: ActionRequest,
-) -> Result<Value, AppError> {
-    execute_ref_action_with_context(args, adapter, request, &CommandContext::default())
-}
-
 pub(crate) fn execute_ref_action_with_context(
     args: RefArgs,
     adapter: &dyn PlatformAdapter,
@@ -162,58 +144,17 @@ pub(crate) fn execute_ref_action_result_with_context(
     context: &CommandContext,
 ) -> Result<(RefEntry, ActionResult), AppError> {
     let (entry, handle) = resolve_ref_with_context(ref_id, snapshot_id, adapter, context)?;
-    check_actionability_with_trace(ActionabilityTraceInput {
-        ref_id,
-        entry: &entry,
-        handle: handle.handle(),
-        adapter,
-        request: &request,
-        context,
-    })?;
-    context.trace_lazy(
-        "action.dispatch.start",
-        || json!({ "ref": ref_id, "action": request.action.name() }),
+    let result = crate::ref_action::execute_resolved(
+        crate::ref_action::ResolvedRefAction {
+            adapter,
+            entry: &entry,
+            handle: handle.handle(),
+            ref_id,
+            context,
+        },
+        request,
     )?;
-    let action_name = request.action.name();
-    let result = adapter.execute_action(handle.handle(), request)?;
-    let _ = context.trace_lazy(
-        "action.dispatch.ok",
-        || json!({ "ref": ref_id, "action": action_name, "result": &result }),
-    );
     Ok((entry, result))
-}
-
-struct ActionabilityTraceInput<'a> {
-    ref_id: &'a str,
-    entry: &'a RefEntry,
-    handle: &'a NativeHandle,
-    adapter: &'a dyn PlatformAdapter,
-    request: &'a ActionRequest,
-    context: &'a CommandContext,
-}
-
-fn check_actionability_with_trace(input: ActionabilityTraceInput<'_>) -> Result<(), AppError> {
-    input.context.trace_lazy(
-        "actionability.check.start",
-        || json!({ "ref": input.ref_id, "action": input.request.action.name() }),
-    )?;
-    crate::actionability::check_live(input.entry, input.handle, input.adapter, input.request)
-        .inspect_err(|err| {
-            let _ = input.context.trace_lazy("actionability.check.error", || {
-                json!({
-                    "ref": input.ref_id,
-                    "action": input.request.action.name(),
-                    "code": err.code.as_str(),
-                    "message": err.message.clone(),
-                    "details": err.details.clone()
-                })
-            });
-        })?;
-    input.context.trace_lazy(
-        "actionability.check.ok",
-        || json!({ "ref": input.ref_id, "action": input.request.action.name() }),
-    )?;
-    Ok(())
 }
 
 pub(crate) fn resolve_point_from_ref_or_xy_with_context(

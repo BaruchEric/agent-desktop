@@ -11,15 +11,17 @@ pub(crate) mod element_dedupe;
 pub(crate) mod node_attrs;
 pub mod resolve;
 mod resolve_bounds;
+mod resolve_classify;
 mod resolve_deadline;
 mod resolve_identity;
 mod resolve_roots;
+mod resolve_search;
 pub mod roles;
 pub mod surfaces;
 
 pub(crate) use attributes::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_first_element_attr, copy_i64_attr,
-    copy_string_attr, copy_value_typed,
+    copy_ax_array, copy_bool_attr, copy_element_attr, copy_i64_attr, copy_string_attr,
+    copy_value_typed,
 };
 pub use ax_element::AXElement;
 pub use build_context::TreeBuildContext;

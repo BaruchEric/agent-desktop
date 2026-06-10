@@ -68,6 +68,7 @@ fn test_set_and_get_structured_details() {
     );
     set_last_error(&err);
 
+    assert_eq!(last_error_code(), AdResult::ErrAmbiguousTarget);
     let details: serde_json::Value =
         serde_json::from_str(&last_error_details_str().unwrap()).unwrap();
     assert_eq!(details["candidate_count"], 2);

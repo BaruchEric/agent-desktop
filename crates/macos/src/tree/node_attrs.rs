@@ -1,10 +1,14 @@
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+use agent_desktop_core::node::Rect;
+
+#[derive(Debug, Clone, Default)]
 pub(crate) struct NodeAttrs {
     pub(crate) role: Option<String>,
     pub(crate) title: Option<String>,
     pub(crate) description: Option<String>,
     pub(crate) value: Option<String>,
     pub(crate) states: NodeAttrStates,
+    pub(crate) bounds: Option<Rect>,
+    pub(crate) has_scrollbars: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -101,14 +101,14 @@ pub fn build_subtree(
         let value = redact_secure_value(attrs.role.as_deref(), attrs.value);
         let name = attrs.title.or(attrs.description);
         let child_count = count_children(el, attrs.role.as_deref());
-        let bounds = context.read_bounds(el);
+        let bounds = context.bounds_for(attrs.bounds);
         let mut states = Vec::new();
         if is_secure_text {
             states.push("secure".into());
         }
         return Some(AccessibilityNode {
             ref_id: None,
-            available_actions: platform_available_actions(el, &role),
+            available_actions: platform_available_actions(el, &role, attrs.has_scrollbars),
             name,
             value,
             description: None,
@@ -139,7 +139,7 @@ pub fn build_subtree(
     let available_actions = if is_promoted_item {
         vec![capability::CLICK.into(), capability::RIGHT_CLICK.into()]
     } else {
-        platform_available_actions(el, &role)
+        platform_available_actions(el, &role, attrs.has_scrollbars)
     };
 
     let name = promoted_label.or_else(|| attrs.title.clone().or_else(|| attrs.description.clone()));
@@ -181,7 +181,7 @@ pub fn build_subtree(
         states.push("checked".into());
     }
 
-    let bounds = context.read_bounds(el);
+    let bounds = context.bounds_for(attrs.bounds);
 
     let is_web_wrapper = matches!(
         attrs.role.as_deref(),

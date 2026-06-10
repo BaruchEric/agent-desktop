@@ -294,3 +294,22 @@ fn test_root_ref_none_omitted() {
     let json = serde_json::to_string(&entry).unwrap();
     assert!(!json.contains("root_ref"));
 }
+
+#[test]
+fn test_write_private_file_cleans_tmp_when_rename_fails() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-ref-renamefail-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let path = dir.join("blocked");
+    std::fs::create_dir_all(path.join("child")).unwrap();
+
+    let result = write_private_file(&path, b"new");
+
+    assert!(result.is_err());
+    assert!(!dir.join("blocked.tmp").exists());
+    let _ = std::fs::remove_dir_all(dir);
+}

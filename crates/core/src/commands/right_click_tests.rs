@@ -107,6 +107,7 @@ fn returns_action_success_when_menu_probe_fails() {
             snapshot_id: Some(snapshot_id),
         },
         &ProbeFailingAdapter { tree_error: None },
+        &CommandContext::default(),
     )
     .unwrap();
 
@@ -128,6 +129,7 @@ fn element_not_found_menu_probe_uses_right_click_specific_guidance() {
         &ProbeFailingAdapter {
             tree_error: Some(ErrorCode::ElementNotFound),
         },
+        &CommandContext::default(),
     )
     .unwrap();
 

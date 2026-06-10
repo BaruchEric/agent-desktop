@@ -10,11 +10,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-pub fn execute(args: RefArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    execute_with_context(args, adapter, &CommandContext::default())
-}
-
-pub fn execute_with_context(
+pub fn execute(
     args: RefArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,

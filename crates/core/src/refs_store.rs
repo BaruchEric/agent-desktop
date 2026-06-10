@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 const LATEST_SNAPSHOT_FILE: &str = "latest_snapshot_id";
 const MAX_SAVED_SNAPSHOTS: usize = 512;
+const STALE_TMP_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct RefStore {
@@ -59,23 +60,55 @@ impl RefStore {
         self.with_write_lock(|| self.save_snapshot_unlocked(snapshot_id, refmap))
     }
 
+    /// Re-saves a snapshot to whichever store currently owns it. Ownership is
+    /// re-verified inside the owning store's write lock, so a snapshot pruned
+    /// or moved between discovery and locking is never written to a stale
+    /// location; discovery retries once before deterministically recreating
+    /// the snapshot in this store.
     pub fn save_existing_snapshot(
         &self,
         snapshot_id: &str,
         refmap: &RefMap,
     ) -> Result<(), AppError> {
         validate_snapshot_id(snapshot_id)?;
-        let base_dir = if self.snapshot_path(snapshot_id).is_file() {
-            self.base_dir.clone()
-        } else {
-            self.discover_snapshot_base(snapshot_id)?
-                .unwrap_or_else(|| self.base_dir.clone())
-        };
-        let store = Self {
-            base_dir,
+        for _ in 0..2 {
+            let Some(owner) = self.snapshot_owner(snapshot_id)? else {
+                break;
+            };
+            let saved = owner.with_write_lock(|| {
+                if owner.snapshot_path(snapshot_id).is_file() {
+                    owner
+                        .save_snapshot_unlocked(snapshot_id, refmap)
+                        .map(|_| true)
+                } else {
+                    Ok(false)
+                }
+            })?;
+            if saved {
+                return Ok(());
+            }
+        }
+        let fallback = self.without_legacy_migration();
+        fallback.with_write_lock(|| fallback.save_snapshot_unlocked(snapshot_id, refmap))
+    }
+
+    fn snapshot_owner(&self, snapshot_id: &str) -> Result<Option<Self>, AppError> {
+        if self.snapshot_path(snapshot_id).is_file() {
+            return Ok(Some(self.without_legacy_migration()));
+        }
+        Ok(self
+            .discover_snapshot_base(snapshot_id)?
+            .map(|base_dir| Self {
+                base_dir,
+                allow_legacy_migration: false,
+            }))
+    }
+
+    fn without_legacy_migration(&self) -> Self {
+        Self {
+            base_dir: self.base_dir.clone(),
             allow_legacy_migration: false,
-        };
-        store.with_write_lock(|| store.save_snapshot_unlocked(snapshot_id, refmap))
+        }
     }
 
     pub fn load(&self, snapshot_id: Option<&str>) -> Result<RefMap, AppError> {
@@ -197,7 +230,38 @@ impl RefStore {
         self.base_dir.join("snapshots")
     }
 
+    /// Removes orphaned `*.tmp` files left behind when a process died between
+    /// the temp write and the atomic rename. Runs under the store write lock;
+    /// the age threshold keeps any in-flight write from another process safe.
+    pub(crate) fn remove_tmp_files_older_than(&self, max_age: std::time::Duration) {
+        for dir in [self.base_dir.clone(), self.snapshots_dir()] {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|ext| ext != "tmp") {
+                    continue;
+                }
+                let is_plain_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+                if !is_plain_file {
+                    continue;
+                }
+                let stale = entry
+                    .metadata()
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok())
+                    .and_then(|modified| modified.elapsed().ok())
+                    .is_some_and(|age| age >= max_age);
+                if stale {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+    }
+
     fn prune_old_snapshots_unlocked(&self, latest_id: &str) -> Result<(), AppError> {
+        self.remove_tmp_files_older_than(STALE_TMP_MAX_AGE);
         let dir = self.snapshots_dir();
         let Ok(entries) = std::fs::read_dir(&dir) else {
             return Ok(());

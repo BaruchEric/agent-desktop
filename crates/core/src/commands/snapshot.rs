@@ -38,11 +38,7 @@ fn tree_options(args: &SnapshotArgs) -> crate::adapter::TreeOptions {
     }
 }
 
-pub fn execute(args: SnapshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    execute_with_context(args, adapter, &CommandContext::default())
-}
-
-pub fn execute_with_context(
+pub fn execute(
     args: SnapshotArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,

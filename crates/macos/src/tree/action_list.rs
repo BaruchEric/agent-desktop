@@ -1,15 +1,16 @@
 use super::AXElement;
-use super::{
-    capabilities::{copy_action_names, is_attr_settable},
-    copy_first_element_attr,
-};
+use super::capabilities::{copy_action_names, is_attr_settable};
 use agent_desktop_core::capability;
 
 #[cfg(target_os = "macos")]
 use accessibility_sys::{kAXFocusedAttribute, kAXValueAttribute};
 
 #[cfg(target_os = "macos")]
-pub(crate) fn platform_available_actions(el: &AXElement, role: &str) -> Vec<String> {
+pub(crate) fn platform_available_actions(
+    el: &AXElement,
+    role: &str,
+    has_scrollbars: bool,
+) -> Vec<String> {
     let ax_actions = copy_action_names(el);
     let has = |name: &str| ax_actions.iter().any(|a| a == name);
     let mut actions = Vec::new();
@@ -30,7 +31,7 @@ pub(crate) fn platform_available_actions(el: &AXElement, role: &str) -> Vec<Stri
         push_unique(&mut actions, capability::SCROLL);
         push_unique(&mut actions, capability::SCROLL_TO);
     }
-    if has_scroll_mechanism(el, role, &has) {
+    if has_scroll_mechanism(role, &has, has_scrollbars) {
         push_unique(&mut actions, capability::SCROLL);
     }
     if has("AXIncrement") || has("AXDecrement") || is_attr_settable(el, kAXValueAttribute) {
@@ -48,7 +49,11 @@ pub(crate) fn platform_available_actions(el: &AXElement, role: &str) -> Vec<Stri
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn platform_available_actions(_el: &AXElement, _role: &str) -> Vec<String> {
+pub(crate) fn platform_available_actions(
+    _el: &AXElement,
+    _role: &str,
+    _has_scrollbars: bool,
+) -> Vec<String> {
     Vec::new()
 }
 
@@ -62,15 +67,13 @@ fn role_allows_context_menu_action(role: &str) -> bool {
     !matches!(role, "combobox" | "menubutton")
 }
 
-fn has_scroll_mechanism(el: &AXElement, role: &str, has: &impl Fn(&str) -> bool) -> bool {
+fn has_scroll_mechanism(role: &str, has: &impl Fn(&str) -> bool, has_scrollbars: bool) -> bool {
     role_supports_scroll(role)
         || has("AXScrollDownByPage")
         || has("AXScrollUpByPage")
         || has("AXScrollLeftByPage")
         || has("AXScrollRightByPage")
-        || (role_may_own_scrollbars(role)
-            && copy_first_element_attr(el, &["AXVerticalScrollBar", "AXHorizontalScrollBar"])
-                .is_some())
+        || (role_may_own_scrollbars(role) && has_scrollbars)
 }
 
 fn role_supports_scroll(role: &str) -> bool {
