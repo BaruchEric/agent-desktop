@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{NativeHandle, WindowFilter},
     error::{AdapterError, ErrorCode},

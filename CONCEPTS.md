@@ -55,12 +55,12 @@ The platform-neutral set of supported action names that core uses to compare com
 Each adapter maps native primitives into this shared vocabulary before core evaluates actionability. New commands should extend the central vocabulary first, then reuse it from actionability, ref allocation, predicates, FFI tests, and platform adapters.
 
 ### Interaction Policy
-The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input fallbacks.
+The side-effect contract attached to an action request, controlling whether the command may steal focus, move the cursor, or use physical input fallbacks. Ref commands expose exactly two modes: **headless** (the default — accessibility-only, no cursor, fails closed when the AX path is unavailable) and **headed** (opt-in via the global `--headed` flag — permits focus stealing and cursor movement so the action chain's physical fallbacks can complete). The AX path is always tried first, so headed never regresses headless-capable elements. The `headed` upgrade applies uniformly to every ref command; each command still declares its own headless base policy (most are pure-AX; `type` uses a focus-fallback base because typing requires focus but never moves the cursor).
 
 ### Headless Ref Action
-A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use.
+A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
 
-Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation. A broader interaction policy must be explicit rather than silently substituting physical input.
+Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with `POLICY_DENIED` rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
 
 ### Wait Predicate
 The condition a wait command polls for before returning, such as element actionability, text presence, window appearance, menu state, or notification arrival.

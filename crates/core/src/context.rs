@@ -1,4 +1,7 @@
-use crate::{error::AppError, trace::TraceConfig};
+use crate::{
+    action::Action, action_request::ActionRequest, error::AppError,
+    interaction_policy::InteractionPolicy, trace::TraceConfig,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -6,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub struct CommandContext {
     session_id: Option<String>,
     trace: TraceConfig,
+    headed: bool,
 }
 
 impl CommandContext {
@@ -20,7 +24,31 @@ impl CommandContext {
         Ok(Self {
             session_id,
             trace: TraceConfig::new(trace_path, trace_strict)?,
+            headed: false,
         })
+    }
+
+    /// Selects headed interaction: ref actions may move the cursor and steal
+    /// focus, unlocking the physical click/scroll/keypress fallbacks in the
+    /// action chain. Off by default — the tool is headless-first (Playwright
+    /// style: headless is the default, headed is opt-in via `--headed`).
+    pub fn with_headed(mut self, headed: bool) -> Self {
+        self.headed = headed;
+        self
+    }
+
+    /// Builds the action request for a ref command. Headless (default) uses the
+    /// command's own `base` policy — its minimum viable policy with no cursor
+    /// movement (most commands are pure-AX `headless`; `type` is `focus_fallback`
+    /// because typing requires focus). `--headed` upgrades any base to `headed`,
+    /// unlocking the cursor/OS-input fallbacks instead of failing closed.
+    pub fn request(&self, action: Action, base: InteractionPolicy) -> ActionRequest {
+        let policy = if self.headed {
+            InteractionPolicy::headed()
+        } else {
+            base
+        };
+        ActionRequest { action, policy }
     }
 
     pub fn for_batch_item(&self, session_id: Option<String>) -> Result<Self, AppError> {
@@ -31,6 +59,7 @@ impl CommandContext {
         Ok(Self {
             session_id,
             trace: self.trace.clone(),
+            headed: self.headed,
         })
     }
 

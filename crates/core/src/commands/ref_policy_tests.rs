@@ -185,3 +185,74 @@ fn focus_command_is_explicit_headless_policy() {
     assert!(matches!(request.action, Action::SetFocus));
     assert_eq!(request.policy, InteractionPolicy::headless());
 }
+
+#[test]
+fn headed_context_upgrades_every_ref_command_to_headed() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_id();
+    let adapter = RecordingAdapter::new();
+    let context = CommandContext::default().with_headed(true);
+
+    click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    double_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    triple_click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    let _ = right_click::execute(ref_args(&snapshot_id), &adapter, &context);
+    clear::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    toggle::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    check::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    uncheck::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    expand::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    collapse::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    scroll_to::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    focus::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
+    set_value::execute(
+        set_value::SetValueArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            value: "value".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    select::execute(
+        select::SelectArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            value: "choice".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    type_text::execute(
+        type_text::TypeArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id.clone()),
+            text: "text".into(),
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+    scroll::execute(
+        scroll::ScrollArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id),
+            direction: Direction::Down,
+            amount: 1,
+        },
+        &adapter,
+        &context,
+    )
+    .unwrap();
+
+    for request in adapter.requests.lock().unwrap().iter() {
+        assert_eq!(
+            request.policy,
+            InteractionPolicy::headed(),
+            "{:?} must be headed under --headed",
+            request.action
+        );
+    }
+}

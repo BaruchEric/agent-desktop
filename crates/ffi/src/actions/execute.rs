@@ -164,7 +164,7 @@ fn action_request(
     match policy {
         AdPolicyKind::Headless => ActionRequest::headless(action),
         AdPolicyKind::FocusFallback => ActionRequest::focus_fallback(action),
-        AdPolicyKind::Physical => ActionRequest::physical(action),
+        AdPolicyKind::Headed => ActionRequest::headed(action),
     }
 }
 
@@ -184,8 +184,8 @@ mod tests {
             InteractionPolicy::focus_fallback()
         );
         assert_eq!(
-            action_request(AdPolicyKind::Physical, Action::Click).policy,
-            InteractionPolicy::physical()
+            action_request(AdPolicyKind::Headed, Action::Click).policy,
+            InteractionPolicy::headed()
         );
     }
 }

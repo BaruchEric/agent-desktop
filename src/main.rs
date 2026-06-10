@@ -36,7 +36,7 @@ fn main() {
 
     init_tracing(cli.verbose);
     let context = match CommandContext::new(cli.session, cli.trace, cli.trace_strict) {
-        Ok(context) => context,
+        Ok(context) => context.with_headed(cli.headed),
         Err(err) => {
             finish("unknown", Err(err));
             return;

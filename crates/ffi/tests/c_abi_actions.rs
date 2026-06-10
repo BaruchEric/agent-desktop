@@ -36,7 +36,7 @@ fn invalid_policy_discriminant_rejected_without_ub() {
             adapter,
             &handle,
             &action,
-            AdPolicyKind::Physical as i32 + 1,
+            AdPolicyKind::Headed as i32 + 1,
             &mut out,
         );
         assert!(matches!(

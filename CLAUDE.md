@@ -15,9 +15,12 @@ cargo clippy --all-targets -- -D warnings      # Lint (must pass, zero warnings)
 cargo fmt --all -- --check                     # Format check
 cargo fmt --all                                # Auto-format
 cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
+bash tests/e2e/run.sh                          # E2E: real binary vs fixture app, verify by observation (needs --release + AX permission)
 ```
 
 Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
+
+The E2E harness drives the release binary against a real SwiftUI/AppKit fixture and asserts every effect by independent observation (never the command's own `ok:true`), covering every ref action in **both** headless and `--headed` mode. See `tests/e2e/README.md`.
 
 ## Pre-commit Hook
 
@@ -348,7 +351,7 @@ pub trait PlatformAdapter {
 
 - `AccessibilityNode` — platform-agnostic tree node: `ref`, `role`, `name`, `value`, `description`, `states`, `available_actions`, `bounds`, `children`
 - `Action` — Click, DoubleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Scroll(Direction, Amount), PressKey(KeyCombo)
-- `ActionRequest` — `{ action, policy }`, where the default `InteractionPolicy` forbids focus stealing and cursor movement
+- `ActionRequest` — `{ action, policy }`, where the default headless `InteractionPolicy` forbids focus stealing and cursor movement; the global `--headed` flag selects the headed policy that permits both so physical fallbacks can complete
 - `NativeHandle` — opaque platform pointer with `PhantomData<*const ()>` to prevent auto-Send/Sync. Inner field is `pub(crate)`.
 - `RefEntry` — `{ pid, role, name, bounds_hash, available_actions }`
 - `WindowInfo` — `{ id, title, app_name, pid, bounds }`

@@ -92,7 +92,7 @@ typedef int32_t AdMouseEventKind;
 enum AdPolicyKind {
   AD_POLICY_KIND_HEADLESS = 0,
   AD_POLICY_KIND_FOCUS_FALLBACK = 1,
-  AD_POLICY_KIND_PHYSICAL = 2,
+  AD_POLICY_KIND_HEADED = 2,
 };
 typedef int32_t AdPolicyKind;
 

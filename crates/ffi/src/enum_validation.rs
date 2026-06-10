@@ -40,7 +40,7 @@ try_from_c_enum! {
 
 try_from_c_enum! {
     AdPolicyKind {
-        Headless = 0, FocusFallback = 1, Physical = 2,
+        Headless = 0, FocusFallback = 1, Headed = 2,
     }
 }
 

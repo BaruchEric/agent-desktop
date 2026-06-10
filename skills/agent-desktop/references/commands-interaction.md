@@ -2,17 +2,26 @@
 
 Commands for modifying UI state — clicking, typing, selecting, scrolling, and input synthesis.
 
-Ref-based actions are headless by default. They try semantic accessibility operations and do not silently steal focus, move the cursor, synthesize keyboard input, or use the pasteboard. Physical/headed interaction is reserved for explicit `focus`, `press`, `hover`, `drag`, and `mouse-*` commands or an explicit FFI policy. The `type` command has an explicit focus-fallback tier for callers that opt into focus changes while still forbidding cursor movement; the default CLI path remains AX-value-first and headless.
+### Headless (default) vs `--headed`
+
+Ref-based actions run in two modes, Playwright-style:
+
+- **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it **fails closed** with `POLICY_DENIED` rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
+- **`--headed`.** A global flag (`agent-desktop --headed click @e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
+
+Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are always physical by nature and ignore the mode — they are the explicit low-level escape hatch.
+
+`--headed` is a global flag and also applies to every `batch` entry.
 
 All ref-based interaction commands accept `--snapshot <snapshot_id>`. Omit it for the active session's latest saved snapshot, or pass the `snapshot_id` returned by `snapshot` to keep scripts pinned to the exact ref map they observed. Explicit snapshot IDs do not require also passing `--session`.
 
 Success responses for ref actions include a `steps` array when the activation chain recorded attempts: each entry is `{ "label": "AXPress", "outcome": "attempted" | "skipped" | "succeeded" }` in execution order, showing which activation path produced the result.
 
-When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "name": "...", "status": "...", "reason": "..." } ] }`. Check names are `visible`, `stable`, `enabled`, `supported_action`, `policy`, and `editable`; statuses are `pass`, `fail`, and `unknown`. Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or an explicit focus/physical command when intended.
+When the actionability preflight blocks an action, the error envelope carries the full report in `error.details`: `{ "actionable": false, "checks": [ { "name": "...", "status": "...", "reason": "..." } ] }`. Check names are `visible`, `stable`, `enabled`, `supported_action`, `policy`, and `editable`; statuses are `pass`, `fail`, and `unknown`. Use the failing check's `reason` to pick recovery: `wait --element <ref> --predicate actionable`, a fresh snapshot, or `--headed` when a `policy` check failed and a physical gesture is intended.
 
 ## Click Actions
 
-Click commands use semantic AX activation first. In the default headless policy, coordinate click fallback is blocked; use `mouse-click` only when physical cursor movement is intended.
+Click commands use semantic AX activation first. In the default headless mode, coordinate click fallback is blocked; pass `--headed` to allow the physical click fallback, or use `mouse-click` for a raw coordinate click.
 
 ### click
 ```bash
@@ -25,19 +34,19 @@ Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child
 ```bash
 agent-desktop double-click @e3
 ```
-Tries AXOpen. Physical double-click fallback is blocked by default policy; use `mouse-click --xy X,Y --count 2` when a headed physical double-click is intended.
+Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @e3`), or use `mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
 
 ### triple-click
 ```bash
 agent-desktop triple-click @e2
 ```
-Physical triple-click requires cursor/focus side effects and is blocked by default policy; use `mouse-click --xy X,Y --count 3` when a headed physical triple-click is intended.
+Triple-click requires cursor/focus side effects and is blocked in headless mode; pass `--headed` (`agent-desktop --headed triple-click @e2`), or use `mouse-click --xy X,Y --count 3` for a raw coordinate triple-click.
 
 ### right-click
 ```bash
 agent-desktop right-click @e5
 ```
-Performs a semantic right-click/context-menu action and includes the menu tree when a menu surface can be verified. If the right-click action succeeds but menu probing fails, the command still returns the action result with `menu_probe.ok: false` so callers do not retry and double-open context menus. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked by default policy.
+Performs a semantic right-click/context-menu action and includes the menu tree when a menu surface can be verified. If the right-click action succeeds but menu probing fails, the command still returns the action result with `menu_probe.ok: false` so callers do not retry and double-open context menus. Combo boxes and menu buttons expose menu-opening actions for their primary dropdown; use `select` for those controls, not `right-click`. Focus-stealing and coordinate right-click fallback are blocked in headless mode; pass `--headed` to allow them.
 
 ## Text Input
 
@@ -46,9 +55,9 @@ Performs a semantic right-click/context-menu action and includes the menu tree w
 agent-desktop type @e2 "hello@example.com"
 agent-desktop type @e2 "multi line\ntext"
 ```
-In the default headless policy, inserts text by mutating the element's AX value when the target has a settable text value. If a target cannot be updated headlessly, the command returns a structured error instead of stealing focus. Physical keyboard synthesis and pasteboard-based insertion are reserved for explicit policy paths.
+In headless mode (default), `type` inserts text by mutating the element's AX value and may focus the target field (typing requires focus) but never moves the cursor. If the field cannot be updated and the focused-insert path is unavailable, it returns a structured error. Pass `--headed` to unlock physical keyboard synthesis and pasteboard-based insertion for fields that ignore AX value writes (common in web/Electron inputs).
 
-When an explicit focus/physical policy is used for non-ASCII text on macOS, the adapter may briefly place the text on the clipboard to paste it. Do not use that path for secrets; prefer the default headless value path or `set-value` when the target supports it.
+Under `--headed`, non-ASCII text on macOS may be briefly placed on the clipboard to paste it. Do not use that path for secrets; prefer the default value path or `set-value` when the target supports it.
 
 ### set-value
 ```bash

@@ -23,10 +23,10 @@ impl ActionRequest {
         }
     }
 
-    pub fn physical(action: Action) -> Self {
+    pub fn headed(action: Action) -> Self {
         Self {
             action,
-            policy: InteractionPolicy::physical(),
+            policy: InteractionPolicy::headed(),
         }
     }
 }

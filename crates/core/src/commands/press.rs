@@ -36,8 +36,7 @@ pub fn execute(args: PressArgs, adapter: &dyn PlatformAdapter) -> Result<Value, 
     }
 
     let handle = crate::adapter::NativeHandle::null();
-    let result =
-        adapter.execute_action(&handle, ActionRequest::physical(Action::PressKey(combo)))?;
+    let result = adapter.execute_action(&handle, ActionRequest::headed(Action::PressKey(combo)))?;
     Ok(serde_json::to_value(result)?)
 }
 

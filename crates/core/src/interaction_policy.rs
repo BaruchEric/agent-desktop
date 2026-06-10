@@ -21,7 +21,7 @@ impl InteractionPolicy {
         }
     }
 
-    pub fn physical() -> Self {
+    pub fn headed() -> Self {
         Self {
             allow_focus_steal: true,
             allow_cursor_move: true,

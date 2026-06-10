@@ -60,6 +60,13 @@ pub(crate) struct Cli {
     )]
     pub trace_strict: bool,
 
+    #[arg(
+        long,
+        global = true,
+        help = "Run ref actions headed: permit cursor movement and focus stealing so physical click/scroll/keypress fallbacks can complete. Default is headless (AX-only, no cursor)."
+    )]
+    pub headed: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

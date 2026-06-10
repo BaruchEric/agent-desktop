@@ -1,10 +1,10 @@
 use crate::{
     action::Action,
-    action_request::ActionRequest,
     adapter::{PlatformAdapter, SnapshotSurface, TreeOptions},
     commands::helpers::{RefArgs, execute_ref_action_result_with_context, find_window_for_pid},
     context::CommandContext,
     error::AppError,
+    interaction_policy::InteractionPolicy,
     refs::RefEntry,
     snapshot,
 };
@@ -15,7 +15,7 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let request = ActionRequest::headless(Action::RightClick);
+    let request = context.request(Action::RightClick, InteractionPolicy::headless());
     let (entry, result) = execute_ref_action_result_with_context(
         &args.ref_id,
         args.snapshot_id.as_deref(),

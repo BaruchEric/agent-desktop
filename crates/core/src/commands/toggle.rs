@@ -1,10 +1,10 @@
 use crate::{
     action::Action,
-    action_request::ActionRequest,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context},
     context::CommandContext,
     error::AppError,
+    interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
 
@@ -16,7 +16,7 @@ pub fn execute(
     execute_ref_action_with_context(
         args,
         adapter,
-        ActionRequest::headless(Action::Toggle),
+        context.request(Action::Toggle, InteractionPolicy::headless()),
         context,
     )
 }
