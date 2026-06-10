@@ -91,6 +91,7 @@ mod imp {
             ChainStep::SetBool { attr, .. } => attr,
             ChainStep::SetDynamic { attr } => attr,
             ChainStep::FocusThenSetDynamic { attr } => attr,
+            ChainStep::IncrementToDynamic => "IncrementToDynamic",
             ChainStep::FocusThenClearByKeyboard => "FocusThenClearByKeyboard",
             ChainStep::ChildActions { .. } => "ChildActions",
             ChainStep::AncestorActions { .. } => "AncestorActions",
@@ -141,6 +142,11 @@ mod imp {
                 std::thread::sleep(Duration::from_millis(50));
                 set_dynamic_verified(el, attr, value)
             }
+
+            ChainStep::IncrementToDynamic => match ctx.dynamic_value {
+                Some(value) => increment_to_value(el, value),
+                None => Ok(false),
+            },
 
             ChainStep::FocusThenClearByKeyboard => {
                 if !policy.allow_focus_steal {
@@ -213,13 +219,56 @@ mod imp {
     }
 
     fn set_dynamic_verified(el: &AXElement, attr: &str, value: &str) -> Result<bool, AdapterError> {
-        ax_helpers::set_ax_string_or_err(el, attr, value)?;
+        if attr == "AXValue" {
+            ax_helpers::set_ax_value_coerced(el, value)?;
+        } else {
+            ax_helpers::set_ax_string_or_err(el, attr, value)?;
+        }
         Ok(dynamic_write_had_effect(
             attr,
             ax_helpers::element_role(el).as_deref(),
             value,
             crate::tree::copy_value_typed(el).as_deref(),
         ))
+    }
+
+    /// Drives AXIncrement/AXDecrement until the control reaches `target`.
+    /// Steppers and some sliders expose no settable AXValue but step through
+    /// these actions. Stops on reaching the target, on no observable progress
+    /// (the action stopped moving the value), or after a generous guard.
+    fn increment_to_value(el: &AXElement, target: &str) -> Result<bool, AdapterError> {
+        let target: f64 = match target.parse() {
+            Ok(t) => t,
+            Err(_) => return Ok(false),
+        };
+        let read = || crate::tree::copy_value_typed(el).and_then(|v| v.parse::<f64>().ok());
+        let mut current = match read() {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+        if !ax_helpers::has_ax_action(el, "AXIncrement")
+            && !ax_helpers::has_ax_action(el, "AXDecrement")
+        {
+            return Ok(false);
+        }
+        for _ in 0..1024 {
+            if (current - target).abs() < 0.5 {
+                return Ok(true);
+            }
+            let action = if current < target {
+                "AXIncrement"
+            } else {
+                "AXDecrement"
+            };
+            if !ax_helpers::try_ax_action(el, action) {
+                break;
+            }
+            match read() {
+                Some(next) if (next - current).abs() >= f64::EPSILON => current = next,
+                _ => break,
+            }
+        }
+        Ok((current - target).abs() < 0.5)
     }
 
     fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
@@ -240,7 +289,23 @@ mod imp {
         expected: &str,
         observed: Option<&str>,
     ) -> bool {
-        attr != "AXValue" || role == Some("AXSecureTextField") || observed == Some(expected)
+        if attr != "AXValue" || role == Some("AXSecureTextField") {
+            return true;
+        }
+        observed == Some(expected) || numbers_match(expected, observed)
+    }
+
+    /// Numeric controls report their value back in their own format (a slider
+    /// set to `50` reads back as `50.00`), so compare numerically when both
+    /// sides parse as numbers.
+    fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
+        match (
+            expected.parse::<f64>(),
+            observed.and_then(|o| o.parse::<f64>().ok()),
+        ) {
+            (Ok(a), Some(b)) => (a - b).abs() < f64::EPSILON,
+            _ => false,
+        }
     }
 
     #[cfg(test)]
@@ -285,6 +350,28 @@ mod imp {
             assert!(!bool_write_had_effect("AXExpanded", true, Some(false)));
             assert!(!bool_write_had_effect("AXExpanded", false, None));
             assert!(bool_write_had_effect("AXFoo", true, None));
+        }
+
+        #[test]
+        fn numeric_value_write_matches_reformatted_readback() {
+            assert!(dynamic_write_had_effect(
+                "AXValue",
+                Some("AXSlider"),
+                "50",
+                Some("50.00")
+            ));
+            assert!(dynamic_write_had_effect(
+                "AXValue",
+                Some("AXIncrementor"),
+                "3",
+                Some("3")
+            ));
+            assert!(!dynamic_write_had_effect(
+                "AXValue",
+                Some("AXSlider"),
+                "50",
+                Some("12.00")
+            ));
         }
     }
 }

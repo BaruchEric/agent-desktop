@@ -61,8 +61,17 @@ mod imp {
             && copy_bool_attr(el, "AXVisible").unwrap_or(true)
     }
 
+    /// Searches for a *displayed* menu under `el`. The menu bar is skipped:
+    /// every `AXMenuBarItem` carries a latent `AXMenu` child that exists even
+    /// when the dropdown is closed, so descending into the menu bar would make
+    /// `is_menu_open` permanently true for any app with a menu bar. Open
+    /// menu-bar dropdowns are detected separately by `open_menubar_menu` via
+    /// the `AXSelected` gate.
     fn find_menu_descendant(el: &AXElement, depth: usize) -> Option<AXElement> {
         if depth > 8 {
+            return None;
+        }
+        if copy_string_attr(el, "AXRole").as_deref() == Some("AXMenuBar") {
             return None;
         }
         if is_menu(el) {

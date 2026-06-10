@@ -97,41 +97,33 @@ mod imp {
         suggestion: "Try 'mouse-click --button right --xy X,Y'.",
     };
 
+    /// Every step is verified against the element's disclosed state: a bare
+    /// `AXExpand`/`AXSetAttributeValue` can return success without changing the
+    /// control (SwiftUI disclosures do this), so an unverified action must not
+    /// count as success. `expand_verified` tries the semantic action, then a
+    /// press, and only reports success when the state actually flipped.
     pub(crate) static EXPAND_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
-        steps: &[
-            ChainStep::Action("AXExpand"),
-            ChainStep::SetBool {
-                attr: "AXExpanded",
-                value: true,
-            },
-            ChainStep::SetBool {
-                attr: "AXDisclosing",
-                value: true,
-            },
-        ],
-        suggestion: "Try 'click' to open it instead.",
+        steps: &[ChainStep::Custom {
+            label: "expand_verified",
+            func: chain_steps::press_to_expand,
+        }],
+        suggestion: "This control cannot be expanded via accessibility; try a physical 'click' on its disclosure triangle.",
     };
 
     pub(crate) static COLLAPSE_CHAIN: ChainDef = ChainDef {
         pre_scroll: false,
-        steps: &[
-            ChainStep::Action("AXCollapse"),
-            ChainStep::SetBool {
-                attr: "AXExpanded",
-                value: false,
-            },
-            ChainStep::SetBool {
-                attr: "AXDisclosing",
-                value: false,
-            },
-        ],
-        suggestion: "Try 'click' to close it instead.",
+        steps: &[ChainStep::Custom {
+            label: "collapse_verified",
+            func: chain_steps::press_to_collapse,
+        }],
+        suggestion: "This control cannot be collapsed via accessibility; try a physical 'click' on its disclosure triangle.",
     };
 
     const VALUE_STEPS: &[ChainStep] = &[
         ChainStep::SetDynamic { attr: "AXValue" },
         ChainStep::FocusThenSetDynamic { attr: "AXValue" },
+        ChainStep::IncrementToDynamic,
     ];
 
     pub(crate) static SET_VALUE_CHAIN: ChainDef = ChainDef {
@@ -183,12 +175,18 @@ mod imp {
         suggestion: "Element may not be in a scrollable container.",
     };
 
+    /// Only treats AXOpen as a real double-click when the element actually
+    /// advertises it: `AXUIElementPerformAction` returns success for an
+    /// unsupported action on some controls, which would make double-click claim
+    /// success while doing nothing. Elements without AXOpen (e.g. a button that
+    /// only fires on a true mouse double-click) require the physical path, which
+    /// fails closed under the headless policy.
     pub(crate) fn double_click(
         el: &AXElement,
         _caps: &ElementCaps,
         policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
-        if ax_helpers::try_ax_action(el, "AXOpen") {
+        if ax_helpers::has_ax_action(el, "AXOpen") && ax_helpers::try_ax_action(el, "AXOpen") {
             return Ok(());
         }
         crate::actions::dispatch::click_via_bounds(el, MouseButton::Left, 2, policy)

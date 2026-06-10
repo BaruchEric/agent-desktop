@@ -14,6 +14,10 @@ pub(crate) enum ChainStep {
     FocusThenSetDynamic {
         attr: &'static str,
     },
+    /// Converges a stepper/slider to the dynamic target value via repeated
+    /// AXIncrement/AXDecrement actions, for controls whose AXValue is not
+    /// directly settable.
+    IncrementToDynamic,
     FocusThenClearByKeyboard,
     ChildActions {
         actions: &'static [&'static str],

@@ -40,7 +40,9 @@ pub(crate) fn platform_available_actions(
     if is_attr_settable(el, kAXFocusedAttribute) {
         push_unique(&mut actions, capability::SET_FOCUS);
     }
-    if is_attr_settable(el, "AXExpanded") {
+    if is_attr_settable(el, "AXExpanded")
+        || (has("AXPress") && agent_desktop_core::roles::is_expandable_role(role))
+    {
         push_unique(&mut actions, capability::EXPAND);
         push_unique(&mut actions, capability::COLLAPSE);
     }

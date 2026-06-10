@@ -49,7 +49,7 @@ pub fn is_toggleable_role(role: &str) -> bool {
 
 /// Returns true for roles that carry an expanded/collapsed surface state.
 pub fn is_expandable_role(role: &str) -> bool {
-    matches!(role, "combobox" | "menubutton" | "treeitem")
+    matches!(role, "combobox" | "menubutton" | "treeitem" | "disclosure")
 }
 
 /// Returns true for roles whose `value` changes during normal interaction and
@@ -100,18 +100,19 @@ mod tests {
     }
 
     #[test]
-    fn expandable_roles_are_a_subset_of_interactive() {
+    fn interactive_expandable_roles_are_interactive() {
         for role in ["combobox", "menubutton", "treeitem"] {
             assert!(is_expandable_role(role));
             assert!(is_interactive_role(role));
         }
+        assert!(is_expandable_role("disclosure"));
+        assert!(!is_interactive_role("disclosure"));
         assert!(!is_expandable_role("button"));
         assert!(!is_expandable_role("checkbox"));
-        assert!(!is_expandable_role("disclosure"));
     }
 
     #[test]
-    fn every_expandable_role_is_interactive() {
+    fn interactive_role_expandables_are_in_interactive_roles() {
         for role in ["combobox", "menubutton", "treeitem"] {
             assert!(
                 is_expandable_role(role),
