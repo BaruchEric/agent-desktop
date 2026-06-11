@@ -72,10 +72,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
         win.app,
         win.title
     );
-    use accessibility_sys::{
-        AXUIElementCreateApplication, AXUIElementPerformAction, AXUIElementSetAttributeValue,
-        kAXErrorSuccess,
-    };
+    use accessibility_sys::{AXUIElementCreateApplication, AXUIElementSetAttributeValue};
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     let app_el = crate::tree::AXElement(unsafe { AXUIElementCreateApplication(win.pid) });
@@ -91,7 +88,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
             CFBoolean::true_value().as_CFTypeRef(),
         )
     };
-    if err != kAXErrorSuccess {
+    if err != accessibility_sys::kAXErrorSuccess {
         return Err(AdapterError::internal(format!(
             "Failed to set AXFrontmost (err={err})"
         )));
@@ -99,19 +96,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
     wait_until_frontmost(&app_el);
 
     let main_win = crate::tree::window_element_for(win.pid, &win.title);
-    let raise_action = CFString::new("AXRaise");
-    let raise_err =
-        unsafe { AXUIElementPerformAction(main_win.0, raise_action.as_concrete_TypeRef()) };
-    if raise_err != kAXErrorSuccess {
-        let main_attr = CFString::new("AXMain");
-        unsafe {
-            AXUIElementSetAttributeValue(
-                main_win.0,
-                main_attr.as_concrete_TypeRef(),
-                CFBoolean::true_value().as_CFTypeRef(),
-            )
-        };
-    }
+    crate::system::window_ops::raise_window(&main_win);
     Ok(())
 }
 
