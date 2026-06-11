@@ -16,6 +16,28 @@ use crate::{
 };
 use std::sync::Mutex;
 
+/// Every command module stem whose execute function calls `context.request(`.
+/// Adding a new ref-action command requires adding its stem here; the
+/// `all_context_request_callers_are_policy_tested` guard enforces this.
+const POLICY_TESTED_COMMANDS: &[&str] = &[
+    "check",
+    "clear",
+    "click",
+    "collapse",
+    "double_click",
+    "expand",
+    "focus",
+    "right_click",
+    "scroll",
+    "scroll_to",
+    "select",
+    "set_value",
+    "toggle",
+    "triple_click",
+    "type_text",
+    "uncheck",
+];
+
 struct RecordingAdapter {
     requests: Mutex<Vec<ActionRequest>>,
 }
@@ -255,4 +277,42 @@ fn headed_context_upgrades_every_ref_command_to_headed() {
             request.action
         );
     }
+}
+
+#[test]
+fn all_context_request_callers_are_policy_tested() {
+    let commands_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let covered: std::collections::BTreeSet<&str> =
+        POLICY_TESTED_COMMANDS.iter().copied().collect();
+
+    let mut uncovered: Vec<String> = std::fs::read_dir(&commands_dir)
+        .expect("commands directory must be readable")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "rs") {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(ToOwned::to_owned)
+            } else {
+                None
+            }
+        })
+        .filter(|stem| !stem.ends_with("_tests"))
+        .filter(|stem| {
+            if covered.contains(stem.as_str()) {
+                return false;
+            }
+            let path = commands_dir.join(format!("{stem}.rs"));
+            let source = std::fs::read_to_string(&path).unwrap_or_default();
+            source.contains("context.request(")
+        })
+        .collect();
+
+    uncovered.sort();
+    assert!(
+        uncovered.is_empty(),
+        "new ref-action command(s) call context.request( but are not in POLICY_TESTED_COMMANDS: {uncovered:?}\n\
+         Add each stem to POLICY_TESTED_COMMANDS and write a matching policy assertion."
+    );
 }
