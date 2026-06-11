@@ -1,7 +1,7 @@
 ---
 title: Playwright-grade desktop reliability contract
 date: 2026-06-02
-last_updated: 2026-06-04
+last_updated: 2026-06-10
 category: best-practices
 module: crates/core, crates/macos, crates/ffi, src
 problem_type: best_practice
@@ -121,10 +121,20 @@ The reliable split is:
 - Retry transient resolution states such as stale, not found, ambiguous, or
   timeout while the caller's timeout budget remains.
 - Propagate permanent adapter errors immediately.
-- Preserve the last observed retryable state in timeout details.
+- Preserve the last observed retryable state in timeout details. TIMEOUT
+  details carry a `kind` discriminant: `"wait_timeout"` for wait-loop expiry
+  (predicate, timeout_ms, last observed state) and `"chain_deadline"` for a
+  chain step expiring mid-increment or mid-disclosure (observed value or
+  expanded state, plus a `mutated` flag) — agents key on `kind` before
+  inspecting other fields.
 - For `wait --element` without `--snapshot`, refresh the latest-ref cache on a
   bounded cadence; for a fixed `--snapshot`, treat missing refs as invalid input
   instead of silently switching snapshots.
+- `--predicate actionable` checks readiness for a specific action via
+  `--action` (`click` default, `type`, `set-value`, `clear`); each name maps to
+  the exact request its real command runs — policy included — through explicit
+  per-name arms, so an unknown name errors instead of silently inheriting a
+  default policy.
 
 This keeps `wait` useful for changing desktop state without making it a blanket
 error suppressor.
