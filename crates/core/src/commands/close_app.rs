@@ -8,10 +8,13 @@ pub struct CloseAppArgs {
 
 pub fn execute(args: CloseAppArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
     if adapter.is_protected_process(&args.app) {
-        return Err(AppError::invalid_input(format!(
-            "'{}' is a protected system process and cannot be closed",
-            args.app
-        )));
+        return Err(AppError::invalid_input_with_suggestion(
+            format!(
+                "'{}' is a protected system process and cannot be closed",
+                args.app
+            ),
+            "Target a regular application; session-critical processes (loginwindow, WindowServer, Dock, Finder, launchd) are never closed.",
+        ));
     }
     adapter.close_app(&args.app, args.force)?;
     Ok(json!({

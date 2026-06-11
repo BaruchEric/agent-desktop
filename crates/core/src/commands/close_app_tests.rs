@@ -35,6 +35,13 @@ fn close_app_blocks_adapter_protected_process() {
 
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(err.to_string().contains("protected"));
+    let suggestion = err
+        .suggestion()
+        .expect("protected-process error must carry a suggestion");
+    assert!(
+        suggestion.contains("session-critical"),
+        "suggestion should name session-critical processes, got: {suggestion}"
+    );
 }
 
 #[test]
