@@ -191,15 +191,19 @@ pub fn launch_app_impl(_id: &str, _timeout_ms: u64) -> Result<WindowInfo, Adapte
 }
 
 /// Processes whose termination would break the macOS session: the window
-/// server, login session, launchd, the Dock, and Finder. Matched as a
-/// lowercase substring so bundle-style identifiers (`com.apple.dock`) and
-/// display names (`Dock`) both resolve. Windows and Linux adapters define
+/// server, login session, launchd, the Dock, and Finder. Matched as an
+/// exact lowercase name or an exact dot-separated bundle-id component, so
+/// display names (`Dock`) and bundle ids (`com.apple.dock`) both resolve
+/// while lookalikes (`Docker`, `FinderSync`) stay closable — a substring
+/// match would permanently block them. Windows and Linux adapters define
 /// their own equivalents (`csrss.exe`/`winlogon.exe`, `gnome-shell`/`Xorg`).
 const PROTECTED_PROCESSES: &[&str] = &["loginwindow", "windowserver", "dock", "launchd", "finder"];
 
 pub fn is_protected_process(identifier: &str) -> bool {
     let lower = identifier.to_lowercase();
-    PROTECTED_PROCESSES.iter().any(|p| lower.contains(p))
+    PROTECTED_PROCESSES
+        .iter()
+        .any(|p| lower == *p || lower.split('.').any(|component| component == *p))
 }
 
 fn ensure_not_protected(id: &str) -> Result<(), AdapterError> {

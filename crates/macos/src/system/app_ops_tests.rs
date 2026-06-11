@@ -22,6 +22,16 @@ fn ordinary_apps_are_not_protected() {
 }
 
 #[test]
+fn lookalike_names_containing_protected_substrings_stay_closable() {
+    assert!(!is_protected_process("Docker"));
+    assert!(!is_protected_process("Docker Desktop"));
+    assert!(!is_protected_process("com.docker.docker-desktop"));
+    assert!(!is_protected_process("FinderSync"));
+    assert!(!is_protected_process("PathFinder"));
+    assert!(!is_protected_process("launchdarkly-agent"));
+}
+
+#[test]
 fn adapter_guard_refuses_protected_processes_with_the_cli_contract() {
     let err = ensure_not_protected("loginwindow").unwrap_err();
 
