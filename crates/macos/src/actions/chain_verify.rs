@@ -1,3 +1,22 @@
+use agent_desktop_core::error::AdapterError;
+
+/// Error for a chain deadline expiring mid-increment. Unlike a plain step
+/// "skip", expiry can leave the control at a half-applied value, so the
+/// error must be TIMEOUT (not ACTION_FAILED) and must carry the observed
+/// state — the caller cannot read post-state on the error path.
+pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) -> AdapterError {
+    AdapterError::timeout("Chain deadline expired while stepping the value toward the target")
+        .with_suggestion(
+            "Re-read the element value before retrying; increase the timeout or AGENT_DESKTOP_CHAIN_TIMEOUT_MS for slow controls.",
+        )
+        .with_details(serde_json::json!({
+            "value_before": start,
+            "value_at_timeout": current,
+            "target": target,
+            "mutated": (current - start).abs() >= f64::EPSILON,
+        }))
+}
+
 pub(crate) fn bool_write_had_effect(attr: &str, expected: bool, observed: Option<bool>) -> bool {
     !matches!(
         attr,
@@ -32,7 +51,27 @@ fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{bool_write_had_effect, dynamic_write_had_effect};
+    use super::{bool_write_had_effect, dynamic_write_had_effect, increment_deadline_error};
+
+    #[test]
+    fn increment_deadline_error_is_timeout_and_reports_partial_mutation() {
+        let err = increment_deadline_error(0.0, 37.0, 80.0);
+
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
+        let details = err.details.expect("details must carry the observed state");
+        assert_eq!(details["value_before"], 0.0);
+        assert_eq!(details["value_at_timeout"], 37.0);
+        assert_eq!(details["target"], 80.0);
+        assert_eq!(details["mutated"], true);
+        assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn increment_deadline_error_reports_unmutated_state() {
+        let err = increment_deadline_error(5.0, 5.0, 9.0);
+
+        assert_eq!(err.details.unwrap()["mutated"], false);
+    }
 
     #[test]
     fn ax_value_write_requires_readback_match() {

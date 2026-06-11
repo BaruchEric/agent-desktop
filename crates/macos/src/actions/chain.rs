@@ -235,8 +235,11 @@ mod imp {
 
     /// Drives AXIncrement/AXDecrement until the control reaches `target`.
     /// Steppers and some sliders expose no settable AXValue but step through
-    /// these actions. Stops on reaching the target, on no observable progress
-    /// (the action stopped moving the value), or after a generous guard.
+    /// these actions. Stops on reaching the target or on no observable
+    /// progress (the action stopped moving the value). Deadline expiry is a
+    /// hard error: the control may sit at a half-applied value, and silently
+    /// reporting "step failed" would mask that mutation as ACTION_FAILED with
+    /// recovery guidance pointing the wrong way.
     fn increment_to_value(
         el: &AXElement,
         target: &str,
@@ -256,12 +259,15 @@ mod imp {
         {
             return Ok(false);
         }
+        let start = current;
         for _ in 0..1024 {
-            if deadline.is_some_and(|dl| Instant::now() > dl) {
-                break;
-            }
             if (current - target).abs() < 0.5 {
                 return Ok(true);
+            }
+            if deadline.is_some_and(|dl| Instant::now() > dl) {
+                return Err(chain_verify::increment_deadline_error(
+                    start, current, target,
+                ));
             }
             let action = if current < target {
                 "AXIncrement"
