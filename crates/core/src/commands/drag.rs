@@ -1,7 +1,7 @@
 use crate::{
     action::DragParams,
     adapter::PlatformAdapter,
-    commands::helpers::{
+    commands::point_resolve::{
         PointResolveArgs, focus_for_physical_input, resolve_point_from_ref_or_xy_with_context,
     },
     context::CommandContext,

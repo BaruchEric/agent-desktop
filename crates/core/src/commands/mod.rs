@@ -35,6 +35,7 @@ pub mod mouse_up;
 pub mod move_window;
 pub mod notification_action;
 pub mod permissions;
+pub(crate) mod point_resolve;
 pub mod press;
 pub mod resize_window;
 pub mod restore;
