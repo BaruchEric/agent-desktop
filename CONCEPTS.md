@@ -44,6 +44,11 @@ A coordination key for one agent or a coordinated group of agents that share a l
 
 Use sessions when callers intentionally omit `--snapshot` and want a shared latest observation. Explicit snapshot IDs remain the deterministic path for pinned actions and can be resolved without also passing the session.
 
+### Protected Process
+A session-critical operating-system process that agent-desktop refuses to close on every surface, because terminating it would break the user's desktop session.
+
+The refusal is enforced where the close happens, so CLI, FFI, and any future consumer behave identically. Matching is exact — a process name or a bundle-identifier component, never a substring — so lookalike applications that merely contain a protected name stay closable.
+
 ## Action Reliability
 
 ### Actionability
@@ -62,6 +67,11 @@ A ref-based action that uses semantic accessibility operations without implicit 
 
 Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with `POLICY_DENIED` rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
 
+### Action Chain
+The ordered ladder of strategies a ref action walks to perform one intent — semantic accessibility actions first, then settable attributes, then policy-gated physical input — with each step verified against the element's observed state before it counts as success.
+
+The chain pins one execution deadline at its start (distinct from the Resolver Deadline, which budgets re-identification) and every step observes it. Expiry while a step may have partially mutated the element surfaces as a structured timeout carrying the observed state, never as a plain step failure — the caller must be able to tell "nothing happened" from "something may have happened".
+
 ### Wait Predicate
 The condition a wait command polls for before returning, such as element actionability, text presence, window appearance, menu state, or notification arrival.
 
@@ -71,9 +81,11 @@ The remaining time budget carried through strict ref resolution so every native 
 ### Coordinate Fallback
 An explicit opt-in path that uses screen coordinates or physical input when semantic accessibility operations cannot perform the requested action.
 
+Physical input lands on the topmost window at the target point, so the fallback first ensures the target element's own window is frontmost — the app being frontmost is not sufficient when the element lives in a background window of that app.
+
 ### FFI Ref-Action Parity
 The requirement that language bindings using refs follow the same strict resolution, actionability, and interaction-policy semantics as CLI ref commands.
 
 ## Relationships
 
-A session owns one latest-snapshot pointer. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch. FFI ref-action parity keeps that same relationship true for language bindings.
+A session owns one latest-snapshot pointer. A snapshot persists a ref map and can be selected directly by snapshot ID. A ref resolves through strict ref resolution into live native evidence, then actionability decides whether a headless ref action can safely dispatch, and the action chain executes that dispatch under its own deadline with the interaction policy gating its physical steps. FFI ref-action parity keeps that same relationship true for language bindings.
