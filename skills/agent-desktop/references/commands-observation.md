@@ -140,7 +140,7 @@ agent-desktop find --app "App" --role button --limit 20
 }
 ```
 
-**Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `matches` is empty and `roles_present` lists the roles actually in the searched tree, so you can tell a wrong role name from "none on screen":
+**Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `roles_present` lists the roles actually in the searched tree so you can tell a wrong role name from "none on screen"; this applies to all non-count selection modes — an empty match list, or a `--first`/`--last`/`--nth` miss — whenever a role filter was active, making it a role-vocabulary hint for retries.
 ```json
 {
   "data": {

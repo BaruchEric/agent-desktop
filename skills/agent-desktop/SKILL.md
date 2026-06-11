@@ -118,16 +118,18 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `APP_NOT_FOUND` | App not running | Launch it first |
 | `ACTION_FAILED` | AX action rejected | Try an explicit alternative command |
 | `ACTION_NOT_SUPPORTED` | Element can't do this | Use different command |
-| `STALE_REF` | Ref from old snapshot | Re-run snapshot |
+| `STALE_REF` | Ref from old snapshot | Use the `snapshot_id` returned with this ref, or re-run `snapshot` / `snapshot --skeleton` to get fresh refs |
 | `AMBIGUOUS_TARGET` | Multiple elements matched the old ref identity | Re-run snapshot and choose a more specific ref |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired | Run `snapshot` again and use the returned ID |
 | `POLICY_DENIED` | A physical/headed path was blocked | Use an explicit mouse/focus/keyboard command if physical interaction is intended |
 | `WINDOW_NOT_FOUND` | No matching window | Check app name, use list-windows |
 | `PLATFORM_NOT_SUPPORTED` | Adapter method not implemented on this platform | Use a supported platform adapter |
-| `TIMEOUT` | Wait condition not met | Increase --timeout |
+| `TIMEOUT` | Wait condition not met | Increase `--timeout` for a predicate wait; for a chain deadline (`error.details.kind == "chain_deadline"`), increase `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` — `--timeout` has no effect on chain deadlines |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 | `NOTIFICATION_NOT_FOUND` | Notification index no longer exists | Re-run list-notifications |
 | `INTERNAL` | Unexpected platform/OS failure (e.g. event synthesis failed) | Read `message`/`suggestion` for cleanup state, then retry once; persistent failures indicate an environment problem |
+
+`TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
 ## Command Quick Reference (54 commands)
 
