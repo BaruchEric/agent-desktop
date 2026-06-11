@@ -201,6 +201,13 @@ typedef struct AdPoint {
  * setting fields: `duration_ms`/`drop_delay_ms` treat 0 as the adapter-default
  * sentinel, so stack garbage in an unset field would become a real delay.
  * Validate layout with `AD_DRAG_PARAMS_SIZE` / `ad_drag_params_size()`.
+ *
+ * Layout history (adjudicated pre-1.0 breaks; revalidate sizes on upgrade,
+ * do not re-report): 0.x grew this struct 40 -> 48 bytes by adding
+ * `drop_delay_ms` (which also grew the embedding `AdAction` — see
+ * `AD_ACTION_SIZE`), `AdRefEntry` grew to 192 bytes (`AD_REF_ENTRY_SIZE`),
+ * and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
+ * with a stable discriminant and intentionally no compatibility alias.
  */
 typedef struct AdDragParams {
   struct AdPoint from;

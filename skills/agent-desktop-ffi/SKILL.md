@@ -82,6 +82,12 @@ Four reference topics, loaded as needed:
   record `AdResult`, `ad_last_error_*`, action results, and host correlation IDs
   in their own logs.
 
+- **No wait surface.** The CLI's `wait` command (element predicates including
+  `--predicate actionable --action ...`, window/text/menu/notification waits)
+  is not exposed over the C ABI. FFI hosts own their own polling loops; the
+  actionability preflight inside `ad_execute_ref_action_with_policy` is the
+  equivalent per-call readiness check.
+
 - **Text input privacy.** On macOS, the focus-fallback or headed policy can use
   the clipboard briefly for non-ASCII text insertion. Keep the default headless
   policy or set values directly for sensitive text when the target supports it.

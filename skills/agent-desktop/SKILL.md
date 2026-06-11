@@ -94,9 +94,9 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
-- **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed with `POLICY_DENIED` when only a physical gesture would work. Pass the global `--headed` flag to permit cursor movement and focus stealing so the physical click/double-click/scroll/keypress fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`/`key-up`) are always physical and ignore the mode.
+- **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed with `POLICY_DENIED` when only a physical gesture would work. Pass the global `--headed` flag to permit cursor movement and focus stealing so the physical click/double-click/scroll/keypress fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`/`key-up`) are always physical; the mode only gates whether a ref-addressed `hover`/`drag` may ensure the target app is frontmost first (`--headed` only, reported as `"focused": true`).
 - **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
-- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields whose keys contain `text`, `value`, `expected`, `name`, `description`, `message`, `label`, `query`, `secret`, `token`, or `password` are redacted to `{ "redacted": true, "chars_bucket": "..." }` at every nesting depth — do not expect raw values in trace files. Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
+- **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields whose keys contain `text`, `value`, `expected`, `name`, `description`, `message`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, or `placeholder` are redacted to `{ "redacted": true, "chars_bucket": "..." }` at every nesting depth (substring match, so composite keys like `source_window_title` redact too) — do not expect raw values in trace files. Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
 
 ## JSON Output Contract
 
@@ -127,6 +127,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `TIMEOUT` | Wait condition not met | Increase --timeout |
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 | `NOTIFICATION_NOT_FOUND` | Notification index no longer exists | Re-run list-notifications |
+| `INTERNAL` | Unexpected platform/OS failure (e.g. event synthesis failed) | Read `message`/`suggestion` for cleanup state, then retry once; persistent failures indicate an environment problem |
 
 ## Command Quick Reference (54 commands)
 
