@@ -325,6 +325,10 @@ fn open_refstore_file(path: &Path) -> std::io::Result<std::fs::File> {
     }
 }
 
+/// Pruning logic is a sibling `#[path]` module rather than a separate crate
+/// module so it can access `base_dir`/`snapshots_dir` directly. Exposing them
+/// as `pub(crate)` would widen the visibility surface to every module in the
+/// crate; the path declaration keeps them private to this module tree.
 #[path = "refs_store_prune.rs"]
 mod prune;
 

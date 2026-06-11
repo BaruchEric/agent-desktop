@@ -219,6 +219,9 @@ typedef struct AdDragParams {
 } AdDragParams;
 
 #define AD_DRAG_PARAMS_SIZE (sizeof(AdDragParams))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdDragParams) == 48, "AdDragParams ABI size changed");
+#endif
 
 uintptr_t ad_drag_params_size(void);
 
@@ -246,6 +249,9 @@ typedef struct AdAction {
 } AdAction;
 
 #define AD_ACTION_SIZE (sizeof(AdAction))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdAction) == 96, "AdAction ABI size changed");
+#endif
 
 uintptr_t ad_action_size(void);
 
@@ -294,6 +300,9 @@ typedef struct AdRefEntry {
 } AdRefEntry;
 
 #define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdRefEntry) == 192, "AdRefEntry ABI size changed");
+#endif
 
 /*
  * Per-field input caps enforced when an `AdRefEntry` crosses the boundary
