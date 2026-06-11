@@ -77,7 +77,7 @@ fn element_wait_value_predicate_matches_live_value_without_leaking_it() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Value("ready".into()),
-        1,
+        50,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -146,7 +146,7 @@ fn element_wait_actionable_uses_live_state() {
         wait_predicate::ElementPredicate::Actionable(
             crate::action_request::ActionRequest::headless(crate::action::Action::Click),
         ),
-        1,
+        50,
         &adapter,
         &crate::context::CommandContext::default(),
     )

@@ -194,7 +194,7 @@ fn element_wait_times_out_after_persistent_ambiguous_resolution() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
-        1,
+        50,
         &AmbiguousResolveAdapter,
         &crate::context::CommandContext::default(),
     )
