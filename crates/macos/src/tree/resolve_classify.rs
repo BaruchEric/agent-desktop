@@ -48,10 +48,8 @@ fn classify_ambiguous_candidates(
     }
     let count = matches.len();
     Err(AdapterError::ambiguous_target(format!(
-        "Ambiguous target: {count} candidates matched role={}, name={:?}, description={:?}",
-        entry.role,
-        entry.name.as_deref().unwrap_or("(none)"),
-        entry.description.as_deref().unwrap_or("(none)")
+        "Ambiguous target: {count} candidates matched {}",
+        identity_summary_for_message(entry)
     ))
     .with_details(serde_json::json!({
         "candidate_count": count,
@@ -63,6 +61,21 @@ fn classify_ambiguous_candidates(
         "source_window_title": entry.source_window_title,
         "candidates": candidate_summaries(&matches)
     })))
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn identity_summary_for_message(entry: &RefEntry) -> String {
+    format!(
+        "role={}, name_chars={}, description_chars={}",
+        entry.role,
+        text_len(entry.name.as_deref()),
+        text_len(entry.description.as_deref())
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn text_len(value: Option<&str>) -> usize {
+    value.unwrap_or("").chars().count()
 }
 
 #[cfg(target_os = "macos")]

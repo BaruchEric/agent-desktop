@@ -68,7 +68,7 @@ fn latest_ref_cache_debounces_consecutive_refreshes() {
 }
 
 #[test]
-fn latest_ref_cache_fails_closed_when_new_latest_snapshot_disappears() {
+fn latest_ref_cache_keeps_last_good_map_when_new_latest_snapshot_disappears() {
     let _guard = HomeGuard::new();
     let first_id = save_ref(1, Some("First"));
     let store = RefStore::new().unwrap();
@@ -85,8 +85,8 @@ fn latest_ref_cache_fails_closed_when_new_latest_snapshot_disappears() {
     std::fs::remove_dir_all(snapshot_dir).unwrap();
 
     cache.last_refresh = std::time::Instant::now() - std::time::Duration::from_secs(2);
-    let err = cache.refresh_if_due().unwrap_err();
+    cache.refresh_if_due().unwrap();
 
-    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
     assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
+    assert_eq!(cache.entry("@e1").unwrap().pid, 1);
 }

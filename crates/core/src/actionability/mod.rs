@@ -57,9 +57,7 @@ pub fn check_live(
         observed.value = state.value.or(observed.value);
     }
     observed.bounds = live.bounds;
-    if let Some(actions) = live.available_actions
-        && !actions.is_empty()
-    {
+    if let Some(actions) = live.available_actions {
         observed.available_actions = actions;
     }
     check_with_stability(entry.bounds_hash, &observed, request)

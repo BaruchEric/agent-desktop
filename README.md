@@ -197,7 +197,7 @@ agent-desktop list-surfaces --app Notes          # list menus, sheets, popovers,
 
 ```bash
 agent-desktop click @e3                  # semantic AX-first click
-agent-desktop double-click @e3           # AXOpen; physical double-click uses mouse-click --count 2
+agent-desktop double-click @e3           # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @e3           # POLICY_DENIED if physical input is disabled
 agent-desktop right-click @e3            # open verified context menu
 agent-desktop type @e5 "hello world"     # insert text into element
@@ -229,13 +229,13 @@ agent-desktop key-up shift               # release key
 ### Mouse
 
 ```bash
-agent-desktop hover @e3                  # move cursor to element
-agent-desktop hover --xy 500,300         # move cursor to coordinates
-agent-desktop drag --from @e3 --to @e8   # drag between elements
-agent-desktop drag --from-xy 100,200 --to-xy 400,200  # drag between coordinates
-agent-desktop mouse-click --xy 500,300   # click at coordinates
-agent-desktop mouse-down --xy 500,300    # press at coordinates
-agent-desktop mouse-up --xy 500,300      # release at coordinates
+agent-desktop --headed hover @e3                  # move cursor to element
+agent-desktop --headed hover --xy 500,300         # move cursor to coordinates
+agent-desktop --headed drag --from @e3 --to @e8   # drag between elements
+agent-desktop --headed drag --from-xy 100,200 --to-xy 400,200  # drag between coordinates
+agent-desktop --headed mouse-click --xy 500,300   # click at coordinates
+agent-desktop --headed mouse-down --xy 500,300    # press at coordinates
+agent-desktop --headed mouse-up --xy 500,300      # release at coordinates
 ```
 
 ### App & Window Management

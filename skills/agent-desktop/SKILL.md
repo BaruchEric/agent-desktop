@@ -94,7 +94,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - **Scoped invalidation:** re-drilling `--root @e3` only replaces refs from @e3's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
 - **Actionability:** ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch.
-- **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed with `POLICY_DENIED` when only a physical gesture would work. Pass the global `--headed` flag to permit cursor movement and focus stealing so the physical click/double-click/scroll/keypress fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`/`key-up`) are always physical; the mode only gates whether a ref-addressed `hover`/`drag` may ensure the target app is frontmost first (`--headed` only, reported as `"focused": true`).
+- **Headless vs headed:** ref actions are headless by default (AX-only, no cursor) and fail closed with `POLICY_DENIED` when only a physical gesture would work. Pass the global `--headed` flag to permit cursor movement and focus stealing so the physical click/double-click/scroll/keypress fallbacks can complete; the AX path is still tried first, so `--headed` never regresses headless-capable elements. Raw cursor commands (`hover`, `drag`, `mouse-*`) are physical and require `--headed`; keyboard commands (`press`, `key-down`, `key-up`) are explicit low-level input.
 - **Sessions:** use `--session <id>` for concurrent or multi-agent runs that share a latest snapshot pointer; batch entries may override with `"session": "id"`.
 - **Trace:** use `--trace <path>` for JSONL diagnostics outside stdout; `--trace-strict` fails on trace setup and pre-action writes. Post-action success traces are best-effort because the desktop mutation already happened. Trace fields whose keys contain `text`, `value`, `expected`, `name`, `description`, `message`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, or `placeholder` are redacted to `{ "redacted": true, "chars_bucket": "..." }` at every nesting depth (substring match, so composite keys like `source_window_title` redact too) — do not expect raw values in trace files. Top-level `--trace` is inherited by every `batch` entry, including entries with a `session` override.
 
@@ -149,7 +149,7 @@ agent-desktop list-surfaces --app "App"                     # Available surfaces
 ### Interaction
 ```
 agent-desktop click @e5 --snapshot <snapshot_id> # AX-first click, no cursor move by default
-agent-desktop double-click @e3                  # AXOpen; physical double-click uses mouse-click --count 2
+agent-desktop double-click @e3                  # AXOpen; physical double-click uses --headed mouse-click --count 2
 agent-desktop triple-click @e2                  # Physical triple-click uses mouse-click --count 3
 agent-desktop right-click @e5                   # Right-click; menu returned when verified
 agent-desktop type @e2 --snapshot <snapshot_id> "hello"  # Headless AX text insertion when supported
@@ -172,13 +172,13 @@ agent-desktop press cmd+c                       # Key combo
 agent-desktop press return --app "App"          # Targeted key press
 agent-desktop key-down shift                    # Hold key
 agent-desktop key-up shift                      # Release key
-agent-desktop hover @e5                         # Explicit cursor movement
-agent-desktop hover --xy 500,300                # Cursor to coordinates
-agent-desktop drag --from @e1 --to @e5          # Drag between elements
-agent-desktop mouse-click --xy 500,300          # Click at coordinates
-agent-desktop mouse-move --xy 100,200           # Move cursor
-agent-desktop mouse-down --xy 100,200           # Press mouse button
-agent-desktop mouse-up --xy 300,400             # Release mouse button
+agent-desktop --headed hover @e5                # Explicit cursor movement
+agent-desktop --headed hover --xy 500,300       # Cursor to coordinates
+agent-desktop --headed drag --from @e1 --to @e5 # Drag between elements
+agent-desktop --headed mouse-click --xy 500,300 # Click at coordinates
+agent-desktop --headed mouse-move --xy 100,200  # Move cursor
+agent-desktop --headed mouse-down --xy 100,200  # Press mouse button
+agent-desktop --headed mouse-up --xy 300,400    # Release mouse button
 ```
 
 ### App & Window
@@ -243,7 +243,7 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps.
 2. **Use `-i --compact` flags.** Filters to interactive elements and collapses empty wrappers, minimizing tokens.
 3. **Refs are snapshot-scoped.** Keep `snapshot_id` for deterministic multi-step use; re-drill the affected region after any UI-changing action. Scoped invalidation keeps other refs intact.
-4. **Prefer refs over coordinates.** `click @e5` > `mouse-click --xy 500,300`.
+4. **Prefer refs over coordinates.** `click @e5` > `agent-desktop --headed mouse-click --xy 500,300`.
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use; screenshots also need Screen Recording.
 7. **Handle errors.** Branch on `error.code` only — `error.message` and `error.suggestion` text is informational and may change between versions.

@@ -245,7 +245,7 @@ fn live_actionability_allows_identity_resolved_bounds_change() {
 }
 
 #[test]
-fn empty_live_actions_do_not_erase_snapshot_capabilities() {
+fn empty_live_actions_replace_stale_snapshot_capabilities() {
     let stale = entry();
     let adapter = LiveAdapter {
         state: None,
@@ -259,9 +259,10 @@ fn empty_live_actions_do_not_erase_snapshot_capabilities() {
         &adapter,
         &ActionRequest::headless(Action::Click),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert!(report.actionable);
+    assert_eq!(report.code, ErrorCode::ActionFailed);
+    assert!(report.message.contains("supported_action"));
 }
 
 #[test]

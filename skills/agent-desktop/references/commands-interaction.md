@@ -9,7 +9,7 @@ Ref-based actions run in two modes, Playwright-style:
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it **fails closed** with `POLICY_DENIED` rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
 - **`--headed`.** A global flag (`agent-desktop --headed click @e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
 
-Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are always physical by nature and ignore the mode — they are the explicit low-level escape hatch.
+Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are physical by nature. Cursor-moving commands (`hover`, `drag`, `mouse-*`) require `--headed`; keyboard commands are explicit low-level input.
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
@@ -34,7 +34,7 @@ When the actionability preflight blocks an action, the error envelope carries th
 
 ## Click Actions
 
-Click commands use semantic AX activation first. In the default headless mode, coordinate click fallback is blocked; pass `--headed` to allow the physical click fallback, or use `mouse-click` for a raw coordinate click.
+Click commands use semantic AX activation first. In the default headless mode, coordinate click fallback is blocked; pass `--headed` to allow the physical click fallback, or use `agent-desktop --headed mouse-click` for a raw coordinate click.
 
 ### click
 ```bash
@@ -47,13 +47,13 @@ Primary activation. Tries verified AXPress > AXConfirm > AXOpen > AXPick > child
 ```bash
 agent-desktop double-click @e3
 ```
-Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @e3`), or use `mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
+Tries AXOpen (headless). When the element advertises no `AXOpen`, the headless command fails closed with `POLICY_DENIED`; pass `--headed` to perform a real double-click (`agent-desktop --headed double-click @e3`), or use `agent-desktop --headed mouse-click --xy X,Y --count 2` for a raw coordinate double-click.
 
 ### triple-click
 ```bash
 agent-desktop triple-click @e2
 ```
-Triple-click requires cursor/focus side effects and is blocked in headless mode; pass `--headed` (`agent-desktop --headed triple-click @e2`), or use `mouse-click --xy X,Y --count 3` for a raw coordinate triple-click.
+Triple-click requires cursor/focus side effects and is blocked in headless mode; pass `--headed` (`agent-desktop --headed triple-click @e2`), or use `agent-desktop --headed mouse-click --xy X,Y --count 3` for a raw coordinate triple-click.
 
 ### right-click
 ```bash
@@ -190,9 +190,9 @@ Releases a held key or modifier.
 
 ### hover
 ```bash
-agent-desktop hover @e5
-agent-desktop hover --xy 500,300
-agent-desktop hover @e5 --duration 2000
+agent-desktop --headed hover @e5
+agent-desktop --headed hover --xy 500,300
+agent-desktop --headed hover @e5 --duration 2000
 ```
 Moves cursor to element center or absolute coordinates. Optional `--duration` holds position for N ms.
 This is an explicit cursor-moving command.
@@ -201,10 +201,10 @@ With `--headed`, a ref-addressed hover ensures the target app is frontmost befor
 
 ### drag
 ```bash
-agent-desktop drag --from @e1 --to @e5
-agent-desktop drag --from-xy 100,200 --to-xy 400,500
-agent-desktop drag --from @e1 --to-xy 400,500 --duration 500
-agent-desktop drag --from @e1 --to @e5 --drop-delay 800
+agent-desktop --headed drag --from @e1 --to @e5
+agent-desktop --headed drag --from-xy 100,200 --to-xy 400,500
+agent-desktop --headed drag --from @e1 --to-xy 400,500 --duration 500
+agent-desktop --headed drag --from @e1 --to @e5 --drop-delay 800
 ```
 
 | Flag | Description |
@@ -224,15 +224,15 @@ macOS drop targets often need the dragged item to dwell over them before they re
 
 ### mouse-move
 ```bash
-agent-desktop mouse-move --xy 500,300
+agent-desktop --headed mouse-move --xy 500,300
 ```
 Moves cursor to absolute screen coordinates.
 
 ### mouse-click
 ```bash
-agent-desktop mouse-click --xy 500,300
-agent-desktop mouse-click --xy 500,300 --button right
-agent-desktop mouse-click --xy 500,300 --count 2
+agent-desktop --headed mouse-click --xy 500,300
+agent-desktop --headed mouse-click --xy 500,300 --button right
+agent-desktop --headed mouse-click --xy 500,300 --count 2
 ```
 
 | Flag | Default | Description |
@@ -243,8 +243,8 @@ agent-desktop mouse-click --xy 500,300 --count 2
 
 ### mouse-down / mouse-up
 ```bash
-agent-desktop mouse-down --xy 100,200
-agent-desktop mouse-up --xy 300,400
+agent-desktop --headed mouse-down --xy 100,200
+agent-desktop --headed mouse-up --xy 300,400
 ```
 Low-level press/release for custom drag or hold interactions.
 
@@ -257,11 +257,11 @@ Low-level press/release for custom drag or hold interactions.
 
 | Goal | Preferred | Alternative |
 |------|-----------|-------------|
-| Click a button | `click @ref` | `mouse-click --xy` if AX fails |
+| Click a button | `click @ref` | `agent-desktop --headed mouse-click --xy X,Y` if physical interaction is intended |
 | Fill a text field | `clear @ref` then `type @ref "text"` | `set-value @ref "text"` for direct replacement |
-| Clear then type | `clear @ref` then `type @ref "new"` | `mouse-click --xy X,Y --count 3` only when physical selection is intended |
+| Clear then type | `clear @ref` then `type @ref "new"` | `agent-desktop --headed mouse-click --xy X,Y --count 3` only when physical selection is intended |
 | Toggle a checkbox | `check @ref` / `uncheck @ref` | `toggle @ref` if you don't know current state |
-| Open context menu | `right-click @ref` | `mouse-click --xy --button right` when physical interaction is intended |
+| Open context menu | `right-click @ref` | `agent-desktop --headed mouse-click --xy X,Y --button right` when physical interaction is intended |
 | Select dropdown option | `select @ref "Option"` | `snapshot --surface menu` after an explicitly opened menu |
 | Navigate a form | `press tab` between fields | `focus @ref` to jump directly |
 | Copy text | `press cmd+c --app "App"` | `clipboard-set` to set directly |

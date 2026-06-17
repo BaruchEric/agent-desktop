@@ -3,9 +3,10 @@ use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::AdDragParams;
 
-/// Synthesizes a mouse drag from `params.from` to `params.to`. When
-/// `params.duration_ms` is zero the drag is instantaneous; a non-zero
-/// value asks the platform adapter to interpolate.
+/// Synthesizes an explicit physical mouse drag from `params.from` to
+/// `params.to`. When `params.duration_ms` is zero the drag is instantaneous;
+/// a non-zero value asks the platform adapter to interpolate. Callers that
+/// need headless policy enforcement should use ref actions with policy.
 ///
 /// # Safety
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.

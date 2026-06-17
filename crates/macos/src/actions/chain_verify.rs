@@ -20,7 +20,10 @@ pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) ->
 }
 
 pub(crate) fn increment_step_limit_error(start: f64, current: f64, target: f64) -> AdapterError {
-    AdapterError::timeout("Chain step limit was reached while stepping the value toward the target")
+    AdapterError::new(
+        agent_desktop_core::error::ErrorCode::ActionFailed,
+        "Chain step limit was reached while stepping the value toward the target",
+    )
         .with_suggestion(
             "Re-read the element value before retrying; the control may expose a step size too small for the requested target.",
         )
@@ -117,7 +120,7 @@ mod tests {
     fn increment_step_limit_error_reports_partial_mutation() {
         let err = increment_step_limit_error(0.0, 1024.0, 5000.0);
 
-        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::ActionFailed);
         let details = err.details.unwrap();
         assert_eq!(details["kind"], "chain_step_limit");
         assert_eq!(details["value_at_limit"], 1024.0);

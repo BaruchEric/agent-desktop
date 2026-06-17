@@ -17,6 +17,38 @@ mod imp {
         static NSPasteboardTypeString: Id;
     }
 
+    pub(crate) struct ClipboardSnapshot {
+        items: Id,
+    }
+
+    impl ClipboardSnapshot {
+        pub(crate) fn capture() -> Result<Self, AdapterError> {
+            unsafe {
+                let pb = pasteboard()?;
+                Ok(Self {
+                    items: retain_pasteboard_items(pb),
+                })
+            }
+        }
+
+        pub(crate) fn restore(&self) -> Result<(), AdapterError> {
+            unsafe {
+                let pb = pasteboard()?;
+                clear_pasteboard(pb);
+                if !self.items.is_null() && !write_objects(pb, self.items) {
+                    return Err(AdapterError::internal("NSPasteboard writeObjects: failed"));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    impl Drop for ClipboardSnapshot {
+        fn drop(&mut self) {
+            unsafe { release_object(self.items) };
+        }
+    }
+
     fn pasteboard() -> Result<Id, AdapterError> {
         unsafe {
             let cls = objc_getClass(c"NSPasteboard".as_ptr());
@@ -51,10 +83,10 @@ mod imp {
         tracing::debug!("clipboard: set {} chars", text.len());
         unsafe {
             let pb = pasteboard()?;
-            let previous = read_string(pb);
+            let previous = ClipboardSnapshot::capture()?;
             clear_pasteboard(pb);
             if !write_string(pb, text) {
-                restore_after_failed_set(pb, previous.as_deref());
+                let _ = previous.restore();
                 return Err(AdapterError::internal(
                     "NSPasteboard setString:forType: failed",
                 ));
@@ -88,6 +120,39 @@ mod imp {
         }
     }
 
+    unsafe fn retain_pasteboard_items(pb: Id) -> Id {
+        unsafe {
+            let items_sel = sel_registerName(c"pasteboardItems".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            retain_object(send(pb, items_sel))
+        }
+    }
+
+    unsafe fn retain_object(object: Id) -> Id {
+        if object.is_null() {
+            return object;
+        }
+        unsafe {
+            let sel = sel_registerName(c"retain".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send(object, sel)
+        }
+    }
+
+    unsafe fn release_object(object: Id) {
+        if object.is_null() {
+            return;
+        }
+        unsafe {
+            let sel = sel_registerName(c"release".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel) =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send(object, sel);
+        }
+    }
+
     unsafe fn clear_pasteboard(pb: Id) {
         unsafe {
             let clear_sel = sel_registerName(c"clearContents".as_ptr());
@@ -108,14 +173,12 @@ mod imp {
         }
     }
 
-    unsafe fn restore_after_failed_set(pb: Id, previous: Option<&str>) {
+    unsafe fn write_objects(pb: Id, objects: Id) -> bool {
         unsafe {
-            match previous {
-                Some(previous) => {
-                    let _ = write_string(pb, previous);
-                }
-                None => clear_pasteboard(pb),
-            }
+            let sel = sel_registerName(c"writeObjects:".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel, Id) -> bool =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send(pb, sel, objects)
         }
     }
 }
@@ -135,6 +198,19 @@ mod imp {
     pub fn clear() -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("clipboard_clear"))
     }
+
+    pub(crate) struct ClipboardSnapshot;
+
+    impl ClipboardSnapshot {
+        pub(crate) fn capture() -> Result<Self, AdapterError> {
+            Err(AdapterError::not_supported("clipboard_snapshot"))
+        }
+
+        pub(crate) fn restore(&self) -> Result<(), AdapterError> {
+            Err(AdapterError::not_supported("clipboard_snapshot"))
+        }
+    }
 }
 
+pub(crate) use imp::ClipboardSnapshot;
 pub use imp::{clear, get, set};

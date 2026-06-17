@@ -733,11 +733,12 @@ AdResult ad_clear_clipboard(const struct AdAdapter *adapter);
 void ad_free_string(char *s);
 
 /**
- * Synthesizes a mouse drag from `params.from` to `params.to`. When
- * `params.duration_ms` is zero the drag is instantaneous; a non-zero
- * value asks the platform adapter to interpolate. `params.drop_delay_ms`
- * holds the item over the destination before releasing so the drop target
- * activates; zero uses the adapter default.
+ * Synthesizes an explicit physical mouse drag from `params.from` to
+ * `params.to`. When `params.duration_ms` is zero the drag is instantaneous;
+ * a non-zero value asks the platform adapter to interpolate.
+ * `params.drop_delay_ms` holds the item over the destination before releasing
+ * so the drop target activates; zero uses the adapter default. Callers that
+ * need headless policy enforcement should use ref actions with policy.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -746,9 +747,10 @@ void ad_free_string(char *s);
 AdResult ad_drag(const struct AdAdapter *adapter, const struct AdDragParams *params);
 
 /**
- * Dispatches a mouse event (move / down / up / click) at the given
- * screen point. Click count is only consulted when `event.kind` is
- * `CLICK` (e.g., `click_count == 2` for a double-click).
+ * Dispatches an explicit physical mouse event (move / down / up / click)
+ * at the given screen point. Click count is only consulted when `event.kind`
+ * is `CLICK` (e.g., `click_count == 2` for a double-click). Callers that need
+ * headless policy enforcement should use ref actions with policy.
  *
  * # Safety
  * `adapter` must be a non-null pointer returned by `ad_adapter_create`.

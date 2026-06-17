@@ -6,6 +6,8 @@ use agent_desktop_core::{
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
+use super::resolve_classify::identity_summary_for_message;
+#[cfg(target_os = "macos")]
 use super::resolve_deadline::sleep_before_retry;
 #[cfg(target_os = "macos")]
 use super::resolve_identity::has_meaningful_identity;
@@ -86,12 +88,7 @@ pub fn resolve_element_with_timeout(
 fn stale_ref_error(entry: &RefEntry) -> AdapterError {
     AdapterError::new(
         ErrorCode::StaleRef,
-        format!(
-            "Element not found: role={}, name={:?}, description={:?}",
-            entry.role,
-            entry.name.as_deref().unwrap_or("(none)"),
-            entry.description.as_deref().unwrap_or("(none)")
-        ),
+        format!("Element not found: {}", identity_summary_for_message(entry)),
     )
     .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
 }

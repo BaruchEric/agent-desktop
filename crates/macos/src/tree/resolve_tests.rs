@@ -187,6 +187,8 @@ fn ambiguous_candidate_classification_reports_structured_details() {
     };
 
     assert_eq!(err.code, ErrorCode::AmbiguousTarget);
+    assert!(!err.message.contains("Investors"));
+    assert!(err.message.contains("name_chars=9"));
     let details = err.details.unwrap();
     assert_eq!(details["candidate_count"], 2);
     assert_eq!(details["role"], "cell");

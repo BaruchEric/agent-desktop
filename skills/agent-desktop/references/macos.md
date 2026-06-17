@@ -198,7 +198,7 @@ The UI changed between your snapshot and action, or the element could not be re-
 "code": "POLICY_DENIED"
 ```
 
-The semantic AX path could not complete and a physical/headed path was blocked by policy. Use an explicit physical command only when that is intended, for example `focus`, `press`, `hover`, `drag`, or `mouse-click`.
+The semantic AX path could not complete and a physical/headed path was blocked by policy. Use `--headed` only when physical interaction is intended, for example `agent-desktop --headed hover @ref`, `agent-desktop --headed drag ...`, or `agent-desktop --headed mouse-click --xy x,y`.
 
 ### ACTION_FAILED
 
@@ -213,7 +213,7 @@ The accessibility action was rejected. This can happen when:
 
 **Try:**
 1. Check `is @ref --property enabled` first
-2. If physical interaction is intended, get bounds with `get @ref --property bounds`, then use `mouse-click --xy x,y`
+2. If physical interaction is intended, get bounds with `get @ref --property bounds`, then use `agent-desktop --headed mouse-click --xy x,y`
 3. Use keyboard explicitly: `focus @ref` then `press return`
 
 ### APP_NOT_FOUND
@@ -241,7 +241,7 @@ After `right-click @ref`, inspect `menu` first. If it is absent and `menu_probe.
 1. The element may not support context menus
 2. If the target is a combo box or menu button, use `select @ref "Option"` instead
 3. Run `list-surfaces --app "App"` to confirm whether a menu surface exists
-4. If physical interaction is intended, try `mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
+4. If physical interaction is intended, try `agent-desktop --headed mouse-click --xy x,y --button right` with coordinates from `get @ref --property bounds`
 
 ## macOS-Specific Behavior
 

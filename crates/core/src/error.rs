@@ -171,7 +171,7 @@ fn policy_denied_suggestion(policy: InteractionPolicy) -> &'static str {
     if policy.allow_focus_steal && !policy.allow_cursor_move {
         "Retry with --headed to permit cursor movement, or use an explicit mouse command if physical input is intended"
     } else if !policy.allow_focus_steal && !policy.allow_cursor_move {
-        "Headless mode allows only accessibility-backed actions; refresh the snapshot or target an element with the needed semantic action"
+        "Headless mode allows only accessibility-backed actions; retry with --headed only if physical cursor/focus interaction is intended, otherwise refresh the snapshot or target an element with the needed semantic action"
     } else {
         "Use an explicit mouse/focus command if physical interaction is intended"
     }
@@ -272,7 +272,7 @@ mod tests {
     fn policy_denied_suggestion_is_mode_aware() {
         let headless =
             AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::headless());
-        assert!(!headless.suggestion.unwrap().contains("--headed"));
+        assert!(headless.suggestion.unwrap().contains("--headed"));
 
         let focus_fallback =
             AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::focus_fallback());

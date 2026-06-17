@@ -47,7 +47,11 @@ impl<'a> LatestRefCache<'a> {
                     tracing::warn!(
                         "latest snapshot {snapshot_id} unreadable during wait refresh: {err}"
                     );
-                    Err(err)
+                    if err.code() == "SNAPSHOT_NOT_FOUND" {
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
                 }
             }
         } else {
@@ -59,7 +63,11 @@ impl<'a> LatestRefCache<'a> {
                 }
                 Err(err) => {
                     tracing::warn!("latest refmap unreadable during wait refresh: {err}");
-                    Err(err)
+                    if err.code() == "SNAPSHOT_NOT_FOUND" {
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
                 }
             }
         }

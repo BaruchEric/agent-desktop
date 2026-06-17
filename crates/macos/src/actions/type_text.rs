@@ -35,20 +35,20 @@ pub(crate) fn execute_type(
 /// behind. (A SIGKILL between set and restore is unpreventable in any process.)
 #[cfg(target_os = "macos")]
 struct ClipboardRestore {
-    previous: String,
+    previous: crate::input::clipboard::ClipboardSnapshot,
 }
 
 #[cfg(target_os = "macos")]
 impl Drop for ClipboardRestore {
     fn drop(&mut self) {
-        let _ = crate::input::clipboard::set(&self.previous);
+        let _ = self.previous.restore();
     }
 }
 
 #[cfg(target_os = "macos")]
 fn type_via_clipboard_paste(el: &AXElement, text: &str) -> Result<(), AdapterError> {
     let before = readable_value(el);
-    let previous = crate::input::clipboard::get().unwrap_or_default();
+    let previous = crate::input::clipboard::ClipboardSnapshot::capture()?;
     let _restore = ClipboardRestore { previous };
     crate::input::clipboard::set(text)?;
     std::thread::sleep(std::time::Duration::from_millis(50));
