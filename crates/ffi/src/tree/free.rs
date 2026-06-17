@@ -91,26 +91,78 @@ mod tests {
 
     #[test]
     fn free_tree_ignores_mutated_node_state_count() {
-        let root = agent_desktop_core::node::AccessibilityNode {
-            ref_id: None,
-            role: "button".into(),
-            name: None,
-            value: None,
-            description: None,
-            hint: None,
-            states: vec!["focused".into()],
-            available_actions: vec![],
-            bounds: None,
-            children: vec![],
-            children_count: None,
-        };
-        let mut tree = crate::tree::flatten::flatten_tree(&root);
-        unsafe {
-            (*tree.nodes).state_count = u32::MAX;
-            ad_free_tree(&mut tree);
-        }
+        let mut tree = tree_with_node(node_with_states(&["focused"], u32::MAX));
+        unsafe { ad_free_tree(&mut tree) };
 
         assert!(tree.nodes.is_null());
+    }
+
+    fn tree_with_node(node: AdNode) -> AdNodeTree {
+        let mut nodes = vec![node, sentinel_node()].into_boxed_slice();
+        let raw = nodes.as_mut_ptr();
+        std::mem::forget(nodes);
+        AdNodeTree {
+            nodes: raw,
+            count: 1,
+        }
+    }
+
+    fn node_with_states(states: &[&str], state_count: u32) -> AdNode {
+        AdNode {
+            ref_id: ptr::null(),
+            role: crate::convert::string::string_to_c_lossy("button"),
+            name: ptr::null(),
+            value: ptr::null(),
+            description: ptr::null(),
+            hint: ptr::null(),
+            states: state_array(states),
+            state_count,
+            bounds: crate::types::AdRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            has_bounds: false,
+            parent_index: -1,
+            child_start: 0,
+            child_count: 0,
+        }
+    }
+
+    fn sentinel_node() -> AdNode {
+        AdNode {
+            ref_id: ptr::null(),
+            role: ptr::null(),
+            name: ptr::null(),
+            value: ptr::null(),
+            description: ptr::null(),
+            hint: ptr::null(),
+            states: ptr::null_mut(),
+            state_count: 0,
+            bounds: crate::types::AdRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            has_bounds: false,
+            parent_index: -1,
+            child_start: 0,
+            child_count: 0,
+        }
+    }
+
+    fn state_array(states: &[&str]) -> *mut *mut c_char {
+        let mut ptrs: Vec<*mut c_char> = states
+            .iter()
+            .map(|state| crate::convert::string::string_to_c_lossy(state))
+            .collect();
+        ptrs.push(ptr::null_mut());
+        let mut boxed = ptrs.into_boxed_slice();
+        let raw = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        raw
     }
 
     #[test]

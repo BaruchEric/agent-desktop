@@ -117,23 +117,32 @@ mod tests {
 
     #[test]
     fn free_action_result_ignores_mutated_state_count() {
-        let core_result = CoreActionResult {
-            action: "click".to_owned(),
-            ref_id: None,
-            post_state: Some(ElementState {
-                role: "button".to_owned(),
-                states: vec!["focused".to_owned()],
-                value: None,
-            }),
-            steps: Vec::new(),
+        let post_state = Box::new(AdElementState {
+            role: crate::convert::string::string_to_c_lossy("button"),
+            states: state_array(&["focused"]),
+            state_count: u32::MAX,
+            value: ptr::null(),
+        });
+        let mut c_result = AdActionResult {
+            action: crate::convert::string::string_to_c_lossy("click"),
+            ref_id: ptr::null(),
+            post_state: Box::into_raw(post_state),
         };
-        let mut c_result = action_result_to_c(&core_result);
-        unsafe {
-            (*c_result.post_state).state_count = u32::MAX;
-            ad_free_action_result(&mut c_result);
-        }
+        unsafe { ad_free_action_result(&mut c_result) };
 
         assert!(c_result.post_state.is_null());
+    }
+
+    fn state_array(states: &[&str]) -> *mut *mut std::os::raw::c_char {
+        let mut ptrs: Vec<*mut std::os::raw::c_char> = states
+            .iter()
+            .map(|state| crate::convert::string::string_to_c_lossy(state))
+            .collect();
+        ptrs.push(ptr::null_mut());
+        let mut boxed = ptrs.into_boxed_slice();
+        let raw = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        raw
     }
 
     #[test]
