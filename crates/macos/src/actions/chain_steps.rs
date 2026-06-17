@@ -248,30 +248,13 @@ mod imp {
     }
 
     fn set_container_selection(candidate: &AXElement, attr: &str) -> bool {
-        use accessibility_sys::{AXUIElementSetAttributeValue, kAXErrorSuccess};
-        use core_foundation::{
-            array::CFArray,
-            base::{CFRetain, CFType, CFTypeRef, TCFType},
-            string::CFString,
-        };
         let Some(container) = crate::tree::copy_element_attr(candidate, "AXParent") else {
             return false;
         };
         if !ax_helpers::is_attr_settable(&container, attr) {
             return false;
         }
-        unsafe { CFRetain(candidate.0 as CFTypeRef) };
-        let candidate_cf = unsafe { CFType::wrap_under_create_rule(candidate.0 as CFTypeRef) };
-        let selected = CFArray::from_CFTypes(&[candidate_cf]);
-        let cf_attr = CFString::new(attr);
-        let err = unsafe {
-            AXUIElementSetAttributeValue(
-                container.0,
-                cf_attr.as_concrete_TypeRef(),
-                selected.as_CFTypeRef(),
-            )
-        };
-        err == kAXErrorSuccess
+        set_single_element_selection(&container, candidate, attr)
     }
 
     fn container_selection_contains(candidate: &AXElement, attr: &str) -> bool {
@@ -289,12 +272,7 @@ mod imp {
         el: &AXElement,
         _caps: &ElementCaps,
     ) -> Result<bool, AdapterError> {
-        use accessibility_sys::{AXUIElementSetAttributeValue, kAXErrorSuccess, kAXRoleAttribute};
-        use core_foundation::{
-            array::CFArray,
-            base::{CFRetain, CFType, CFTypeRef, TCFType},
-            string::CFString,
-        };
+        use accessibility_sys::kAXRoleAttribute;
         let Some(parent) = crate::tree::copy_element_attr(el, "AXParent") else {
             return Ok(false);
         };
@@ -307,18 +285,32 @@ mod imp {
         if !ax_helpers::is_attr_settable(&parent, "AXSelectedRows") {
             return Ok(false);
         }
-        unsafe { CFRetain(el.0 as CFTypeRef) };
-        let el_cf = unsafe { CFType::wrap_under_create_rule(el.0 as CFTypeRef) };
-        let arr = CFArray::from_CFTypes(&[el_cf]);
-        let cf_attr = CFString::new("AXSelectedRows");
+        Ok(set_single_element_selection(&parent, el, "AXSelectedRows"))
+    }
+
+    fn set_single_element_selection(
+        container: &AXElement,
+        element: &AXElement,
+        attr: &str,
+    ) -> bool {
+        use accessibility_sys::{AXUIElementSetAttributeValue, kAXErrorSuccess};
+        use core_foundation::{
+            array::CFArray,
+            base::{CFRetain, CFType, CFTypeRef, TCFType},
+            string::CFString,
+        };
+        unsafe { CFRetain(element.0 as CFTypeRef) };
+        let element_cf = unsafe { CFType::wrap_under_create_rule(element.0 as CFTypeRef) };
+        let selected = CFArray::from_CFTypes(&[element_cf]);
+        let cf_attr = CFString::new(attr);
         let err = unsafe {
             AXUIElementSetAttributeValue(
-                parent.0,
+                container.0,
                 cf_attr.as_concrete_TypeRef(),
-                arr.as_CFTypeRef(),
+                selected.as_CFTypeRef(),
             )
         };
-        Ok(err == kAXErrorSuccess)
+        err == kAXErrorSuccess
     }
 
     pub(crate) fn try_custom_actions(

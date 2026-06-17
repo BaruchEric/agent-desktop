@@ -12,8 +12,7 @@ pub fn dismiss_notification(
 ) -> Result<NotificationInfo, AdapterError> {
     let session = NcSession::open()?;
     let result = dismiss_impl(index, app_filter);
-    session.close()?;
-    result
+    close_session(session, result)
 }
 
 pub fn dismiss_all(
@@ -21,8 +20,7 @@ pub fn dismiss_all(
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     let session = NcSession::open()?;
     let result = dismiss_all_impl(app_filter);
-    session.close()?;
-    result
+    close_session(session, result)
 }
 
 pub fn notification_action(
@@ -32,8 +30,19 @@ pub fn notification_action(
 ) -> Result<ActionResult, AdapterError> {
     let session = NcSession::open()?;
     let result = action_impl(index, identity, action_name);
-    session.close()?;
-    result
+    close_session(session, result)
+}
+
+fn close_session<T>(
+    session: NcSession,
+    result: Result<T, AdapterError>,
+) -> Result<T, AdapterError> {
+    let close_result = session.close();
+    match (result, close_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(err)) => Err(err),
+        (Err(err), _) => Err(err),
+    }
 }
 
 #[cfg(target_os = "macos")]

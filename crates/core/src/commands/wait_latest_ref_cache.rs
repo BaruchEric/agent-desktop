@@ -4,23 +4,23 @@ use std::time::{Duration, Instant};
 pub(crate) struct LatestRefCache<'a> {
     store: &'a RefStore,
     snapshot_id: Option<String>,
-    missing_latest_snapshot_id: Option<String>,
     refmap: RefMap,
     last_refresh: Instant,
 }
 
 impl<'a> LatestRefCache<'a> {
     pub(crate) fn new(store: &'a RefStore) -> Result<Self, AppError> {
-        let snapshot_id = store.latest_snapshot_id();
+        let mut snapshot_id = store.latest_snapshot_id();
         let refmap = if let Some(id) = snapshot_id.as_deref() {
             store.load_snapshot(id)?
         } else {
-            store.load_latest()?
+            let refmap = store.load_latest()?;
+            snapshot_id = store.latest_snapshot_id();
+            refmap
         };
         Ok(Self {
             store,
             snapshot_id,
-            missing_latest_snapshot_id: None,
             refmap,
             last_refresh: Instant::now() - Duration::from_millis(500),
         })
@@ -35,17 +35,9 @@ impl<'a> LatestRefCache<'a> {
             return Ok(());
         }
         self.last_refresh = Instant::now();
-        if let Some(snapshot_id) = self.store.latest_snapshot_id() {
-            if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
-                return Ok(());
-            }
-            if self.missing_latest_snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
-                return Ok(());
-            }
-            match self.store.load_snapshot(&snapshot_id) {
+        if let Some(snapshot_id) = self.snapshot_id.as_deref() {
+            match self.store.load_snapshot(snapshot_id) {
                 Ok(refmap) => {
-                    self.snapshot_id = Some(snapshot_id);
-                    self.missing_latest_snapshot_id = None;
                     self.refmap = refmap;
                     Ok(())
                 }
@@ -53,9 +45,6 @@ impl<'a> LatestRefCache<'a> {
                     tracing::warn!(
                         "latest snapshot {snapshot_id} unreadable during wait refresh: {err}"
                     );
-                    if err.code() == "SNAPSHOT_NOT_FOUND" {
-                        self.missing_latest_snapshot_id = Some(snapshot_id);
-                    }
                     Ok(())
                 }
             }
@@ -64,7 +53,6 @@ impl<'a> LatestRefCache<'a> {
                 Ok(refmap) => {
                     self.refmap = refmap;
                     self.snapshot_id = self.store.latest_snapshot_id();
-                    self.missing_latest_snapshot_id = None;
                     Ok(())
                 }
                 Err(err) => {

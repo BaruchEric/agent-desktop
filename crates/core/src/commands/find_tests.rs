@@ -33,6 +33,25 @@ fn display_name_prefers_value_before_description() {
 }
 
 #[test]
+fn search_tree_match_uses_ref_id_contract_and_includes_states() {
+    let mut root = node(Some("Save"), None, None);
+    root.states = vec!["enabled".into()];
+    let query = FindQuery {
+        role: None,
+        name: None,
+        value: None,
+        text: None,
+    };
+    let mut matches = Vec::new();
+
+    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
+
+    assert_eq!(matches[0]["ref_id"], "@e1");
+    assert!(matches[0].get("ref").is_none());
+    assert_eq!(matches[0]["states"], serde_json::json!(["enabled"]));
+}
+
+#[test]
 fn search_tree_matches_text_across_fields() {
     let root = node(None, Some("Primary"), Some("Secondary"));
     let query = FindQuery {

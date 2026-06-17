@@ -1,6 +1,6 @@
 mod common;
 
-use common::{AdAction, AdPoint, AdRect, AdRefEntry};
+use common::{AdAction, AdActionResult, AdElementState, AdPoint, AdRect, AdRefEntry};
 use std::mem::{MaybeUninit, align_of, offset_of, size_of};
 
 #[test]
@@ -29,6 +29,36 @@ fn action_layout_is_guarded_for_c_consumers() {
     };
     assert_eq!(copied.kind, 0);
     assert_eq!(copied.drag.drop_delay_ms, 0);
+}
+
+#[test]
+fn action_result_layout_is_guarded_for_c_consumers() {
+    assert_eq!(
+        agent_desktop_ffi::types::action_result::AD_ACTION_RESULT_SIZE,
+        24
+    );
+    assert_eq!(
+        unsafe { common::ad_action_result_size() },
+        agent_desktop_ffi::types::action_result::AD_ACTION_RESULT_SIZE
+    );
+    assert_eq!(size_of::<AdActionResult>(), 24);
+    assert_eq!(align_of::<AdActionResult>(), align_of::<usize>());
+    assert_eq!(offset_of!(AdActionResult, action), 0);
+}
+
+#[test]
+fn element_state_layout_is_guarded_for_c_consumers() {
+    assert_eq!(
+        agent_desktop_ffi::types::element_state::AD_ELEMENT_STATE_SIZE,
+        32
+    );
+    assert_eq!(
+        unsafe { common::ad_element_state_size() },
+        agent_desktop_ffi::types::element_state::AD_ELEMENT_STATE_SIZE
+    );
+    assert_eq!(size_of::<AdElementState>(), 32);
+    assert_eq!(align_of::<AdElementState>(), align_of::<usize>());
+    assert_eq!(offset_of!(AdElementState, role), 0);
 }
 
 #[test]

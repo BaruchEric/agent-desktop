@@ -7,3 +7,12 @@ pub struct AdActionResult {
     pub ref_id: *const c_char,
     pub post_state: *mut AdElementState,
 }
+
+pub const AD_ACTION_RESULT_SIZE: usize = 24;
+
+const _: () = assert!(std::mem::size_of::<AdActionResult>() == AD_ACTION_RESULT_SIZE);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ad_action_result_size() -> usize {
+    std::mem::size_of::<AdActionResult>()
+}

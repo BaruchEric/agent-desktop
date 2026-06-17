@@ -188,10 +188,11 @@ fn search_tree(
             .map(String::from)
             .unwrap_or_else(|| format!("(unnamed {})", node.role));
         matches.push(json!({
-            "ref": node.ref_id,
+            "ref_id": node.ref_id,
             "role": node.role,
             "name": display_name,
             "value": node.value,
+            "states": node.states,
             "interactive": interactive,
             "path": path.clone()
         }));

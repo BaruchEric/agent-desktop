@@ -221,6 +221,7 @@ typedef struct AdDragParams {
 #define AD_DRAG_PARAMS_SIZE (sizeof(AdDragParams))
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(AdDragParams) == 48, "AdDragParams ABI size changed");
+_Static_assert(_Alignof(AdDragParams) == 8, "AdDragParams ABI alignment changed");
 #endif
 
 uintptr_t ad_drag_params_size(void);
@@ -251,6 +252,7 @@ typedef struct AdAction {
 #define AD_ACTION_SIZE (sizeof(AdAction))
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(AdAction) == 96, "AdAction ABI size changed");
+_Static_assert(_Alignof(AdAction) == 8, "AdAction ABI alignment changed");
 #endif
 
 uintptr_t ad_action_size(void);
@@ -262,11 +264,27 @@ typedef struct AdElementState {
   const char *value;
 } AdElementState;
 
+#define AD_ELEMENT_STATE_SIZE (sizeof(AdElementState))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdElementState) == 32, "AdElementState ABI size changed");
+_Static_assert(_Alignof(AdElementState) == 8, "AdElementState ABI alignment changed");
+#endif
+
+uintptr_t ad_element_state_size(void);
+
 typedef struct AdActionResult {
   const char *action;
   const char *ref_id;
   struct AdElementState *post_state;
 } AdActionResult;
+
+#define AD_ACTION_RESULT_SIZE (sizeof(AdActionResult))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdActionResult) == 24, "AdActionResult ABI size changed");
+_Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
+#endif
+
+uintptr_t ad_action_result_size(void);
 
 typedef struct AdRect {
   double x;
@@ -302,6 +320,7 @@ typedef struct AdRefEntry {
 #define AD_REF_ENTRY_SIZE (sizeof(AdRefEntry))
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(AdRefEntry) == 192, "AdRefEntry ABI size changed");
+_Static_assert(_Alignof(AdRefEntry) == 8, "AdRefEntry ABI alignment changed");
 #endif
 
 /*

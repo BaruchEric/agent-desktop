@@ -43,6 +43,9 @@ fn classify_ambiguous_candidates(
         .filter(|candidate| verified_bounds_match(candidate, entry))
         .cloned()
         .collect();
+    if entry.bounds_hash.is_some() && bounds_matches.is_empty() {
+        return Err(AdapterError::element_not_found("element"));
+    }
     if bounds_matches.len() == 1 {
         return retained_handle(bounds_matches.remove(0));
     }

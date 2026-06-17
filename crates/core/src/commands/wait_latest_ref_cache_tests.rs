@@ -37,7 +37,7 @@ fn refmap_with_ref(pid: i32, name: Option<&str>) -> RefMap {
 }
 
 #[test]
-fn latest_ref_cache_picks_up_newer_snapshot_after_refresh() {
+fn latest_ref_cache_pins_starting_snapshot_when_latest_advances() {
     let _guard = HomeGuard::new();
     let first_id = save_ref(1, Some("First"));
     let store = RefStore::new().unwrap();
@@ -51,8 +51,12 @@ fn latest_ref_cache_picks_up_newer_snapshot_after_refresh() {
     cache.last_refresh = std::time::Instant::now() - std::time::Duration::from_secs(2);
     cache.refresh_if_due().unwrap();
 
-    assert_eq!(cache.snapshot_id.as_deref(), Some(second_id.as_str()));
-    assert!(cache.entry("@e1").is_some());
+    assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
+    assert_eq!(
+        store.latest_snapshot_id().as_deref(),
+        Some(second_id.as_str())
+    );
+    assert_eq!(cache.entry("@e1").unwrap().pid, 1);
 }
 
 #[test]
@@ -75,7 +79,7 @@ fn latest_ref_cache_debounces_consecutive_refreshes() {
 }
 
 #[test]
-fn latest_ref_cache_keeps_last_good_map_when_new_latest_snapshot_disappears() {
+fn latest_ref_cache_keeps_last_good_map_when_pinned_snapshot_disappears() {
     let _guard = HomeGuard::new();
     let first_id = save_ref(1, Some("First"));
     let store = RefStore::new().unwrap();
@@ -83,27 +87,22 @@ fn latest_ref_cache_keeps_last_good_map_when_new_latest_snapshot_disappears() {
     let mut cache = LatestRefCache::new(&store).unwrap();
     assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
 
-    let second_id = save_ref(2, Some("Second"));
     let home = crate::refs::home_dir().unwrap();
     let snapshot_dir = home
         .join(".agent-desktop")
         .join("snapshots")
-        .join(&second_id);
+        .join(&first_id);
     std::fs::remove_dir_all(snapshot_dir).unwrap();
 
     cache.last_refresh = std::time::Instant::now() - std::time::Duration::from_secs(2);
     cache.refresh_if_due().unwrap();
 
     assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
-    assert_eq!(
-        cache.missing_latest_snapshot_id.as_deref(),
-        Some(second_id.as_str())
-    );
     assert_eq!(cache.entry("@e1").unwrap().pid, 1);
 }
 
 #[test]
-fn latest_ref_cache_retries_unreadable_latest_snapshot_after_refresh_error() {
+fn latest_ref_cache_retries_unreadable_pinned_snapshot_after_refresh_error() {
     let _guard = HomeGuard::new();
     let first_id = save_ref(1, Some("First"));
     let store = RefStore::new().unwrap();
@@ -111,12 +110,11 @@ fn latest_ref_cache_retries_unreadable_latest_snapshot_after_refresh_error() {
     let mut cache = LatestRefCache::new(&store).unwrap();
     assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
 
-    let second_id = save_ref(2, Some("Second"));
     let refmap_path = crate::refs::home_dir()
         .unwrap()
         .join(".agent-desktop")
         .join("snapshots")
-        .join(&second_id)
+        .join(&first_id)
         .join("refmap.json");
     std::fs::write(&refmap_path, b"{not-json").unwrap();
 
@@ -124,15 +122,14 @@ fn latest_ref_cache_retries_unreadable_latest_snapshot_after_refresh_error() {
     cache.refresh_if_due().unwrap();
 
     assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
-    assert!(cache.missing_latest_snapshot_id.is_none());
     assert_eq!(cache.entry("@e1").unwrap().pid, 1);
 
     store
-        .save_snapshot(&second_id, &refmap_with_ref(3, Some("Recovered")))
+        .save_snapshot(&first_id, &refmap_with_ref(3, Some("Recovered")))
         .unwrap();
     cache.last_refresh = std::time::Instant::now() - std::time::Duration::from_secs(2);
     cache.refresh_if_due().unwrap();
 
-    assert_eq!(cache.snapshot_id.as_deref(), Some(second_id.as_str()));
+    assert_eq!(cache.snapshot_id.as_deref(), Some(first_id.as_str()));
     assert_eq!(cache.entry("@e1").unwrap().pid, 3);
 }

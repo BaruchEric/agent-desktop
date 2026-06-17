@@ -4,7 +4,7 @@ use crate::actions::result::action_result_to_c;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
 use crate::types::{AdAction, AdActionResult, AdNativeHandle, AdPolicyKind, AdRefEntry};
-use agent_desktop_core::{action_request::ActionRequest, adapter::NativeHandle};
+use agent_desktop_core::{action::Action, action_request::ActionRequest, adapter::NativeHandle};
 
 /// # Safety
 ///
@@ -56,24 +56,14 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
             ));
             return AdResult::ErrInvalidArgs;
         }
-        let action_ref = &*action;
-        let core_action = match action_from_c(action_ref) {
-            Ok(a) => a,
-            Err(msg) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    msg,
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
+        let core_action = match decode_action(&*action) {
+            Ok(action) => action,
+            Err(result) => return result,
         };
         let native_handle = NativeHandle::from_ptr(handle_ref.ptr);
-        let Some(policy) = AdPolicyKind::from_c(policy) else {
-            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                "invalid policy kind discriminant",
-            ));
-            return AdResult::ErrInvalidArgs;
+        let policy = match decode_policy(policy) {
+            Ok(policy) => policy,
+            Err(result) => return result,
         };
         let request = action_request(policy, core_action);
         match adapter.inner.execute_action(&native_handle, request) {
@@ -121,23 +111,13 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
                 return error::last_error_code();
             }
         };
-        let action_ref = &*action;
-        let core_action = match action_from_c(action_ref) {
+        let core_action = match decode_action(&*action) {
             Ok(action) => action,
-            Err(msg) => {
-                error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    msg,
-                ));
-                return AdResult::ErrInvalidArgs;
-            }
+            Err(result) => return result,
         };
-        let Some(policy) = AdPolicyKind::from_c(policy) else {
-            error::set_last_error(&agent_desktop_core::error::AdapterError::new(
-                agent_desktop_core::error::ErrorCode::InvalidArgs,
-                "invalid policy kind discriminant",
-            ));
-            return AdResult::ErrInvalidArgs;
+        let policy = match decode_policy(policy) {
+            Ok(policy) => policy,
+            Err(result) => return result,
         };
         let request = action_request(policy, core_action);
         match agent_desktop_core::ref_action::execute_entry(
@@ -157,10 +137,27 @@ pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
     })
 }
 
-fn action_request(
-    policy: AdPolicyKind,
-    action: agent_desktop_core::action::Action,
-) -> ActionRequest {
+fn decode_action(action: &AdAction) -> Result<Action, AdResult> {
+    unsafe { action_from_c(action) }.map_err(|msg| {
+        error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            msg,
+        ));
+        AdResult::ErrInvalidArgs
+    })
+}
+
+fn decode_policy(policy: i32) -> Result<AdPolicyKind, AdResult> {
+    AdPolicyKind::from_c(policy).ok_or_else(|| {
+        error::set_last_error(&agent_desktop_core::error::AdapterError::new(
+            agent_desktop_core::error::ErrorCode::InvalidArgs,
+            "invalid policy kind discriminant",
+        ));
+        AdResult::ErrInvalidArgs
+    })
+}
+
+fn action_request(policy: AdPolicyKind, action: Action) -> ActionRequest {
     match policy {
         AdPolicyKind::Headless => ActionRequest::headless(action),
         AdPolicyKind::FocusFallback => ActionRequest::focus_fallback(action),

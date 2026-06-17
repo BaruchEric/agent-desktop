@@ -24,7 +24,7 @@ pub(crate) fn dispatch_notification(
         ),
         Commands::DismissNotification(a) => dismiss_notification::execute(
             dismiss_notification::DismissNotificationArgs {
-                index: a.index as usize,
+                index: notification_index(a.index)?,
                 app: a.app,
             },
             adapter,
@@ -35,7 +35,7 @@ pub(crate) fn dispatch_notification(
         ),
         Commands::NotificationAction(a) => notification_action::execute(
             notification_action::NotificationActionArgs {
-                index: a.index as usize,
+                index: notification_index(a.index)?,
                 action: a.action,
                 expected_app: a.expected_app,
                 expected_title: a.expected_title,
@@ -48,5 +48,54 @@ pub(crate) fn dispatch_notification(
                 "dispatch_notification received a non-notification command",
             ),
         )),
+    }
+}
+
+fn notification_index(index: u64) -> Result<usize, AppError> {
+    if index == 0 {
+        return Err(AppError::invalid_input(
+            "Notification index is 1-based and must be greater than zero",
+        ));
+    }
+    usize::try_from(index).map_err(|_| AppError::invalid_input("Notification index is too large"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli_args::notifications::{DismissNotificationCliArgs, NotificationActionCliArgs};
+
+    struct NoopAdapter;
+
+    impl PlatformAdapter for NoopAdapter {}
+
+    #[test]
+    fn dismiss_notification_rejects_zero_index_before_adapter() {
+        let err = dispatch_notification(
+            Commands::DismissNotification(DismissNotificationCliArgs {
+                index: 0,
+                app: None,
+            }),
+            &NoopAdapter,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.code(), "INVALID_ARGS");
+    }
+
+    #[test]
+    fn notification_action_rejects_zero_index_before_adapter() {
+        let err = dispatch_notification(
+            Commands::NotificationAction(NotificationActionCliArgs {
+                index: 0,
+                action: "Reply".into(),
+                expected_app: None,
+                expected_title: None,
+            }),
+            &NoopAdapter,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.code(), "INVALID_ARGS");
     }
 }

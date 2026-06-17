@@ -36,7 +36,7 @@ except Exception: print(''); sys.exit()
 try: print(eval('d'+sys.argv[1]))
 except Exception: print('')" "$1" 2>/dev/null; }
 
-resolve()    { "$bin" find --app "$app" --role "$1" --name "$2" --first 2>/dev/null | field "['data']['match']['ref']"; }
+resolve()    { "$bin" find --app "$app" --role "$1" --name "$2" --first 2>/dev/null | field "['data']['match']['ref_id']"; }
 read_value() { "$bin" find --app "$app" --role statictext --name "$1" --first 2>/dev/null | field "['data']['match']['value']"; }
 running()    { "$bin" list-apps 2>/dev/null | python3 -c "import json,sys;print(any(a['name']=='$app' for a in json.load(sys.stdin)['data']['apps']))" 2>/dev/null; }
 
@@ -69,6 +69,7 @@ interaction_suite() {
     na="$(printf '%s' "$ca" | grep -oE '[0-9]+$' || true)"; na="${na:-0}"
     assert "[$MODE] click incremented counter" "$([ "$na" -gt "$nb" ] && echo 1 || echo 0)" \
         "click-status before='$cb' after='$ca'"
+    act clear "$(resolve textfield text-input)" >/dev/null 2>&1; sleep 0.2
     verify "type sets field"         text-echo "typed-$MODE"  type "$(resolve textfield text-input)" "typed-$MODE"
     verify "set-value sets field"    text-echo "set-$MODE"    set-value "$(resolve textfield text-input)" "set-$MODE"
     verify "clear empties field"     text-echo ""             clear "$(resolve textfield text-input)"
@@ -136,7 +137,7 @@ done
 note "find vocabulary (observed resolution)"
 tf="$(resolve textfield text-input)"
 assert "find textfield by name" "$([ -n "$tf" ] && echo 1 || echo 0)" "resolved ref='$tf'"
-ta="$("$bin" find --app "$app" --role textarea --name text-input --first 2>/dev/null | field "['data']['match']['ref']")"
+ta="$("$bin" find --app "$app" --role textarea --name text-input --first 2>/dev/null | field "['data']['match']['ref_id']")"
 assert "textarea alias -> textfield" "$([ -n "$ta" ] && echo 1 || echo 0)" "alias resolved ref='$ta'"
 hint="$("$bin" find --app "$app" --role navbar 2>/dev/null | field "['data']['roles_present']")"
 assert "absent role returns roles_present hint" "$([ -n "$hint" ] && echo 1 || echo 0)" "roles_present=${hint:0:60}..."

@@ -22,10 +22,14 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
     let app = element_for_pid(pid);
 
     if let Some(windows) = copy_ax_array(&app, kAXWindowsAttribute) {
+        let mut first_candidate = None;
+        let mut child_candidate = None;
+        let mut partial_candidate = None;
         for win in &windows {
             if !is_window_candidate(win) {
                 continue;
             }
+            first_candidate.get_or_insert_with(|| win.clone());
             let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
@@ -33,26 +37,18 @@ pub fn window_element_for(pid: i32, win_title: &str) -> AXElement {
             {
                 return win.clone();
             }
-        }
-        for win in &windows {
-            if !is_window_candidate(win) {
-                continue;
-            }
-            let title = copy_string_attr(win, kAXTitleAttribute);
             if title
                 .as_deref()
                 .is_some_and(|title| window_titles_are_partial_match(title, win_title))
             {
-                return win.clone();
+                partial_candidate.get_or_insert_with(|| win.clone());
+            }
+            if child_candidate.is_none() && count_children(win, None) > 0 {
+                child_candidate = Some(win.clone());
             }
         }
-        for win in &windows {
-            if is_window_candidate(win) && count_children(win, None) > 0 {
-                return win.clone();
-            }
-        }
-        if let Some(first) = windows.into_iter().find(is_window_candidate) {
-            return first;
+        if let Some(candidate) = partial_candidate.or(child_candidate).or(first_candidate) {
+            return candidate;
         }
     }
 

@@ -237,7 +237,18 @@ end tell"#
             );
             let mut command = Command::new("/usr/bin/osascript");
             command.arg("-e").arg(script);
-            crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
+            let output =
+                crate::system::process::run_with_timeout(&mut command, "osascript", QUIT_TIMEOUT)?;
+            if !output.status.success() {
+                return Err(AdapterError::new(
+                    ErrorCode::ActionFailed,
+                    format!("Failed to request graceful quit for app '{id}'"),
+                )
+                .with_platform_detail(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                .with_suggestion(
+                    "Use 'list-apps' to verify the app name, or retry with --force.",
+                ));
+            }
         }
     }
     Ok(())

@@ -196,6 +196,23 @@ fn ambiguous_candidate_classification_reports_structured_details() {
 }
 
 #[test]
+fn multiple_identity_candidates_without_bounds_match_are_stale_not_ambiguous() {
+    let err = match classify_candidates(
+        vec![
+            AXElement(std::ptr::null_mut()),
+            AXElement(std::ptr::null_mut()),
+        ],
+        &entry(Some(42), Some("w-42"), Some("Documents"), None),
+        true,
+    ) {
+        Ok(_) => panic!("expected stale moved target"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.code, ErrorCode::ElementNotFound);
+}
+
+#[test]
 fn single_meaningful_identity_candidate_resolves_after_bounds_change() {
     let _handle = classify_candidates(
         vec![AXElement(std::ptr::null_mut())],

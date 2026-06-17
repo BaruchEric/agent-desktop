@@ -3,6 +3,8 @@ use crate::types::{AdActionResult, AdElementState};
 use agent_desktop_core::action_result::ActionResult as CoreActionResult;
 use std::ptr;
 
+const MAX_STATE_STRINGS_TO_FREE: usize = 1024;
+
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
     let action = string_to_c_lossy(&r.action);
     let ref_id = opt_string_to_c(r.ref_id.as_deref());
@@ -15,8 +17,9 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
             let states = if state.states.is_empty() {
                 ptr::null_mut()
             } else {
-                let ptrs: Vec<*mut std::os::raw::c_char> =
+                let mut ptrs: Vec<*mut std::os::raw::c_char> =
                     state.states.iter().map(|s| string_to_c_lossy(s)).collect();
+                ptrs.push(ptr::null_mut());
                 let mut boxed = ptrs.into_boxed_slice();
                 let raw = boxed.as_mut_ptr();
                 std::mem::forget(boxed);
@@ -55,16 +58,8 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
             let state = &mut *r.post_state;
             free_c_string(state.role as *mut _);
             free_c_string(state.value as *mut _);
-            if !state.states.is_null() && state.state_count > 0 {
-                let slice =
-                    std::slice::from_raw_parts_mut(state.states, state.state_count as usize);
-                for ptr in slice.iter() {
-                    free_c_string(*ptr);
-                }
-                drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                    state.states,
-                    state.state_count as usize,
-                )));
+            if !state.states.is_null() {
+                free_state_array(state.states);
             }
             drop(Box::from_raw(r.post_state));
             r.post_state = ptr::null_mut();
@@ -72,6 +67,20 @@ pub unsafe extern "C" fn ad_free_action_result(result: *mut AdActionResult) {
         r.action = ptr::null();
         r.ref_id = ptr::null();
     })
+}
+
+unsafe fn free_state_array(states: *mut *mut std::os::raw::c_char) {
+    unsafe {
+        let mut len = 0;
+        while len < MAX_STATE_STRINGS_TO_FREE && !(*states.add(len)).is_null() {
+            free_c_string(*states.add(len));
+            len += 1;
+        }
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+            states,
+            len + 1,
+        )));
+    }
 }
 
 #[cfg(test)]
@@ -104,6 +113,27 @@ mod tests {
         }
         let mut c_result = c_result;
         unsafe { ad_free_action_result(&mut c_result) };
+    }
+
+    #[test]
+    fn free_action_result_ignores_mutated_state_count() {
+        let core_result = CoreActionResult {
+            action: "click".to_owned(),
+            ref_id: None,
+            post_state: Some(ElementState {
+                role: "button".to_owned(),
+                states: vec!["focused".to_owned()],
+                value: None,
+            }),
+            steps: Vec::new(),
+        };
+        let mut c_result = action_result_to_c(&core_result);
+        unsafe {
+            (*c_result.post_state).state_count = u32::MAX;
+            ad_free_action_result(&mut c_result);
+        }
+
+        assert!(c_result.post_state.is_null());
     }
 
     #[test]

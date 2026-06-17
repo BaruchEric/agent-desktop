@@ -57,7 +57,6 @@ fn element_at_path(
     let mut seen = FxHashSet::default();
     for idx in path {
         ensure_before_deadline(deadline)?;
-        set_messaging_timeout(&current, remaining_before_deadline(deadline)?);
         let ax_role = copy_string_attr(&current, accessibility_sys::kAXRoleAttribute);
         let children = resolve_children(&current, ax_role.as_deref(), deadline, &mut seen)?;
         let Some(child) = children.get(*idx) else {
@@ -128,10 +127,11 @@ fn collect_elements_recursive(
     }
 
     let ax_role = copy_string_attr(el, kAXRoleAttribute);
-    let normalized = crate::tree::roles::normalized_role_for_element(el, ax_role.as_deref());
+    let (normalized, promoted_label) =
+        crate::tree::roles::normalized_role_and_label(el, ax_role.as_deref());
 
     if normalized == context.entry.role
-        && element_matches_path_entry_with_role(el, context.entry, ax_role.as_deref())
+        && element_identity_matches(el, context.entry, promoted_label)
         && context.seen_matches.push_clone(context.matches, el)
         && should_stop_collecting(context.matches.len(), context.entry)
     {
@@ -158,7 +158,9 @@ fn collect_elements_recursive(
 #[cfg(target_os = "macos")]
 fn element_matches_entry(el: &AXElement, entry: &RefEntry) -> bool {
     let ax_role = copy_string_attr(el, accessibility_sys::kAXRoleAttribute);
-    element_matches_path_entry_with_role(el, entry, ax_role.as_deref())
+    let (normalized, promoted_label) =
+        crate::tree::roles::normalized_role_and_label(el, ax_role.as_deref());
+    normalized == entry.role && element_identity_matches(el, entry, promoted_label)
 }
 
 pub(super) fn should_stop_collecting(match_count: usize, entry: &RefEntry) -> bool {
@@ -170,16 +172,11 @@ fn should_prune_for_resolution(el: &AXElement, entry: &RefEntry, depth: u8) -> b
 }
 
 #[cfg(target_os = "macos")]
-fn element_matches_path_entry_with_role(
+fn element_identity_matches(
     el: &AXElement,
     entry: &RefEntry,
-    ax_role: Option<&str>,
+    promoted_label: Option<String>,
 ) -> bool {
-    let (normalized, promoted_label) = crate::tree::roles::normalized_role_and_label(el, ax_role);
-    if normalized != entry.role {
-        return false;
-    }
-
     let elem_name = promoted_label.or_else(|| resolve_element_name(el));
     let elem_value = crate::tree::copy_value_typed(el);
     let elem_description = copy_string_attr(el, accessibility_sys::kAXDescriptionAttribute);
@@ -199,10 +196,10 @@ fn resolve_children(
     seen: &mut FxHashSet<usize>,
 ) -> Result<Vec<AXElement>, AdapterError> {
     seen.clear();
+    set_messaging_timeout(el, remaining_before_deadline(deadline)?);
     let mut result = Vec::new();
     for attr in child_attributes(ax_role) {
         ensure_before_deadline(deadline)?;
-        set_messaging_timeout(el, remaining_before_deadline(deadline)?);
         if let Some(children) = copy_ax_array(el, attr) {
             for child in children {
                 if seen.insert(child.0 as usize) {

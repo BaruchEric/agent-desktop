@@ -327,19 +327,51 @@ fn stale_tmp_files_are_swept_and_fresh_ones_kept() {
     let snapshot_id = store.save_new_snapshot(&map_with("Send")).unwrap();
     let base_tmp = store.base_dir.join("latest_snapshot_id.tmp");
     let snapshot_tmp = store.snapshots_dir().join("dead.tmp");
+    let refmap_tmp = store.snapshots_dir().join(&snapshot_id).join("refmap.tmp");
     std::fs::write(&base_tmp, b"orphan").unwrap();
     std::fs::write(&snapshot_tmp, b"orphan").unwrap();
+    std::fs::write(&refmap_tmp, b"orphan").unwrap();
 
     store.remove_tmp_files_older_than(std::time::Duration::ZERO);
 
     assert!(!base_tmp.exists());
     assert!(!snapshot_tmp.exists());
+    assert!(!refmap_tmp.exists());
     assert!(store.snapshot_path(&snapshot_id).is_file());
 
     std::fs::write(&base_tmp, b"fresh").unwrap();
     store.remove_tmp_files_older_than(STALE_TMP_MAX_AGE);
 
     assert!(base_tmp.exists());
+}
+
+#[test]
+fn save_new_snapshot_prunes_old_snapshots_without_removing_latest() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let first_id = store.save_new_snapshot(&map_with("First")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let mut latest_id = first_id.clone();
+
+    for i in 0..=MAX_SAVED_SNAPSHOTS {
+        latest_id = store
+            .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
+            .unwrap();
+    }
+
+    let count = std::fs::read_dir(store.snapshots_dir())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .count();
+
+    assert!(count <= MAX_SAVED_SNAPSHOTS);
+    assert!(store.snapshot_path(&latest_id).is_file());
+    assert!(!store.snapshot_path(&first_id).exists());
+    assert_eq!(
+        store.latest_snapshot_id().as_deref(),
+        Some(latest_id.as_str())
+    );
 }
 
 #[test]
