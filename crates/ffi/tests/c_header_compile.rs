@@ -62,11 +62,13 @@ int main(void) {
     (void)AD_RESULT_OK;
     _Static_assert(AD_ACTION_SIZE == sizeof(AdAction), "AdAction size macro drifted");
     _Static_assert(AD_DRAG_PARAMS_SIZE == sizeof(AdDragParams), "AdDragParams size macro drifted");
+    _Static_assert(AD_ACTION_STEP_SIZE == sizeof(AdActionStep), "AdActionStep size macro drifted");
     _Static_assert(AD_ACTION_RESULT_SIZE == sizeof(AdActionResult), "AdActionResult size macro drifted");
     _Static_assert(offsetof(AdActionResult, steps) == 24, "AdActionResult.steps offset changed");
     _Static_assert(offsetof(AdActionResult, step_count) == 32, "AdActionResult.step_count offset changed");
     _Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
     _Static_assert(AD_ELEMENT_STATE_SIZE == sizeof(AdElementState), "AdElementState size macro drifted");
+    (void)ad_action_step_size;
     (void)ad_ref_entry_size;
     (void)ad_last_error_details;
     _Static_assert(AD_REF_ENTRY_SIZE == sizeof(AdRefEntry), "AdRefEntry size macro drifted");

@@ -123,17 +123,17 @@ mod imp {
     }
 
     fn element_text_contains(el: &AXElement, needle: &str, depth: usize) -> bool {
-        if depth > 8 {
-            return false;
-        }
+        find_descendant_value(el, depth, &|candidate| {
+            element_own_text_contains(candidate, needle).then_some(())
+        })
+        .is_some()
+    }
+
+    fn element_own_text_contains(el: &AXElement, needle: &str) -> bool {
         ["AXTitle", "AXDescription", "AXValue", "AXHelp"]
             .into_iter()
             .filter_map(|attr| crate::tree::copy_string_attr(el, attr))
             .any(|value| value.contains(needle))
-            || crate::tree::copy_ax_array(el, "AXChildren")
-                .unwrap_or_default()
-                .iter()
-                .any(|child| element_text_contains(child, needle, depth + 1))
     }
 
     fn select_containing_item(el: &AXElement) -> Result<bool, AdapterError> {
@@ -154,9 +154,10 @@ mod imp {
     }
 
     fn selected_items_menu_button(root: &AXElement) -> Option<AXElement> {
-        find_descendant(root, 0, &|el| {
-            crate::tree::copy_string_attr(el, "AXRole").as_deref() == Some("AXMenuButton")
-                && is_selected_items_control(el)
+        find_descendant_value(root, 0, &|el| {
+            (crate::tree::copy_string_attr(el, "AXRole").as_deref() == Some("AXMenuButton")
+                && is_selected_items_control(el))
+            .then(|| el.clone())
         })
     }
 
@@ -181,19 +182,19 @@ mod imp {
         value.contains("selected item")
     }
 
-    fn find_descendant(
+    fn find_descendant_value<T>(
         el: &AXElement,
         depth: usize,
-        predicate: &impl Fn(&AXElement) -> bool,
-    ) -> Option<AXElement> {
+        mapper: &impl Fn(&AXElement) -> Option<T>,
+    ) -> Option<T> {
         if depth > 8 {
             return None;
         }
-        if predicate(el) {
-            return Some(el.clone());
+        if let Some(value) = mapper(el) {
+            return Some(value);
         }
         for child in crate::tree::copy_ax_array(el, "AXChildren").unwrap_or_default() {
-            if let Some(found) = find_descendant(&child, depth + 1, predicate) {
+            if let Some(found) = find_descendant_value(&child, depth + 1, mapper) {
                 return Some(found);
             }
         }
@@ -204,25 +205,26 @@ mod imp {
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use crate::tree::AXElement;
+    use agent_desktop_core::error::AdapterError;
 
-    pub fn show_menu(_el: &AXElement) -> bool {
-        false
+    pub(crate) fn show_menu(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
 
-    pub fn show_menu_on_ancestors(_el: &AXElement) -> bool {
-        false
+    pub(crate) fn show_menu_on_ancestors(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
 
-    pub fn show_menu_on_children(_el: &AXElement) -> bool {
-        false
+    pub(crate) fn show_menu_on_children(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
 
-    pub fn select_then_show_menu(_el: &AXElement) -> bool {
-        false
+    pub(crate) fn select_then_show_menu(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
 
-    pub fn select_then_selected_items_menu(_el: &AXElement) -> bool {
-        false
+    pub(crate) fn select_then_selected_items_menu(_el: &AXElement) -> Result<bool, AdapterError> {
+        Ok(false)
     }
 }
 

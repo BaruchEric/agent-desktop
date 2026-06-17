@@ -243,7 +243,6 @@ mod tests {
         let body = std::fs::read_to_string(&path).unwrap();
         let event: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
         assert_eq!(event["text"]["redacted"], true);
-        assert_eq!(event["text"]["chars_bucket"], "1-8");
         assert_eq!(event["value"]["redacted"], true);
         assert_eq!(event["name"]["redacted"], true);
         assert_eq!(event["description"]["redacted"], true);

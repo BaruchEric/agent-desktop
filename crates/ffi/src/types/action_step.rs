@@ -6,4 +6,11 @@ pub struct AdActionStep {
     pub outcome: *const c_char,
 }
 
-const _: () = assert!(std::mem::size_of::<AdActionStep>() == 16);
+pub const AD_ACTION_STEP_SIZE: usize = 16;
+
+const _: () = assert!(std::mem::size_of::<AdActionStep>() == AD_ACTION_STEP_SIZE);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ad_action_step_size() -> usize {
+    std::mem::size_of::<AdActionStep>()
+}

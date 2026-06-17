@@ -41,7 +41,18 @@ fn action_result_layout_is_guarded_for_c_consumers() {
         unsafe { common::ad_action_result_size() },
         agent_desktop_ffi::types::action_result::AD_ACTION_RESULT_SIZE
     );
-    assert_eq!(size_of::<AdActionStep>(), 16);
+    assert_eq!(
+        agent_desktop_ffi::types::action_step::AD_ACTION_STEP_SIZE,
+        16
+    );
+    assert_eq!(
+        unsafe { common::ad_action_step_size() },
+        agent_desktop_ffi::types::action_step::AD_ACTION_STEP_SIZE
+    );
+    assert_eq!(
+        size_of::<AdActionStep>(),
+        agent_desktop_ffi::types::action_step::AD_ACTION_STEP_SIZE
+    );
     assert_eq!(align_of::<AdActionStep>(), align_of::<usize>());
     assert_eq!(size_of::<AdActionResult>(), 40);
     assert_eq!(align_of::<AdActionResult>(), align_of::<usize>());

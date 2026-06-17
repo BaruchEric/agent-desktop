@@ -143,12 +143,12 @@ fn sanitize_trace_value(value: Value) -> Value {
 }
 
 fn is_sensitive_trace_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    [
+    const SENSITIVE_KEYS: &[&str] = &[
         "text",
         "value",
         "expected",
         "name",
+        "username",
         "description",
         "label",
         "query",
@@ -159,31 +159,46 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "url",
         "help",
         "placeholder",
-    ]
-    .iter()
-    .any(|needle| key.contains(needle))
+    ];
+    trace_key_tokens(key)
+        .iter()
+        .any(|part| SENSITIVE_KEYS.contains(&part.as_str()))
+}
+
+fn trace_key_tokens(key: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut previous_was_lower_or_digit = false;
+
+    for ch in key.chars() {
+        if !ch.is_ascii_alphanumeric() {
+            push_trace_key_token(&mut tokens, &mut current);
+            previous_was_lower_or_digit = false;
+            continue;
+        }
+
+        if ch.is_ascii_uppercase() && previous_was_lower_or_digit {
+            push_trace_key_token(&mut tokens, &mut current);
+        }
+
+        current.push(ch.to_ascii_lowercase());
+        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+    }
+
+    push_trace_key_token(&mut tokens, &mut current);
+    tokens
+}
+
+fn push_trace_key_token(tokens: &mut Vec<String>, current: &mut String) {
+    if !current.is_empty() {
+        tokens.push(std::mem::take(current));
+    }
 }
 
 fn redacted_value(value: Value) -> Value {
     match value {
-        Value::String(text) => json!({
-            "redacted": true,
-            "chars_bucket": char_count_bucket(text.chars().count())
-        }),
-        Value::Array(items) => json!({ "redacted": true, "items": items.len() }),
-        Value::Object(map) => json!({ "redacted": true, "keys": map.len() }),
         Value::Null => Value::Null,
         _ => json!({ "redacted": true }),
-    }
-}
-
-fn char_count_bucket(count: usize) -> &'static str {
-    match count {
-        0 => "0",
-        1..=8 => "1-8",
-        9..=32 => "9-32",
-        33..=128 => "33-128",
-        _ => "129+",
     }
 }
 
@@ -237,20 +252,25 @@ mod tests {
             "action": {
                 "typed_text": ["secret", "another"],
                 "api_token": {"kind": "bearer"},
+                "typedText": "secret",
+                "apiToken": "secret",
+                "targetLabel": "secret",
+                "userName": "secret",
+                "filename": "report.txt",
                 "password": null,
                 "counter": 3
             }
         }));
 
         assert_eq!(value["action"]["typed_text"]["redacted"], true);
-        assert_eq!(value["action"]["typed_text"]["items"], 2);
         assert_eq!(value["action"]["api_token"]["redacted"], true);
-        assert_eq!(value["action"]["api_token"]["keys"], 1);
+        assert_eq!(value["action"]["typedText"]["redacted"], true);
+        assert_eq!(value["action"]["apiToken"]["redacted"], true);
+        assert_eq!(value["action"]["targetLabel"]["redacted"], true);
+        assert_eq!(value["action"]["userName"]["redacted"], true);
+        assert_eq!(value["action"]["filename"], "report.txt");
         assert!(value["action"]["password"].is_null());
         assert_eq!(value["action"]["counter"], 3);
-        assert_eq!(char_count_bucket(0), "0");
-        assert_eq!(char_count_bucket(8), "1-8");
-        assert_eq!(char_count_bucket(65), "33-128");
     }
 
     #[test]

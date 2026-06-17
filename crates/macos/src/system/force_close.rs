@@ -1,6 +1,8 @@
 use agent_desktop_core::error::AdapterError;
 use std::time::{Duration, Instant};
 
+const KILL_CONFIRM_FLOOR: Duration = Duration::from_millis(500);
+
 pub(crate) fn terminate_app(id: &str, pids: &[i32], timeout: Duration) -> Result<(), AdapterError> {
     let start = Instant::now();
     let mut failures = signal_failures(pids, Signal::Term);
@@ -10,8 +12,7 @@ pub(crate) fn terminate_app(id: &str, pids: &[i32], timeout: Duration) -> Result
     }
 
     failures.extend(signal_failures(&remaining, Signal::Kill));
-    let still_running =
-        remaining_pids_after_wait(&remaining, timeout.saturating_sub(start.elapsed()));
+    let still_running = remaining_pids_after_wait(&remaining, kill_confirm_budget(timeout, start));
     if still_running.is_empty() {
         return Ok(());
     }
@@ -25,6 +26,15 @@ pub(crate) fn terminate_app(id: &str, pids: &[i32], timeout: Duration) -> Result
         err = err.with_platform_detail(failures.join("; "));
     }
     Err(err)
+}
+
+fn kill_confirm_budget(timeout: Duration, start: Instant) -> Duration {
+    if timeout.is_zero() {
+        return Duration::ZERO;
+    }
+    timeout
+        .saturating_sub(start.elapsed())
+        .max(KILL_CONFIRM_FLOOR)
 }
 
 fn signal_failures(pids: &[i32], signal: Signal) -> Vec<String> {
@@ -215,5 +225,23 @@ mod tests {
 
         assert!(first.has_exited());
         assert!(second.has_exited());
+    }
+
+    #[test]
+    fn kill_confirm_budget_keeps_a_small_floor_after_term_timeout() {
+        let start = Instant::now() - Duration::from_secs(1);
+
+        assert_eq!(
+            kill_confirm_budget(Duration::from_millis(10), start),
+            KILL_CONFIRM_FLOOR
+        );
+    }
+
+    #[test]
+    fn kill_confirm_budget_preserves_explicit_zero_timeout() {
+        assert_eq!(
+            kill_confirm_budget(Duration::ZERO, Instant::now()),
+            Duration::ZERO
+        );
     }
 }

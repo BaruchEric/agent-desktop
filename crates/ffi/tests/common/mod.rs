@@ -13,6 +13,7 @@ pub use std::os::raw::c_char;
 unsafe extern "C" {
     pub fn ad_ref_entry_size() -> usize;
     pub fn ad_action_size() -> usize;
+    pub fn ad_action_step_size() -> usize;
     pub fn ad_action_result_size() -> usize;
     pub fn ad_element_state_size() -> usize;
 
@@ -65,6 +66,7 @@ unsafe extern "C" {
         policy: i32,
         out: *mut AdActionResult,
     ) -> AdResult;
+    pub fn ad_free_action_result(result: *mut AdActionResult);
 
     pub fn ad_find(
         adapter: *const AdAdapter,

@@ -238,10 +238,6 @@ mod imp {
                 )
                 .with_suggestion("Use the top-level command (e.g. 'hover', 'drag', 'key-down') instead of targeting an element."));
             }
-
-            _ => {
-                return Err(AdapterError::not_supported(label));
-            }
         }
 
         let mut result = ActionResult::new(label).with_steps(steps);

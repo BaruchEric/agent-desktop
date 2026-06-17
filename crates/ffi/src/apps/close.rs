@@ -1,5 +1,4 @@
 use crate::AdAdapter;
-use crate::convert::string::c_to_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use std::os::raw::c_char;
@@ -26,17 +25,14 @@ pub unsafe extern "C" fn ad_close_app(
             return rc;
         }
         crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let adapter = &*adapter;
-        let id_str = match c_to_string(id) {
-            Some(s) => s,
-            None => {
-                set_last_error(&agent_desktop_core::error::AdapterError::new(
-                    agent_desktop_core::error::ErrorCode::InvalidArgs,
-                    "app id is null or invalid UTF-8",
-                ));
-                return AdResult::ErrInvalidArgs;
+        let id_str = match super::decode_app_id(id) {
+            Ok(id) => id,
+            Err(err) => {
+                set_last_error(&err);
+                return crate::error::last_error_code();
             }
         };
+        let adapter = &*adapter;
 
         match adapter.inner.close_app(&id_str, force) {
             Ok(()) => AdResult::Ok,

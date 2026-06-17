@@ -6,7 +6,7 @@ Commands for modifying UI state — clicking, typing, selecting, scrolling, and 
 
 Ref-based actions run in two modes, Playwright-style:
 
-- **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it **fails closed** with `POLICY_DENIED` rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
+- **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the AX path cannot perform the action it fails closed rather than reaching for OS input synthesis. (`type` is the one exception: its base tier may focus the target field — required for reliable typing — but still never moves the cursor.)
 - **`--headed`.** A global flag (`agent-desktop --headed click @e5`) that upgrades every ref action to permit focus stealing **and** cursor movement, unlocking the physical click/double-click/scroll/keypress fallbacks in the action chain. The AX path is still tried first, so `--headed` never regresses elements that work headlessly — it only adds fallbacks for elements that need a real gesture (e.g. a gesture-only button with no `AXOpen`).
 
 Raw-input commands (`press`, `hover`, `drag`, `mouse-*`, `key-down`, `key-up`) are physical by nature. Cursor-moving commands (`hover`, `drag`, `mouse-*`) require `--headed`; keyboard commands are explicit low-level input.
@@ -19,7 +19,8 @@ The command surface is platform-agnostic: every ref action builds an `Action` an
 
 | Command | Headless path (macOS) | Notes |
 |---------|---------------|-------|
-| `click`, `set-value`, `type`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions; the default and most reliable surface |
+| `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions; the default and most reliable surface |
+| `type` | focus fallback | CLI `type` may focus the target field but never moves the cursor; use `set-value` for pure headless value mutation when supported |
 | `double-click` | partial | `AXOpen` works headless on items that advertise it (Finder/list/outline rows, table cells). Falls back to `--headed` only for gesture-only targets with no `AXOpen`. |
 | `triple-click` | no | macOS exposes no triple-click action; it is purely 3 physical clicks → `--headed` only |
 | `hover` | no | hovering *is* moving the cursor over an element; no AX equivalent |
@@ -68,9 +69,9 @@ Performs a semantic right-click/context-menu action and includes `menu` plus `me
 agent-desktop type @e2 "hello@example.com"
 agent-desktop type @e2 "multi line\ntext"
 ```
-In headless mode (default), `type` inserts text by mutating the element's AX value and may focus the target field (typing requires focus) but never moves the cursor. If the field cannot be updated and the focused-insert path is unavailable, it returns a structured error. Pass `--headed` to unlock physical keyboard synthesis and pasteboard-based insertion for fields that ignore AX value writes (common in web/Electron inputs).
+`type` uses the focus-fallback policy floor: it may focus the target field because typing requires focus, but it never moves the cursor. If the field cannot be updated and the focused-insert path is unavailable, it returns a structured error. Pass `--headed` to unlock physical keyboard synthesis and pasteboard-based insertion for fields that ignore AX value writes (common in web/Electron inputs).
 
-Under `--headed`, non-ASCII text on macOS may be briefly placed on the clipboard to paste it. Do not use that path for secrets; prefer the default value path or `set-value` when the target supports it.
+Under focus-fallback or `--headed`, non-ASCII text on macOS may be briefly placed on the clipboard to paste it. Do not use that path for secrets; prefer `set-value` when the target supports it.
 
 ### set-value
 ```bash

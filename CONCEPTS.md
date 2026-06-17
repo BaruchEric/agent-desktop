@@ -65,7 +65,7 @@ The side-effect contract attached to an action request, controlling whether the 
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
 
-Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with `POLICY_DENIED` rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
+Headless ref actions may still fail when the native accessibility API cannot perform the requested semantic operation; they fail closed with structured actionability or policy errors rather than silently substituting physical input. The broader **headed** policy must be selected explicitly with `--headed`.
 
 ### Action Chain
 The ordered ladder of strategies a ref action walks to perform one intent — semantic accessibility actions first, then settable attributes, then policy-gated physical input — with each step verified against the element's observed state before it counts as success.

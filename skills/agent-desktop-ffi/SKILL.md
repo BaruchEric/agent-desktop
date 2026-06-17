@@ -63,12 +63,12 @@ Four reference topics, loaded as needed:
   balances the internal `CFRetain`; on Windows/Linux the call is a no-op
   but safe to issue.
 
-- **Action policy.** `ad_execute_action` uses the headless policy by
-  default, matching CLI ref commands: no focus stealing and no cursor
-  movement. Use `ad_execute_action_with_policy(...,
-  AD_POLICY_KIND_FOCUS_FALLBACK, ...)` only when focus-changing behavior is
-  intended, and `AD_POLICY_KIND_HEADED` only for explicit headed input
-  semantics (cursor movement and focus stealing).
+- **Action policy.** `ad_execute_action` uses headless policy by default.
+  `ad_execute_ref_action_with_policy` should also use headless for semantic
+  ref actions that must fail closed, except `AD_ACTION_KIND_TYPE_TEXT`: use
+  `AD_POLICY_KIND_FOCUS_FALLBACK` for CLI `type` parity because typing needs
+  focus but not cursor movement. Use `AD_POLICY_KIND_HEADED` only for explicit
+  headed input semantics.
 
 - **Ref-action preflight.** `ad_execute_ref_action_with_policy` resolves the
   ref strictly and runs the live actionability preflight (visible, stable,
@@ -94,9 +94,11 @@ Four reference topics, loaded as needed:
   actionability preflight inside `ad_execute_ref_action_with_policy` is the
   equivalent per-call readiness check.
 
-- **Text input privacy.** On macOS, the focus-fallback or headed policy can use
-  the clipboard briefly for non-ASCII text insertion. Keep the default headless
-  policy or set values directly for sensitive text when the target supports it.
+- **Text input privacy.** On macOS, focus-fallback or headed text insertion may
+  briefly use the clipboard for non-ASCII text. For sensitive text, prefer
+  `AD_ACTION_KIND_SET_VALUE` with `AD_POLICY_KIND_HEADLESS` when the target
+  supports settable values. Do not use headless `AD_ACTION_KIND_TYPE_TEXT` as
+  CLI-parity ref input; actionability rejects it before dispatch.
 
 - **Enum discriminants.** Every `#[repr(i32)]` enum field is validated
   at the C boundary — invalid discriminants return

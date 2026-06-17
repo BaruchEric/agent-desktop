@@ -4,9 +4,6 @@ use agent_desktop_core::action_result::ActionResult as CoreActionResult;
 use agent_desktop_core::action_step_outcome::ActionStepOutcome;
 use std::ptr;
 
-const MAX_STATE_STRINGS_TO_FREE: usize = 1024;
-const MAX_STEPS_TO_FREE: usize = 1024;
-
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
     let action = string_to_c_lossy(&r.action);
     let post_state = match &r.post_state {
@@ -92,10 +89,7 @@ fn action_steps_to_c(r: &CoreActionResult) -> *mut AdActionStep {
             outcome: string_to_c_lossy(step_outcome_name(&step.outcome)),
         })
         .collect::<Vec<_>>();
-    steps.push(AdActionStep {
-        label: ptr::null(),
-        outcome: ptr::null(),
-    });
+    steps.push(step_sentinel());
     let mut boxed = steps.into_boxed_slice();
     let raw = boxed.as_mut_ptr();
     std::mem::forget(boxed);
@@ -110,12 +104,21 @@ fn step_outcome_name(outcome: &ActionStepOutcome) -> &'static str {
     }
 }
 
+fn step_sentinel() -> AdActionStep {
+    AdActionStep {
+        label: ptr::null(),
+        outcome: ptr::null(),
+    }
+}
+
 unsafe fn free_state_array(states: *mut *mut std::os::raw::c_char) {
     unsafe {
         let mut len = 0;
-        while len < MAX_STATE_STRINGS_TO_FREE && !(*states.add(len)).is_null() {
-            free_c_string(*states.add(len));
+        while !(*states.add(len)).is_null() {
             len += 1;
+        }
+        for index in 0..len {
+            free_c_string(*states.add(index));
         }
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             states,
@@ -127,20 +130,23 @@ unsafe fn free_state_array(states: *mut *mut std::os::raw::c_char) {
 unsafe fn free_step_array(steps: *mut AdActionStep) {
     unsafe {
         let mut len = 0;
-        while len < MAX_STEPS_TO_FREE {
-            let step = &mut *steps.add(len);
-            if step.label.is_null() && step.outcome.is_null() {
-                break;
-            }
+        while !step_is_sentinel(&*steps.add(len)) {
+            len += 1;
+        }
+        for index in 0..len {
+            let step = &mut *steps.add(index);
             free_c_string(step.label as *mut _);
             free_c_string(step.outcome as *mut _);
-            len += 1;
         }
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             steps,
             len + 1,
         )));
     }
+}
+
+fn step_is_sentinel(step: &AdActionStep) -> bool {
+    step.label.is_null() && step.outcome.is_null()
 }
 
 #[cfg(test)]
@@ -177,20 +183,29 @@ mod tests {
     }
 
     #[test]
-    fn free_action_result_ignores_mutated_state_count() {
+    fn free_action_result_ignores_mutated_counts() {
         let post_state = Box::new(AdElementState {
             role: crate::convert::string::string_to_c_lossy("button"),
             states: state_array(&["focused"]),
             state_count: u32::MAX,
             value: ptr::null(),
         });
+        let mut steps = vec![
+            AdActionStep {
+                label: crate::convert::string::string_to_c_lossy("AXPress"),
+                outcome: crate::convert::string::string_to_c_lossy("succeeded"),
+            },
+            step_sentinel(),
+        ]
+        .into_boxed_slice();
         let mut c_result = AdActionResult {
             action: crate::convert::string::string_to_c_lossy("click"),
             ref_id: ptr::null(),
             post_state: Box::into_raw(post_state),
-            steps: ptr::null_mut(),
+            steps: steps.as_mut_ptr(),
             step_count: u32::MAX,
         };
+        std::mem::forget(steps);
         unsafe { ad_free_action_result(&mut c_result) };
 
         assert!(c_result.post_state.is_null());

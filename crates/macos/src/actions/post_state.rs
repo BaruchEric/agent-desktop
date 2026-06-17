@@ -14,7 +14,18 @@ pub(crate) fn read_post_state(
         | Action::Clear
         | Action::Expand
         | Action::Collapse => 0,
-        _ => return None,
+        Action::DoubleClick
+        | Action::RightClick
+        | Action::TripleClick
+        | Action::SetFocus
+        | Action::Select(_)
+        | Action::Scroll(_, _)
+        | Action::ScrollTo
+        | Action::PressKey(_)
+        | Action::KeyDown(_)
+        | Action::KeyUp(_)
+        | Action::Hover
+        | Action::Drag(_) => return None,
     };
     if delay_ms > 0 {
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));

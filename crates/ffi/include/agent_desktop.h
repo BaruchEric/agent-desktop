@@ -206,6 +206,7 @@ typedef struct AdPoint {
  * do not re-report): 0.x grew this struct 40 -> 48 bytes by adding
  * `drop_delay_ms` (which also grew the embedding `AdAction` — see
  * `AD_ACTION_SIZE`), `AdRefEntry` grew to 192 bytes (`AD_REF_ENTRY_SIZE`),
+ * `AdActionStep` was added as a public 16-byte struct (`AD_ACTION_STEP_SIZE`),
  * `AdActionResult` grew to 40 bytes (`AD_ACTION_RESULT_SIZE`) to expose action
  * steps, and `AD_POLICY_KIND_PHYSICAL` was renamed to `AD_POLICY_KIND_HEADED`
  * with a stable discriminant and intentionally no compatibility alias.
@@ -278,11 +279,23 @@ typedef struct AdActionStep {
   const char *outcome;
 } AdActionStep;
 
+#define AD_ACTION_STEP_SIZE (sizeof(AdActionStep))
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(AdActionStep) == 16, "AdActionStep ABI size changed");
+_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
+_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
+_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
+#endif
+
+uintptr_t ad_action_step_size(void);
+
 /*
- * Result for action calls. `steps` contains `step_count` activation-chain
- * entries (`label`, `outcome`) when the adapter recorded how the action was
- * attempted. The array and all nested strings are owned by the result and are
- * released by `ad_free_action_result`.
+ * Result for action calls. `post_state->states` contains `state_count` strings
+ * when present. `steps` contains `step_count` activation-chain entries
+ * (`label`, `outcome`) when the adapter recorded how the action was attempted.
+ * Non-empty owned arrays are additionally null-sentinel terminated by Rust; C
+ * callers should use the counts for reads and release the unmodified result via
+ * `ad_free_action_result`.
  */
 typedef struct AdActionResult {
   const char *action;
@@ -294,10 +307,6 @@ typedef struct AdActionResult {
 
 #define AD_ACTION_RESULT_SIZE (sizeof(AdActionResult))
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(AdActionStep) == 16, "AdActionStep ABI size changed");
-_Static_assert(_Alignof(AdActionStep) == 8, "AdActionStep ABI alignment changed");
-_Static_assert(offsetof(AdActionStep, label) == 0, "AdActionStep.label offset changed");
-_Static_assert(offsetof(AdActionStep, outcome) == 8, "AdActionStep.outcome offset changed");
 _Static_assert(sizeof(AdActionResult) == 40, "AdActionResult ABI size changed");
 _Static_assert(_Alignof(AdActionResult) == 8, "AdActionResult ABI alignment changed");
 _Static_assert(offsetof(AdActionResult, action) == 0, "AdActionResult.action offset changed");

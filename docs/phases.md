@@ -207,7 +207,7 @@ pub trait PlatformAdapter: Send + Sync {
 
 ### Key Supporting Types
 
-- `Action` — `#[non_exhaustive]` enum. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
+- `Action` — closed core enum whose platform dispatch arms must stay exhaustive. Current variants: Click, DoubleClick, TripleClick, RightClick, SetValue(String), SetFocus, Expand, Collapse, Select(String), Toggle, Check, Uncheck, Scroll(Direction, Amount), ScrollTo, PressKey(KeyCombo), KeyDown(KeyCombo), KeyUp(KeyCombo), TypeText(String), Clear, Hover, Drag(DragParams)
 - `ActionRequest` — `{ action, policy }`; default policy forbids focus stealing and cursor movement
 - `PermissionReport` — `{ accessibility, screen_recording, automation }`, each `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`
 - `MouseEvent`, `DragParams`, `KeyCombo` — dedicated types (not unified under an `InputEvent` enum)
@@ -244,7 +244,7 @@ crates/macos/src/
 │   ├── extras.rs       # select_value helpers
 │   ├── post_state.rs   # Post-action state reads
 │   ├── scroll.rs       # scroll semantics and explicit physical policy paths
-│   └── type_text.rs    # headless AX text insertion and physical typing
+│   └── type_text.rs    # focus-fallback text insertion and physical typing
 ├── input/
 │   ├── mod.rs          # re-exports
 │   ├── keyboard.rs     # CGEventCreateKeyboardEvent, key synthesis, text typing
@@ -281,7 +281,7 @@ crates/macos/src/
 - Ref actions take `ActionRequest`, not bare `Action`
 - Default policy forbids focus stealing and cursor movement
 - Click/right-click/scroll chains run semantic AX steps first and return structured errors instead of silently using physical/headed paths
-- Type in headless mode mutates settable AX text values; physical keyboard typing is policy-gated
+- Type uses the focus-fallback policy floor; SetValue/Clear are the pure headless AX value-mutation paths
 - SetValue/Clear: `AXUIElementSetAttributeValue(kAXValueAttribute, value)`
 - SetFocus/Press/Hover/Drag/Mouse: explicit focus/cursor/physical commands
 - Keyboard/Mouse: `CGEventCreateKeyboardEvent` / `CGEventCreateMouseEvent` via CoreGraphics
@@ -648,7 +648,7 @@ These items are tracked under P2-O16 below: registry migration via `build.rs` fi
 
 Phase 2 brings agent-desktop to Windows. It is also the phase that closes the cross-platform feature-parity gaps surfaced after the v0.1.13 FFI ship — shipping Windows meaningfully requires new core abstractions (stable identifiers, event subscriptions, text-range primitives, shell surfaces, and Windows-specific tray/taskbar affordances) that Windows UIA exposes natively and the macOS adapter currently does not surface. Every new trait method added here is implemented on both platforms in the same PR pair when there is a real cross-platform analogue. True Windows shell concepts return `PLATFORM_NOT_SUPPORTED` on other adapters through the same core command path, never through side-channel code. Linux (Phase 3) mirrors the portable parts against AT-SPI2.
 
-Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every change is additive (`#[non_exhaustive]` already guards the enums) and every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
+Core engine, CLI parser, JSON contract invariants, and command-registration pattern are preserved. What Phase 2 legitimately changes: `AccessibilityNode` field set, `Action` enum variants, `ErrorCode` variants, `PlatformAdapter` trait size. Every new `Action` variant must update core actionability, capability maps, platform dispatch, CLI/FFI conversion, and contract tests in the same change; exhaustive compiler checks are the guard against adapter drift. Every macOS backfill lands atomically with the Windows implementation so the two platforms never drift.
 
 Per the [Command Surface Architecture](#command-surface-architecture-dry-invariant) invariant, every new command added in Phase 2 (`watch`, `text select-range`, `text get-selection`, `text insert-at-caret`, etc.) lives in **exactly one file** under `crates/core/src/commands/` and is wired through the shared typed command path. If Phase 2 adds codegen, it uses deterministic `build.rs` filesystem enumeration, not linker registries. The per-platform work is the three `PlatformAdapter` method implementations (one each in `crates/macos/`, `crates/windows/`, `crates/linux/`) — nothing repeats across transports.
 
@@ -673,7 +673,7 @@ Cross-platform core extensions (new, landed alongside Windows):
 | ID | Objective | Metric |
 |----|-----------|--------|
 | P2-O8 | `AccessibilityNode` stable-selector fields | Nodes may carry `identifier`, `subrole`, `role_description`, `placeholder`, `dom_id`, `dom_classes` (all `Option<String>` / `Vec<String>` with `skip_serializing_if`). Populated where the platform/app exposes stable selectors: Windows UIA `AutomationId` / `LocalizedControlType` / `HelpText`; macOS `kAXIdentifierAttribute` / `kAXSubroleAttribute` / `kAXRoleDescriptionAttribute` / `kAXPlaceholderValueAttribute` / `kAXDOMIdentifierAttribute` / `kAXDOMClassListAttribute`. Resolver prefers stable selectors when present and falls back to the existing fingerprint; tests require known controls with explicit IDs to preserve them across re-drills, not every real-app node |
-| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, and a new CLI subcommand. The `#[non_exhaustive]` attribute keeps this SemVer-safe; C-ABI consumers use `default:` / wildcard fallthrough plus the exported `AD_RESULT_UNKNOWN = -99` sentinel (plan §KD17) |
+| P2-O9 | `Action` enum expansion for 2026 agent workloads | New variants: `LongPress { duration_ms }`, `ForceClick`, `ShowMenu`, `DeliverFiles(Vec<PathBuf>)` (renamed from `FileDrop` — the original name implied `NSDraggingSession` which is not headless-compatible on macOS; see Phase 2 plan §Headless-First Invariant and Unit 12), `WindowRaise`, `Cancel`, `SelectRange { start, len }`, `InsertAtCaret(String)`. `watch_element` is an adapter method, **not** an `Action` variant (plan §KD8 + origin brainstorm §D8). Each has a macOS AX API mapping (all AX calls on main thread per plan §KD9), a Windows UIA pattern mapping, a new CLI subcommand, FFI conversion coverage where applicable, and exhaustive platform-dispatch tests in the same change. |
 | P2-O10 | `ErrorCode` expansion | Add `PermissionRevoked` (distinct from `PermDenied` — TCC yanked mid-session), `ResourceExhausted` (refmap >1 MB, tree node-count cap), `AxMessagingTimeout` (AX-specific timeout separate from orchestration `Timeout`), `AutomationPermissionDenied` (macOS `osascript` grant). Tri-state permission probe at startup distinguishes "never granted" from "revoked" |
 | P2-O11 | Event-subscription primitive (push, not poll) | New trait method `watch_element(handle, events: &[EventKind], timeout_ms: u64) -> Result<Vec<ElementEvent>>`. macOS: `AXObserverCreate` + `AXObserverAddNotification` + `CFRunLoopSource` (no more polling in `system/wait.rs`). Windows: `IUIAutomation.AddAutomationEventHandler` + `AddFocusChangedEventHandler` + `AddPropertyChangedEventHandler`. New `wait --event value-changed --ref @e5 --timeout 3000` CLI flag. Linux mirrors in Phase 3 via AT-SPI2 D-Bus signals |
 | P2-O12 | Text range primitives | Read caret, read selection, select a range by offsets, read text at range, insert at caret. macOS: `kAXSelectedTextRangeAttribute` (settable), `AXStringForRangeParameterizedAttribute`, `AXBoundsForRangeParameterizedAttribute`, `AXRangeForLineParameterizedAttribute`, `AXValueCreate(kAXValueCFRangeType, …)`. Windows: `TextPattern.GetSelection`, `TextPattern.DocumentRange`, `TextRange.Select`, `TextRange.Move`, `TextRange.GetText`, `TextRange.GetBoundingRectangles`. Commands: `text get-selection`, `text select-range <ref> <start> <len>`, `text insert-at-caret <ref> <string>`, `text at-offset <ref> <start> <len>` |

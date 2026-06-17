@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     Click,
