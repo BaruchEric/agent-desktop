@@ -89,14 +89,14 @@ pub(crate) fn wait_for_element(
                     });
                     if fixed_refmap.is_none() {
                         if let Some(cache) = latest_cache.as_mut() {
-                            cache.refresh_if_due();
+                            cache.refresh_if_due()?;
                         }
                     }
                 }
                 Err(err) => return Err(AppError::Adapter(err)),
             }
         } else if let Some(cache) = latest_cache.as_mut() {
-            cache.refresh_if_due();
+            cache.refresh_if_due()?;
         }
 
         let remaining = timeout.saturating_sub(start.elapsed());

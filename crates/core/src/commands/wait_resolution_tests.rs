@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     adapter::{NativeHandle, PlatformAdapter},
+    capability,
     commands::wait_predicate,
     error::{AdapterError, ErrorCode},
     refs::{RefEntry, RefMap},
@@ -87,7 +88,7 @@ fn snapshot_with_one_ref() -> String {
         states: vec![],
         bounds: None,
         bounds_hash: None,
-        available_actions: vec!["Click".into()],
+        available_actions: vec![capability::CLICK.into()],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -154,7 +155,7 @@ fn element_wait_passes_remaining_budget_to_resolver() {
         "@e1".into(),
         Some(snapshot_id),
         wait_predicate::ElementPredicate::Exists,
-        75,
+        500,
         &adapter,
         &crate::context::CommandContext::default(),
     )
@@ -163,7 +164,7 @@ fn element_wait_passes_remaining_budget_to_resolver() {
     assert_eq!(value["observed"]["exists"], true);
     let captured = adapter.captured_ms.lock().unwrap();
     assert_eq!(captured.len(), 1);
-    assert!(captured[0] <= 75);
+    assert!(captured[0] <= 500);
 }
 
 #[test]

@@ -114,7 +114,10 @@ pub(crate) struct KeyComboArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HoverArgs {
-    #[arg(value_name = "REF", help = "Element ref to hover over")]
+    #[arg(
+        value_name = "REF",
+        help = "Element ref to hover over; requires --headed"
+    )]
     pub ref_id: Option<String>,
     #[arg(
         long,
@@ -122,7 +125,7 @@ pub(crate) struct HoverArgs {
         help = "Snapshot ID returned by snapshot; omit to use active session latest"
     )]
     pub snapshot: Option<String>,
-    #[arg(long, help = "Absolute coordinates as x,y")]
+    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: Option<String>,
     #[arg(long, help = "Hold hover position for N milliseconds")]
     pub duration: Option<u64>,
@@ -131,13 +134,21 @@ pub(crate) struct HoverArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DragCliArgs {
-    #[arg(long, help = "Source element ref")]
+    #[arg(long, help = "Source element ref; requires --headed")]
     pub from: Option<String>,
-    #[arg(long, name = "from-xy", help = "Source coordinates as x,y")]
+    #[arg(
+        long,
+        name = "from-xy",
+        help = "Source coordinates as x,y; requires --headed"
+    )]
     pub from_xy: Option<String>,
-    #[arg(long, help = "Destination element ref")]
+    #[arg(long, help = "Destination element ref; requires --headed")]
     pub to: Option<String>,
-    #[arg(long, name = "to-xy", help = "Destination coordinates as x,y")]
+    #[arg(
+        long,
+        name = "to-xy",
+        help = "Destination coordinates as x,y; requires --headed"
+    )]
     pub to_xy: Option<String>,
     #[arg(
         long,
@@ -158,14 +169,14 @@ pub(crate) struct DragCliArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MouseMoveArgs {
-    #[arg(long, help = "Absolute coordinates as x,y")]
+    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: String,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MouseClickArgs {
-    #[arg(long, help = "Absolute coordinates as x,y")]
+    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: String,
     #[arg(
         long,
@@ -182,7 +193,7 @@ pub(crate) struct MouseClickArgs {
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MousePointArgs {
-    #[arg(long, help = "Absolute coordinates as x,y")]
+    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: String,
     #[arg(
         long,

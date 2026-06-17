@@ -2,6 +2,8 @@ use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::interaction_policy::InteractionPolicy;
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
@@ -158,6 +160,21 @@ impl AdapterError {
             "Use an explicit mouse/focus command if physical interaction is intended",
         )
     }
+
+    pub fn policy_denied_for_policy(message: impl Into<String>, policy: InteractionPolicy) -> Self {
+        Self::new(ErrorCode::PolicyDenied, message)
+            .with_suggestion(policy_denied_suggestion(policy))
+    }
+}
+
+fn policy_denied_suggestion(policy: InteractionPolicy) -> &'static str {
+    if policy.allow_focus_steal && !policy.allow_cursor_move {
+        "Retry with --headed to permit cursor movement, or use an explicit mouse command if physical input is intended"
+    } else if !policy.allow_focus_steal && !policy.allow_cursor_move {
+        "Headless mode allows only accessibility-backed actions; refresh the snapshot or target an element with the needed semantic action"
+    } else {
+        "Use an explicit mouse/focus command if physical interaction is intended"
+    }
 }
 
 #[derive(Debug, Error)]
@@ -249,5 +266,16 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AmbiguousTarget);
         assert_eq!(err.code.as_str(), "AMBIGUOUS_TARGET");
         assert!(err.suggestion.is_some());
+    }
+
+    #[test]
+    fn policy_denied_suggestion_is_mode_aware() {
+        let headless =
+            AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::headless());
+        assert!(!headless.suggestion.unwrap().contains("--headed"));
+
+        let focus_fallback =
+            AdapterError::policy_denied_for_policy("blocked", InteractionPolicy::focus_fallback());
+        assert!(focus_fallback.suggestion.unwrap().contains("--headed"));
     }
 }

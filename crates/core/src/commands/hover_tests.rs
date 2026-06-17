@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     adapter::NativeHandle,
+    capability,
     error::AdapterError,
     node::Rect,
     refs::{RefEntry, RefMap},
@@ -60,7 +61,7 @@ fn ref_snapshot(pid: i32) -> String {
         states: vec![],
         bounds: None,
         bounds_hash: None,
-        available_actions: vec!["Click".into()],
+        available_actions: vec![capability::CLICK.into()],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -82,16 +83,16 @@ fn ref_args(snapshot_id: String) -> HoverArgs {
 }
 
 #[test]
-fn headless_ref_hover_never_steals_focus() {
+fn headless_ref_hover_is_policy_denied_before_cursor_move() {
     let _guard = HomeGuard::new();
     let snapshot_id = ref_snapshot(42);
     let adapter = HoverCaptureAdapter::new();
 
-    let value = execute(ref_args(snapshot_id), &adapter, &CommandContext::default()).unwrap();
+    let err = execute(ref_args(snapshot_id), &adapter, &CommandContext::default()).unwrap_err();
 
-    assert_eq!(value["hovered"], true);
+    assert_eq!(err.code(), "POLICY_DENIED");
     assert!(adapter.focused_pids.lock().unwrap().is_empty());
-    assert!(value.get("focused").is_none());
+    assert!(adapter.moved_to.lock().unwrap().is_none());
 }
 
 #[test]

@@ -43,7 +43,8 @@ pub(super) fn candidate_roots(
     prepare_for_read(&root, deadline)?;
     let mut roots = Vec::new();
     let mut dedupe = ElementDedupe;
-    if let Some(window) = exact_source_window_root(entry, deadline)? {
+    let windows = copy_ax_array(&root, "AXWindows").unwrap_or_default();
+    if let Some(window) = exact_source_window_from_windows(&windows, entry, deadline) {
         dedupe.push(&mut roots, window);
     }
     prepare_for_read(&root, deadline)?;
@@ -54,8 +55,7 @@ pub(super) fn candidate_roots(
     if let Some(main) = copy_element_attr(&root, "AXMainWindow") {
         dedupe.push(&mut roots, main);
     }
-    prepare_for_read(&root, deadline)?;
-    for window in copy_ax_array(&root, "AXWindows").unwrap_or_default() {
+    for window in windows {
         dedupe.push(&mut roots, window);
     }
     ensure_before_deadline(deadline)?;
@@ -150,14 +150,19 @@ fn exact_source_window_root(
     let Some(windows) = windows_for_pid(entry.pid, deadline)? else {
         return Ok(None);
     };
-    if let Some(window) = window_by_number(&windows, source_window_number(entry), deadline) {
-        return Ok(Some(window));
+    Ok(exact_source_window_from_windows(&windows, entry, deadline))
+}
+
+#[cfg(target_os = "macos")]
+fn exact_source_window_from_windows(
+    windows: &[AXElement],
+    entry: &RefEntry,
+    deadline: Instant,
+) -> Option<AXElement> {
+    if let Some(window) = window_by_number(windows, source_window_number(entry), deadline) {
+        return Some(window);
     }
-    Ok(window_by_title(
-        &windows,
-        entry.source_window_title.as_deref(),
-        deadline,
-    ))
+    window_by_title(windows, entry.source_window_title.as_deref(), deadline)
 }
 
 #[cfg(target_os = "macos")]

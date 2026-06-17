@@ -128,8 +128,9 @@ pub(crate) fn ax_scroll(
     }
 
     if policy.allow_focus_steal && !policy.allow_cursor_move {
-        return Err(AdapterError::policy_denied(
+        return Err(AdapterError::policy_denied_for_policy(
             "Cursor-moving scroll fallback is disabled by the current interaction policy",
+            policy,
         ));
     }
 

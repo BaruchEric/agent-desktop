@@ -2,6 +2,7 @@ use agent_desktop_core::{
     action_request::ActionRequest,
     action_result::ActionResult,
     adapter::{LiveElement, NativeHandle, PlatformAdapter, SnapshotSurface},
+    capability,
     element_state::ElementState,
     error::{AdapterError, ErrorCode},
     node::Rect,
@@ -16,6 +17,7 @@ mod ref_action_contract;
 struct ContractAdapter {
     resolve: ResolveMode,
     live_bounds: Option<Rect>,
+    live_value: Option<String>,
     dispatches: AtomicU32,
 }
 
@@ -44,11 +46,23 @@ impl PlatformAdapter for ContractAdapter {
             state: Some(ElementState {
                 role: "button".into(),
                 states: vec![],
-                value: None,
+                value: self.live_value.clone(),
             }),
             bounds: self.live_bounds,
-            available_actions: Some(vec!["Click".into()]),
+            available_actions: Some(vec![capability::CLICK.into()]),
         })
+    }
+
+    fn get_live_state(&self, _handle: &NativeHandle) -> Result<Option<ElementState>, AdapterError> {
+        Ok(Some(ElementState {
+            role: "button".into(),
+            states: vec![],
+            value: self.live_value.clone(),
+        }))
+    }
+
+    fn get_live_value(&self, _handle: &NativeHandle) -> Result<Option<String>, AdapterError> {
+        Ok(self.live_value.clone())
     }
 
     fn execute_action(
@@ -66,8 +80,14 @@ impl ContractAdapter {
         Self {
             resolve,
             live_bounds,
+            live_value: None,
             dispatches: AtomicU32::new(0),
         }
+    }
+
+    fn with_live_value(mut self, value: &str) -> Self {
+        self.live_value = Some(value.into());
+        self
     }
 
     fn resolve(&self) -> Result<NativeHandle, AdapterError> {
@@ -89,7 +109,7 @@ fn entry(bounds: Rect) -> RefEntry {
         states: vec![],
         bounds: Some(bounds),
         bounds_hash: Some(bounds.bounds_hash()),
-        available_actions: vec!["Click".into()],
+        available_actions: vec![capability::CLICK.into()],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -180,4 +200,43 @@ fn adapter_contract_wait_element_uses_session_snapshot() {
     assert_eq!(result["found"], true);
     assert_eq!(result["ref"], "@e1");
     assert_eq!(result["predicate"], "exists");
+}
+
+#[test]
+fn adapter_contract_wait_predicates_cover_live_state_paths() {
+    let bounds = Rect {
+        x: 1.0,
+        y: 1.0,
+        width: 20.0,
+        height: 20.0,
+    };
+    let context =
+        agent_desktop_core::context::CommandContext::new(Some("shared-agent".into()), None, false)
+            .unwrap();
+
+    let enabled = ref_action_contract::run_wait_element_command_with_predicate(
+        &ContractAdapter::new(ResolveMode::Ok, Some(bounds)),
+        entry(bounds),
+        &context,
+        ref_action_contract::WaitPredicate::new("enabled"),
+    )
+    .unwrap();
+    let actionable = ref_action_contract::run_wait_element_command_with_predicate(
+        &ContractAdapter::new(ResolveMode::Ok, Some(bounds)),
+        entry(bounds),
+        &context,
+        ref_action_contract::WaitPredicate::new("actionable").with_action("click"),
+    )
+    .unwrap();
+    let value = ref_action_contract::run_wait_element_command_with_predicate(
+        &ContractAdapter::new(ResolveMode::Ok, Some(bounds)).with_live_value("ready"),
+        entry(bounds),
+        &context,
+        ref_action_contract::WaitPredicate::new("value").with_value("ready"),
+    )
+    .unwrap();
+
+    assert_eq!(enabled["observed"]["enabled"], true);
+    assert_eq!(actionable["observed"]["actionable"], true);
+    assert_eq!(value["observed"]["matched"], true);
 }

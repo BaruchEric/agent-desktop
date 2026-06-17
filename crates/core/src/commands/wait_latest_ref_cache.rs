@@ -28,24 +28,26 @@ impl<'a> LatestRefCache<'a> {
         self.refmap.get(ref_id).cloned()
     }
 
-    pub(crate) fn refresh_if_due(&mut self) {
+    pub(crate) fn refresh_if_due(&mut self) -> Result<(), AppError> {
         if self.last_refresh.elapsed() < Duration::from_millis(500) {
-            return;
+            return Ok(());
         }
         self.last_refresh = Instant::now();
         if let Some(snapshot_id) = self.store.latest_snapshot_id() {
             if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
-                return;
+                return Ok(());
             }
             match self.store.load_snapshot(&snapshot_id) {
                 Ok(refmap) => {
                     self.snapshot_id = Some(snapshot_id);
                     self.refmap = refmap;
+                    Ok(())
                 }
                 Err(err) => {
                     tracing::warn!(
                         "latest snapshot {snapshot_id} unreadable during wait refresh: {err}"
                     );
+                    Err(err)
                 }
             }
         } else {
@@ -53,9 +55,11 @@ impl<'a> LatestRefCache<'a> {
                 Ok(refmap) => {
                     self.refmap = refmap;
                     self.snapshot_id = self.store.latest_snapshot_id();
+                    Ok(())
                 }
                 Err(err) => {
                     tracing::warn!("latest refmap unreadable during wait refresh: {err}");
+                    Err(err)
                 }
             }
         }

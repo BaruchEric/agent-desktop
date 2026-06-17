@@ -3,6 +3,8 @@ use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+const MAX_TRACE_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
 #[derive(Debug, Clone, Default)]
 pub struct TraceConfig {
     path: Option<PathBuf>,
@@ -79,6 +81,7 @@ fn open_trace_file(path: &Path) -> Result<std::fs::File, AppError> {
 }
 
 fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(), AppError> {
+    reject_oversized_trace(file)?;
     let mut body = Map::new();
     body.insert("event".to_string(), json!(event));
     body.insert(
@@ -98,6 +101,17 @@ fn write_event(file: &mut std::fs::File, event: &str, fields: Value) -> Result<(
     serde_json::to_writer(&mut *file, &Value::Object(body))?;
     use std::io::Write;
     file.write_all(b"\n").map_err(AppError::from)
+}
+
+fn reject_oversized_trace(file: &std::fs::File) -> Result<(), AppError> {
+    let len = file.metadata()?.len();
+    if len < MAX_TRACE_FILE_BYTES {
+        return Ok(());
+    }
+    Err(AppError::invalid_input_with_suggestion(
+        "Trace file reached the maximum supported size",
+        "Start a new --trace file or rotate the existing trace before retrying.",
+    ))
 }
 
 #[cfg(unix)]
@@ -145,7 +159,6 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "expected",
         "name",
         "description",
-        "message",
         "label",
         "query",
         "secret",
@@ -207,5 +220,70 @@ mod tests {
         assert!(result.is_err());
         let _ = std::fs::remove_file(&link);
         let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
+    fn trace_redacts_sensitive_fields_but_preserves_messages() {
+        let value = sanitize_trace_value(json!({
+            "text": "secret",
+            "message": "Target is not actionable: supported_action failed",
+            "details": { "name": "Private Button" },
+            "title": "Window"
+        }));
+
+        assert_eq!(value["text"]["redacted"], true);
+        assert_eq!(value["details"]["name"]["redacted"], true);
+        assert_eq!(value["title"]["redacted"], true);
+        assert_eq!(
+            value["message"],
+            "Target is not actionable: supported_action failed"
+        );
+    }
+
+    #[test]
+    fn trace_redaction_covers_nested_shapes_and_substring_keys() {
+        let value = sanitize_trace_value(json!({
+            "action": {
+                "typed_text": ["secret", "another"],
+                "api_token": {"kind": "bearer"},
+                "password": null,
+                "counter": 3
+            }
+        }));
+
+        assert_eq!(value["action"]["typed_text"]["redacted"], true);
+        assert_eq!(value["action"]["typed_text"]["items"], 2);
+        assert_eq!(value["action"]["api_token"]["redacted"], true);
+        assert_eq!(value["action"]["api_token"]["keys"], 1);
+        assert!(value["action"]["password"].is_null());
+        assert_eq!(value["action"]["counter"], 3);
+        assert_eq!(char_count_bucket(0), "0");
+        assert_eq!(char_count_bucket(8), "1-8");
+        assert_eq!(char_count_bucket(65), "33-128");
+    }
+
+    #[test]
+    fn trace_write_rejects_files_at_size_cap() {
+        let path = std::env::temp_dir().join(format!(
+            "agent-desktop-trace-cap-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_TRACE_FILE_BYTES).unwrap();
+        drop(file);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let mut file = open_trace_file(&path).unwrap();
+
+        let err = write_event(&mut file, "event", json!({})).unwrap_err();
+
+        assert_eq!(err.code(), "INVALID_ARGS");
+        let _ = std::fs::remove_file(path);
     }
 }

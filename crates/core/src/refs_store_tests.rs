@@ -49,6 +49,33 @@ fn snapshot_roundtrip_updates_latest_pointer() {
 }
 
 #[test]
+fn concurrent_writers_preserve_all_snapshots() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let mut handles = Vec::new();
+
+    for i in 0..8 {
+        let store = store.clone();
+        handles.push(std::thread::spawn(move || {
+            store
+                .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
+                .unwrap()
+        }));
+    }
+
+    let ids = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect::<Vec<_>>();
+
+    for id in &ids {
+        assert_eq!(store.load_snapshot(id).unwrap().len(), 1);
+    }
+    let latest = store.latest_snapshot_id().unwrap();
+    assert!(ids.iter().any(|id| id == &latest));
+}
+
+#[test]
 fn sessions_are_isolated_from_default_store() {
     let _guard = HomeGuard::new();
     let default_store = RefStore::new().unwrap();

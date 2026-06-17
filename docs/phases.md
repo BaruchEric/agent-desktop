@@ -77,7 +77,7 @@ Ref actions use `ActionRequest { action, policy }`. The default `InteractionPoli
 
 - Semantic AX steps run first.
 - Physical fallbacks are explicit and policy-gated.
-- Non-mouse ref commands must not silently focus apps or move the cursor.
+- Raw cursor commands (`hover`, `drag`, `mouse-*`) require `--headed`; other commands must not silently focus apps or move the cursor.
 - Expected OS denials return specific error codes such as `PERM_DENIED`, `SNAPSHOT_NOT_FOUND`, or `POLICY_DENIED`, not generic `INTERNAL`.
 
 Windows and Linux should implement the same signatures rather than copying macOS-specific fallback decisions.
@@ -437,7 +437,7 @@ The `ErrorCode` enum in `crates/core/src/error.rs` exposes these machine-readabl
 | `INVALID_ARGS` | Input | Bad CLI argument or unknown ref format | Fix the argument per CLI help |
 | `NOTIFICATION_NOT_FOUND` | Notification | Notification ID not found / NC reordered | Run 'list-notifications' to see current notifications |
 | `SNAPSHOT_NOT_FOUND` | Ref | Requested snapshot ID is missing | Run 'snapshot' again and use the returned snapshot_id |
-| `POLICY_DENIED` | Action policy | Physical fallback blocked by headless policy | Use an explicit focus/cursor/mouse command if physical interaction is intended |
+| `POLICY_DENIED` | Action policy | Physical input blocked by headless policy | Retry with `--headed` for explicit cursor movement, or use a semantic AX action when available |
 | `INTERNAL` | Internal | Unexpected error or caught panic | Re-run with verbose logging |
 
 Exit codes: `0` success, `1` structured error (JSON on stdout), `2` argument/parse error.
@@ -621,7 +621,7 @@ These items are tracked under P2-O16 below: registry migration via `build.rs` fi
 
 ### Core invariants (research-driven — from Phase 2 plan §Headless-First Invariant)
 
-1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement (except for explicit mouse commands). Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for non-mouse commands.
+1. **Headless-first inside the active desktop session.** Every command — existing and Phase 2 — must run without an agent-desktop GUI, foreground activation, focus steal, or physical cursor movement unless `--headed` explicitly opts into cursor input. Windows, macOS, and Linux still require the target app to exist in the current user's interactive desktop/display session for accessibility and capture APIs. Session 0, Server Core, secure desktops, locked desktops, and other-user sessions return `PLATFORM_NOT_SUPPORTED`, `PERM_DENIED`, or `WINDOW_NOT_FOUND` with `platform_detail`, not silent best effort. The invariant is enforced by integration tests: target window is NOT focused at test entry; `list-windows --focused-only` returns the same window before/after; cursor position unchanged for headless commands.
 2. **Skeleton traversal is platform-agnostic.** The novel progressive skeleton pattern (depth-3 clamp + `children_count` annotation + drill-down via `--root @ref` + scoped invalidation via `RefMap::remove_by_root_ref`) lives entirely in `crates/core/src/snapshot_ref.rs`. Windows adapter contributes ~50 LOC glue: `ControlViewWalker` (NOT `RawViewWalker` or `ContentViewWalker`) + `FindAll(TreeScope_Children, TrueCondition)` for `children_count` + fresh `UICacheRequest` per drill-down.
 3. **Asymmetric event threading.** `watch_element` uses main-thread `AXObserver` on macOS (research-confirmed: Apple DTS says all AX is main-thread-only; AXSwift / Hammerspoon / Phoenix all do this); worker-thread MTA `IUIAutomation` event handler on Windows (Microsoft 2025 threading doc: UIA supports cross-thread event delivery).
 4. **No `inventory` / `linkme` command registry.** Research confirmed neither survives link-GC reliably across ld64, ld-prime, GNU ld, lld, MSVC for cdylib consumers. Phase 2 uses `build.rs` filesystem enumeration of `crates/core/src/commands/*.rs` — deterministic, cdylib-safe, zero linker magic. The repository's "one command per file" rule becomes the codegen contract.

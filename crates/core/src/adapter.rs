@@ -284,11 +284,15 @@ pub trait PlatformAdapter: Send + Sync {
     }
 
     fn get_live_element(&self, handle: &NativeHandle) -> Result<LiveElement, AdapterError> {
-        Ok(LiveElement {
+        let live = LiveElement {
             state: optional_live_read(self.get_live_state(handle))?,
             bounds: optional_live_read(self.get_element_bounds(handle))?,
             available_actions: optional_live_read(self.get_live_actions(handle))?,
-        })
+        };
+        if live.state.is_none() && live.bounds.is_none() && live.available_actions.is_none() {
+            return Err(AdapterError::not_supported("get_live_element"));
+        }
+        Ok(live)
     }
 
     fn press_key_for_app(

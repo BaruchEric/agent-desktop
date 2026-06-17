@@ -6,6 +6,7 @@ use crate::{
     context::CommandContext,
     error::{AdapterError, AppError},
     refs::RefEntry,
+    resolved_element::ResolvedElement,
 };
 use serde_json::json;
 
@@ -73,17 +74,18 @@ pub fn execute_entry(
     request: ActionRequest,
 ) -> Result<ActionResult, AdapterError> {
     let handle = adapter.resolve_element_strict(entry)?;
+    let handle = ResolvedElement::new(adapter, handle);
+    let context = CommandContext::default();
     let result = execute_resolved(
         ResolvedRefAction {
             adapter,
             entry,
-            handle: &handle,
-            ref_id: "",
-            context: &CommandContext::default(),
+            handle: handle.handle(),
+            ref_id: "<ffi>",
+            context: &context,
         },
         request,
     );
-    let _ = adapter.release_handle(&handle);
     result.map_err(into_adapter_error)
 }
 

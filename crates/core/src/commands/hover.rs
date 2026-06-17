@@ -2,7 +2,7 @@ use crate::{
     action::{MouseButton, MouseEvent, MouseEventKind},
     adapter::PlatformAdapter,
     commands::point_resolve::{
-        PointResolveArgs, ResolvedPoint, focus_for_physical_input,
+        PointResolveArgs, focus_for_physical_input, require_cursor_policy,
         resolve_point_from_ref_or_xy_with_context,
     },
     context::CommandContext,
@@ -22,7 +22,17 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let resolved = resolve_hover_point(&args, adapter, context)?;
+    require_cursor_policy(context, "hover")?;
+    let resolved = resolve_point_from_ref_or_xy_with_context(
+        PointResolveArgs {
+            ref_id: args.ref_id.as_deref(),
+            xy: args.xy,
+            snapshot_id: args.snapshot_id.as_deref(),
+            missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        },
+        adapter,
+        context,
+    )?;
     let focused = focus_for_physical_input(resolved.pid, adapter, context)?;
     adapter.mouse_event(MouseEvent {
         kind: MouseEventKind::Move,
@@ -37,23 +47,6 @@ pub fn execute(
         response["focused"] = json!(true);
     }
     Ok(response)
-}
-
-fn resolve_hover_point(
-    args: &HoverArgs,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<ResolvedPoint, AppError> {
-    resolve_point_from_ref_or_xy_with_context(
-        PointResolveArgs {
-            ref_id: args.ref_id.as_deref(),
-            xy: args.xy,
-            snapshot_id: args.snapshot_id.as_deref(),
-            missing_input_message: "Provide a ref (@e1) or --xy x,y",
-        },
-        adapter,
-        context,
-    )
 }
 
 #[cfg(test)]

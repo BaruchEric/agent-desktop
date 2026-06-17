@@ -32,7 +32,25 @@ pub fn check_live(
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
     let mut observed = entry.clone();
-    let live = adapter.get_live_element(handle)?;
+    let live = match adapter.get_live_element(handle) {
+        Ok(live) => live,
+        Err(err)
+            if matches!(
+                err.code,
+                ErrorCode::PlatformNotSupported | ErrorCode::ActionNotSupported
+            ) =>
+        {
+            return check_with_stability(entry.bounds_hash, &observed, request);
+        }
+        Err(err) => return Err(err),
+    };
+    if live_element_is_stale(&live) {
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "Resolved element no longer exposes live accessibility state",
+        )
+        .with_suggestion("Run 'snapshot' again and retry with the refreshed ref"));
+    }
     if let Some(state) = live.state {
         observed.role = state.role;
         observed.states = state.states;
@@ -45,6 +63,15 @@ pub fn check_live(
         observed.available_actions = actions;
     }
     check_with_stability(entry.bounds_hash, &observed, request)
+}
+
+fn live_element_is_stale(live: &crate::adapter::LiveElement) -> bool {
+    let role_unknown = live
+        .state
+        .as_ref()
+        .is_none_or(|state| state.role == "unknown");
+    let actions_empty = live.available_actions.as_ref().is_none_or(Vec::is_empty);
+    role_unknown && live.bounds.is_none() && actions_empty
 }
 
 fn check_with_stability(
@@ -120,7 +147,10 @@ fn action_supported_check(entry: &RefEntry, request: &ActionRequest) -> Actionab
     if request.action.requires_cursor_policy() {
         return pass("supported_action");
     }
-    if supported_by_available_actions(&request.action, &entry.available_actions) {
+    if capability::contains_any(
+        &entry.available_actions,
+        capability::for_action(&request.action),
+    ) {
         return pass("supported_action");
     }
     if may_use_fallback(&request.action, request) {
@@ -156,11 +186,7 @@ fn editable_check(entry: &RefEntry, action: &Action) -> ActionabilityCheck {
     if entry.role == "textfield" || entry.role == "combobox" {
         return pass("editable");
     }
-    if entry
-        .available_actions
-        .iter()
-        .any(|action| action == capability::SET_VALUE)
-    {
+    if capability::contains(&entry.available_actions, capability::SET_VALUE) {
         return pass("editable");
     }
     fail("editable", format!("role {} is not editable", entry.role))
@@ -177,12 +203,6 @@ fn failure_reasons(report: &ActionabilityReport) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn supported_by_available_actions(action: &Action, available_actions: &[String]) -> bool {
-    capability::for_action(action)
-        .iter()
-        .any(|expected| available_actions.iter().any(|action| action == expected))
 }
 
 fn may_use_fallback(action: &Action, request: &ActionRequest) -> bool {
@@ -216,3 +236,7 @@ fn unknown(name: &'static str, reason: impl Into<String>) -> ActionabilityCheck 
 #[cfg(test)]
 #[path = "../actionability_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../actionability_live_tests.rs"]
+mod live_tests;

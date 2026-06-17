@@ -8,7 +8,7 @@ use crate::{
     },
     context::CommandContext,
     error::{AppError, ErrorCode},
-    notification::NotificationFilter,
+    notification::{NotificationFilter, NotificationInfo},
     refs_store::RefStore,
     search_text, snapshot,
 };
@@ -234,17 +234,17 @@ fn wait_for_notification(
     };
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
-    let mut baseline_indices: Option<std::collections::HashSet<usize>> = None;
+    let mut baseline: Option<std::collections::HashMap<NotificationFingerprint, usize>> = None;
     let mut last_error = None;
 
     loop {
         match adapter.list_notifications(&filter) {
-            Ok(current) => match &baseline_indices {
+            Ok(current) => match &baseline {
                 None => {
-                    baseline_indices = Some(current.iter().map(|n| n.index).collect());
+                    baseline = Some(notification_counts(&current));
                 }
                 Some(baseline) => {
-                    if let Some(notif) = current.iter().find(|n| !baseline.contains(&n.index)) {
+                    if let Some(notif) = first_new_notification(&current, baseline) {
                         let elapsed = start.elapsed().as_millis();
                         return Ok(json!({
                             "condition": "notification",
@@ -270,6 +270,53 @@ fn wait_for_notification(
         }
         std::thread::sleep(remaining.min(Duration::from_millis(500)));
     }
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct NotificationFingerprint {
+    app_name: String,
+    title: String,
+    body: Option<String>,
+    actions: Vec<String>,
+}
+
+impl From<&NotificationInfo> for NotificationFingerprint {
+    fn from(info: &NotificationInfo) -> Self {
+        Self {
+            app_name: info.app_name.clone(),
+            title: info.title.clone(),
+            body: info.body.clone(),
+            actions: info.actions.clone(),
+        }
+    }
+}
+
+fn notification_counts(
+    notifications: &[NotificationInfo],
+) -> std::collections::HashMap<NotificationFingerprint, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for notification in notifications {
+        *counts
+            .entry(NotificationFingerprint::from(notification))
+            .or_insert(0) += 1;
+    }
+    counts
+}
+
+fn first_new_notification<'a>(
+    current: &'a [NotificationInfo],
+    baseline: &std::collections::HashMap<NotificationFingerprint, usize>,
+) -> Option<&'a NotificationInfo> {
+    let mut seen = std::collections::HashMap::new();
+    for notification in current {
+        let fingerprint = NotificationFingerprint::from(notification);
+        let current_count = seen.entry(fingerprint.clone()).or_insert(0);
+        *current_count += 1;
+        if *current_count > baseline.get(&fingerprint).copied().unwrap_or(0) {
+            return Some(notification);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

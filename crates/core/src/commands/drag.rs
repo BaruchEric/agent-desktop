@@ -2,7 +2,8 @@ use crate::{
     action::DragParams,
     adapter::PlatformAdapter,
     commands::point_resolve::{
-        PointResolveArgs, focus_for_physical_input, resolve_point_from_ref_or_xy_with_context,
+        PointResolveArgs, focus_for_physical_input, require_cursor_policy,
+        resolve_point_from_ref_or_xy_with_context,
     },
     context::CommandContext,
     error::AppError,
@@ -24,6 +25,7 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    require_cursor_policy(context, "drag")?;
     let from = resolve_point_from_ref_or_xy_with_context(
         PointResolveArgs {
             ref_id: args.from_ref.as_deref(),

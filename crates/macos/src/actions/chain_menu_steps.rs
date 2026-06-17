@@ -186,7 +186,10 @@ mod imp {
             .any(|value| {
                 let matches = selected_items_text(&value);
                 if matches {
-                    tracing::debug!("selected-items menu: matched control text {value:?}");
+                    tracing::debug!(
+                        text_chars = value.chars().count(),
+                        "selected-items menu: matched control text"
+                    );
                 }
                 matches
             })

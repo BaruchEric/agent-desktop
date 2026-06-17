@@ -193,7 +193,7 @@ pub(crate) fn dispatch(
 
         Commands::MouseMove(a) => {
             let (x, y) = parse_xy(&a.xy)?;
-            mouse_move::execute(mouse_move::MouseMoveArgs { x, y }, adapter)
+            mouse_move::execute(mouse_move::MouseMoveArgs { x, y }, adapter, context)
         }
 
         Commands::MouseClick(a) => {
@@ -206,6 +206,7 @@ pub(crate) fn dispatch(
                     count: a.count,
                 },
                 adapter,
+                context,
             )
         }
 
@@ -218,6 +219,7 @@ pub(crate) fn dispatch(
                     button: parse_mouse_button(&a.button)?,
                 },
                 adapter,
+                context,
             )
         }
 
@@ -230,6 +232,7 @@ pub(crate) fn dispatch(
                     button: parse_mouse_button(&a.button)?,
                 },
                 adapter,
+                context,
             )
         }
 

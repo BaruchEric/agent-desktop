@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     action::DragParams,
     adapter::{NativeHandle, PlatformAdapter},
+    capability,
     error::AdapterError,
     node::Rect,
     refs::{RefEntry, RefMap},
@@ -65,7 +66,12 @@ fn xy_args(drop_delay_ms: Option<u64>) -> DragArgs {
 fn drop_delay_is_threaded_into_drag_params_and_response() {
     let adapter = DragCaptureAdapter::new();
 
-    let value = execute(xy_args(Some(750)), &adapter, &CommandContext::default()).unwrap();
+    let value = execute(
+        xy_args(Some(750)),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
 
     assert_eq!(value["dragged"], true);
     assert_eq!(value["drop_delay_ms"], 750);
@@ -79,7 +85,12 @@ fn drop_delay_is_threaded_into_drag_params_and_response() {
 fn drop_delay_omitted_uses_adapter_default_and_no_response_field() {
     let adapter = DragCaptureAdapter::new();
 
-    let value = execute(xy_args(None), &adapter, &CommandContext::default()).unwrap();
+    let value = execute(
+        xy_args(None),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
 
     assert!(value.get("drop_delay_ms").is_none());
     let captured = adapter.captured.lock().unwrap().clone().unwrap();
@@ -96,7 +107,7 @@ fn ref_entry(pid: i32) -> RefEntry {
         states: vec![],
         bounds: None,
         bounds_hash: None,
-        available_actions: vec!["Click".into()],
+        available_actions: vec![capability::CLICK.into()],
         source_app: None,
         source_window_id: None,
         source_window_title: None,
@@ -145,27 +156,28 @@ fn drag_resolves_ref_bounds_to_center_point() {
         duration_ms: None,
         drop_delay_ms: Some(300),
     };
-    execute(args, &adapter, &CommandContext::default()).unwrap();
+    execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 
     let captured = adapter.captured.lock().unwrap().clone().unwrap();
     assert_eq!((captured.from.x, captured.from.y), (30.0, 50.0));
 }
 
 #[test]
-fn headless_ref_drag_never_steals_focus() {
+fn headless_ref_drag_is_policy_denied_before_cursor_move() {
     let _guard = HomeGuard::new();
     let snapshot_id = cross_app_snapshot();
     let adapter = DragCaptureAdapter::new();
 
-    let value = execute(
+    let err = execute(
         cross_app_args(snapshot_id),
         &adapter,
         &CommandContext::default(),
     )
-    .unwrap();
+    .unwrap_err();
 
+    assert_eq!(err.code(), "POLICY_DENIED");
     assert!(adapter.focused_pids.lock().unwrap().is_empty());
-    assert!(value.get("focused").is_none());
+    assert!(adapter.captured.lock().unwrap().is_none());
 }
 
 #[test]

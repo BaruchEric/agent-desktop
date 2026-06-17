@@ -1,6 +1,9 @@
 use crate::{
-    action::Point, adapter::PlatformAdapter, commands::helpers::resolve_ref_with_context,
-    context::CommandContext, error::AppError,
+    action::Point,
+    adapter::PlatformAdapter,
+    commands::helpers::resolve_ref_with_context,
+    context::CommandContext,
+    error::{AdapterError, AppError},
 };
 use serde_json::json;
 
@@ -14,6 +17,21 @@ pub(crate) struct PointResolveArgs<'a> {
 pub(crate) struct ResolvedPoint {
     pub point: Point,
     pub pid: Option<i32>,
+}
+
+pub(crate) fn require_cursor_policy(
+    context: &CommandContext,
+    command: &str,
+) -> Result<(), AppError> {
+    let policy = context.physical_input_policy();
+    if policy.allow_cursor_move {
+        return Ok(());
+    }
+    Err(AdapterError::policy_denied_for_policy(
+        format!("{command} moves the cursor and is disabled in headless mode"),
+        policy,
+    )
+    .into())
 }
 
 pub(crate) fn resolve_point_from_ref_or_xy_with_context(
@@ -66,4 +84,21 @@ pub(crate) fn focus_for_physical_input(
     };
     context.trace_lazy("input.focus_app", || json!({ "pid": pid, "ok": focused }))?;
     Ok(focused)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physical_input_requires_headed_context() {
+        let err = require_cursor_policy(&CommandContext::default(), "mouse-move").unwrap_err();
+
+        assert_eq!(err.code(), "POLICY_DENIED");
+    }
+
+    #[test]
+    fn headed_context_allows_physical_input() {
+        require_cursor_policy(&CommandContext::default().with_headed(true), "mouse-move").unwrap();
+    }
 }

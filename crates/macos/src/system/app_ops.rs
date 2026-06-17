@@ -1,4 +1,9 @@
-use agent_desktop_core::{adapter::WindowFilter, error::AdapterError, node::WindowInfo};
+use agent_desktop_core::{
+    adapter::WindowFilter,
+    error::{AdapterError, ErrorCode},
+    node::WindowInfo,
+};
+use std::time::Duration;
 
 #[cfg(target_os = "macos")]
 pub fn pid_from_element(el: &crate::tree::AXElement) -> Option<i32> {
@@ -72,29 +77,7 @@ pub fn focus_window_impl(win: &WindowInfo) -> Result<(), AdapterError> {
         win.app,
         win.title
     );
-    use accessibility_sys::{AXUIElementCreateApplication, AXUIElementSetAttributeValue};
-    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
-
-    let app_el = crate::tree::AXElement(unsafe { AXUIElementCreateApplication(win.pid) });
-    if app_el.0.is_null() {
-        return Err(AdapterError::internal("Failed to create AX app element"));
-    }
-
-    let frontmost_attr = CFString::new("AXFrontmost");
-    let err = unsafe {
-        AXUIElementSetAttributeValue(
-            app_el.0,
-            frontmost_attr.as_concrete_TypeRef(),
-            CFBoolean::true_value().as_CFTypeRef(),
-        )
-    };
-    if err != accessibility_sys::kAXErrorSuccess {
-        return Err(AdapterError::internal(format!(
-            "Failed to set AXFrontmost (err={err})"
-        )));
-    }
-    wait_until_frontmost(&app_el);
-
+    ensure_app_focused(win.pid)?;
     let main_win = crate::tree::window_element_for(win.pid, &win.title);
     crate::system::window_ops::raise_window(&main_win);
     Ok(())
@@ -225,7 +208,15 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
     if force {
         let mut command = Command::new("/usr/bin/pkill");
         command.arg("-x").arg(id);
-        crate::system::process::run_with_timeout(&mut command, "pkill", QUIT_TIMEOUT)?;
+        let output = crate::system::process::run_with_timeout(&mut command, "pkill", QUIT_TIMEOUT)?;
+        if !output.status.success() {
+            return Err(AdapterError::new(
+                ErrorCode::AppNotFound,
+                format!("App '{id}' was not running or could not be matched for force close"),
+            )
+            .with_suggestion("Use 'list-apps' to verify the running app name before retrying."));
+        }
+        wait_until_app_exits(id, QUIT_TIMEOUT)?;
     } else {
         let pid = crate::system::key_dispatch::find_pid_by_name(id)?;
         let app_ax = crate::tree::element_for_pid(pid);
@@ -253,6 +244,25 @@ end tell"#
         }
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn wait_until_app_exits(id: &str, timeout: Duration) -> Result<(), AdapterError> {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    while start.elapsed() <= timeout {
+        if crate::system::app_list::pid_for_app_name(id).is_none() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Err(
+        AdapterError::timeout(format!("App '{id}' did not terminate after force close"))
+            .with_suggestion(
+                "Retry after checking for save dialogs or helper processes with 'list-apps'.",
+            ),
+    )
 }
 
 #[cfg(target_os = "macos")]

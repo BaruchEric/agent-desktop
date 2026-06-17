@@ -60,11 +60,11 @@ pub(crate) fn resolve_ref_with_context<'a>(
         }
     };
     tracing::debug!(
-        "resolve: {} -> pid={} role={} name={:?}",
+        "resolve: {} -> pid={} role={} name_chars={:?}",
         ref_id,
         entry.pid,
         entry.role,
-        entry.name.as_deref().unwrap_or("(none)")
+        entry.name.as_deref().map(|name| name.chars().count())
     );
     context.trace_lazy("ref.resolve.entry", || {
         json!({

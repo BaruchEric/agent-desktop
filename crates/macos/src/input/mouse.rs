@@ -62,9 +62,16 @@ mod imp {
         let duration_ms = params.duration_ms.unwrap_or(300);
         let steps = (duration_ms / DWELL_TICK_MS).max(4) as usize;
         let step_delay = Duration::from_millis(duration_ms / steps as u64);
+        let source = event_source()?;
 
-        post_event(CGEventType::LeftMouseDown, from, CGMouseButton::Left)?;
+        post_event_with_source(
+            &source,
+            CGEventType::LeftMouseDown,
+            from,
+            CGMouseButton::Left,
+        )?;
         let mut release = MouseUpGuard {
+            source: &source,
             origin: from,
             armed: true,
         };
@@ -74,7 +81,8 @@ mod imp {
             let t = i as f64 / steps as f64;
             let x = params.from.x + (params.to.x - params.from.x) * t;
             let y = params.from.y + (params.to.y - params.from.y) * t;
-            post_event(
+            post_event_with_source(
+                &source,
                 CGEventType::LeftMouseDragged,
                 CGPoint::new(x, y),
                 CGMouseButton::Left,
@@ -83,6 +91,7 @@ mod imp {
         }
 
         dwell_over_destination(
+            &source,
             to,
             params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS),
             DWELL_TICK_MS,
@@ -103,28 +112,40 @@ mod imp {
     /// and the cursor wherever the last successful event put it), and a
     /// drop target under the origin still sees a self-drop, which most
     /// targets treat as a no-op.
-    struct MouseUpGuard {
+    struct MouseUpGuard<'a> {
+        source: &'a CGEventSource,
         origin: CGPoint,
         armed: bool,
     }
 
-    impl MouseUpGuard {
+    impl MouseUpGuard<'_> {
         fn release_at(&mut self, point: CGPoint) -> Result<(), AdapterError> {
-            post_event(CGEventType::LeftMouseUp, point, CGMouseButton::Left)?;
+            post_event_with_source(
+                self.source,
+                CGEventType::LeftMouseUp,
+                point,
+                CGMouseButton::Left,
+            )?;
             self.armed = false;
             Ok(())
         }
     }
 
-    impl Drop for MouseUpGuard {
+    impl Drop for MouseUpGuard<'_> {
         fn drop(&mut self) {
             if self.armed {
-                let _ = post_event(
+                let _ = post_event_with_source(
+                    self.source,
                     CGEventType::LeftMouseDragged,
                     self.origin,
                     CGMouseButton::Left,
                 );
-                let _ = post_event(CGEventType::LeftMouseUp, self.origin, CGMouseButton::Left);
+                let _ = post_event_with_source(
+                    self.source,
+                    CGEventType::LeftMouseUp,
+                    self.origin,
+                    CGMouseButton::Left,
+                );
             }
         }
     }
@@ -135,6 +156,7 @@ mod imp {
     /// drop rather than a bare drag — macOS targets can drop the highlight if
     /// no movement arrives. A zero delay still posts one settling event.
     fn dwell_over_destination(
+        source: &CGEventSource,
         to: CGPoint,
         drop_delay_ms: u64,
         tick_ms: u64,
@@ -144,7 +166,12 @@ mod imp {
 
         let ticks = drop_delay_ms.div_ceil(tick_ms).max(1);
         for _ in 0..ticks {
-            post_event(CGEventType::LeftMouseDragged, to, CGMouseButton::Left)?;
+            post_event_with_source(
+                source,
+                CGEventType::LeftMouseDragged,
+                to,
+                CGMouseButton::Left,
+            )?;
             sleep(Duration::from_millis(tick_ms));
         }
         Ok(())
@@ -192,10 +219,23 @@ mod imp {
         point: CGPoint,
         button: CGMouseButton,
     ) -> Result<CGEvent, AdapterError> {
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|()| AdapterError::internal("Failed to create CGEventSource"))?;
-        CGEvent::new_mouse_event(source, event_type, point, button)
+        let source = event_source()?;
+        create_event_with_source(&source, event_type, point, button)
+    }
+
+    fn create_event_with_source(
+        source: &CGEventSource,
+        event_type: CGEventType,
+        point: CGPoint,
+        button: CGMouseButton,
+    ) -> Result<CGEvent, AdapterError> {
+        CGEvent::new_mouse_event(source.clone(), event_type, point, button)
             .map_err(|()| AdapterError::internal("CGEvent::new_mouse_event failed"))
+    }
+
+    fn event_source() -> Result<CGEventSource, AdapterError> {
+        CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+            .map_err(|()| AdapterError::internal("Failed to create CGEventSource"))
     }
 
     fn post_event(
@@ -204,6 +244,17 @@ mod imp {
         button: CGMouseButton,
     ) -> Result<(), AdapterError> {
         let ev = create_event(event_type, point, button)?;
+        ev.post(CGEventTapLocation::HID);
+        Ok(())
+    }
+
+    fn post_event_with_source(
+        source: &CGEventSource,
+        event_type: CGEventType,
+        point: CGPoint,
+        button: CGMouseButton,
+    ) -> Result<(), AdapterError> {
+        let ev = create_event_with_source(source, event_type, point, button)?;
         ev.post(CGEventTapLocation::HID);
         Ok(())
     }

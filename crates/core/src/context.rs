@@ -49,9 +49,9 @@ impl CommandContext {
         }
     }
 
-    /// Policy for the raw physical-input commands (hover, drag, mouse-*).
-    /// They have no semantic action chain, so the base is fully headless:
-    /// a ref-addressed gesture may not steal focus unless `--headed` opts in.
+    /// Policy for raw physical-input commands (hover, drag, mouse-*). They
+    /// have no semantic action chain, so headless denies both focus stealing
+    /// and cursor movement unless `--headed` opts in.
     pub fn physical_input_policy(&self) -> InteractionPolicy {
         self.policy_with_base(InteractionPolicy::headless())
     }
@@ -232,7 +232,7 @@ mod tests {
                     "value": "hidden",
                     "name": "private label",
                     "description": "private desc",
-                    "message": "private error",
+                    "message": "diagnostic error",
                     "post_state": { "value": "deep secret" },
                     "target_label": "button secret",
                     "nested": { "expected": "token" },
@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(event["value"]["redacted"], true);
         assert_eq!(event["name"]["redacted"], true);
         assert_eq!(event["description"]["redacted"], true);
-        assert_eq!(event["message"]["redacted"], true);
+        assert_eq!(event["message"], "diagnostic error");
         assert_eq!(event["post_state"]["value"]["redacted"], true);
         assert_eq!(event["target_label"]["redacted"], true);
         assert_eq!(event["nested"]["expected"]["redacted"], true);
@@ -263,7 +263,6 @@ mod tests {
         assert!(!body.contains("hidden"));
         assert!(!body.contains("private label"));
         assert!(!body.contains("private desc"));
-        assert!(!body.contains("private error"));
         assert!(!body.contains("token"));
         assert!(!body.contains("private window title"));
         assert!(!body.contains("internal.example"));

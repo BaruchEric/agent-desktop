@@ -24,8 +24,9 @@ mod imp {
         policy: InteractionPolicy,
     ) -> Result<(), AdapterError> {
         if !policy.allow_cursor_move || !policy.allow_focus_steal {
-            return Err(AdapterError::policy_denied(
+            return Err(AdapterError::policy_denied_for_policy(
                 "Physical click fallback is disabled by the current interaction policy",
+                policy,
             ));
         }
         if let Some(pid) = crate::system::app_ops::pid_from_element(el) {

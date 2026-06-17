@@ -51,6 +51,7 @@ struct ContentView: View {
     @State private var showSheet = false
     @State private var showPopover = false
     @State private var sheetStatus = "idle"
+    @State private var sheetFieldValue = ""
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
@@ -332,7 +333,7 @@ struct ContentView: View {
     private var sheetContent: some View {
         VStack(spacing: 12) {
             Text("Sheet Title").font(.headline).accessibilityLabel("sheet-title")
-            TextField("Sheet Field", text: .constant("")).accessibilityLabel("sheet-field").frame(width: 200)
+            TextField("Sheet Field", text: $sheetFieldValue).accessibilityLabel("sheet-field").frame(width: 200)
             Button("Confirm Sheet") { sheetStatus = "confirmed"; showSheet = false }
                 .accessibilityLabel("confirm-sheet")
             Button("Cancel Sheet") { sheetStatus = "cancelled"; showSheet = false }

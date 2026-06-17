@@ -19,6 +19,20 @@ pub(crate) fn increment_deadline_error(start: f64, current: f64, target: f64) ->
         }))
 }
 
+pub(crate) fn increment_step_limit_error(start: f64, current: f64, target: f64) -> AdapterError {
+    AdapterError::timeout("Chain step limit was reached while stepping the value toward the target")
+        .with_suggestion(
+            "Re-read the element value before retrying; the control may expose a step size too small for the requested target.",
+        )
+        .with_details(serde_json::json!({
+            "kind": "chain_step_limit",
+            "value_before": start,
+            "value_at_limit": current,
+            "target": target,
+            "mutated": (current - start).abs() >= f64::EPSILON,
+        }))
+}
+
 /// Error for the chain deadline truncating a disclosure settle wait. The
 /// triggering action may still land after the truncated wait, so the
 /// outcome is unknown — TIMEOUT with the observed state, mirroring
@@ -72,7 +86,10 @@ fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{bool_write_had_effect, dynamic_write_had_effect, increment_deadline_error};
+    use super::{
+        bool_write_had_effect, dynamic_write_had_effect, increment_deadline_error,
+        increment_step_limit_error,
+    };
 
     #[test]
     fn increment_deadline_error_is_timeout_and_reports_partial_mutation() {
@@ -94,6 +111,17 @@ mod tests {
         let details = err.details.unwrap();
         assert_eq!(details["mutated"], false);
         assert_eq!(details["kind"], "chain_deadline");
+    }
+
+    #[test]
+    fn increment_step_limit_error_reports_partial_mutation() {
+        let err = increment_step_limit_error(0.0, 1024.0, 5000.0);
+
+        assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
+        let details = err.details.unwrap();
+        assert_eq!(details["kind"], "chain_step_limit");
+        assert_eq!(details["value_at_limit"], 1024.0);
+        assert_eq!(details["mutated"], true);
     }
 
     #[test]

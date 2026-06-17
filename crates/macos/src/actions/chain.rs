@@ -65,8 +65,9 @@ mod imp {
                 );
             }
             if matches!(step, ChainStep::CGClick { .. }) && !physical_click_permitted(policy) {
-                return Err(AdapterError::policy_denied(
+                return Err(AdapterError::policy_denied_for_policy(
                     "Physical click fallback is disabled by the current interaction policy",
+                    policy,
                 ));
             }
             let label = step_label(step);
@@ -248,22 +249,25 @@ mod imp {
         target: &str,
         deadline: Option<Instant>,
     ) -> Result<bool, AdapterError> {
-        let target: f64 = match target.parse() {
-            Ok(t) => t,
-            Err(_) => return Ok(false),
+        const MAX_INCREMENT_STEPS: usize = 1024;
+
+        let target = match finite_target(target) {
+            Some(target) => target,
+            None => return Ok(false),
         };
         let read = || crate::tree::copy_value_typed(el).and_then(|v| v.parse::<f64>().ok());
         let mut current = match read() {
             Some(c) => c,
             None => return Ok(false),
         };
-        if !ax_helpers::has_ax_action(el, "AXIncrement")
-            && !ax_helpers::has_ax_action(el, "AXDecrement")
+        let actions = ax_helpers::list_ax_actions(el);
+        if !actions.iter().any(|action| action == "AXIncrement")
+            && !actions.iter().any(|action| action == "AXDecrement")
         {
             return Ok(false);
         }
         let start = current;
-        for _ in 0..1024 {
+        for _ in 0..MAX_INCREMENT_STEPS {
             if (current - target).abs() < 0.5 {
                 return Ok(true);
             }
@@ -285,7 +289,19 @@ mod imp {
                 _ => break,
             }
         }
-        Ok((current - target).abs() < 0.5)
+        if (current - target).abs() < 0.5 {
+            return Ok(true);
+        }
+        if (current - start).abs() >= f64::EPSILON {
+            return Err(chain_verify::increment_step_limit_error(
+                start, current, target,
+            ));
+        }
+        Ok(false)
+    }
+
+    fn finite_target(target: &str) -> Option<f64> {
+        target.parse::<f64>().ok().filter(|value| value.is_finite())
     }
 
     fn set_bool_verified(el: &AXElement, attr: &str, value: bool) -> Result<bool, AdapterError> {
@@ -295,6 +311,20 @@ mod imp {
                 value,
                 crate::tree::copy_bool_attr(el, attr),
             ))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::finite_target;
+
+        #[test]
+        fn finite_target_rejects_non_finite_numbers() {
+            assert_eq!(finite_target("42.5"), Some(42.5));
+            assert_eq!(finite_target("NaN"), None);
+            assert_eq!(finite_target("inf"), None);
+            assert_eq!(finite_target("-inf"), None);
+            assert_eq!(finite_target("not-a-number"), None);
+        }
     }
 }
 

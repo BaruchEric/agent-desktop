@@ -110,7 +110,11 @@ mod imp {
         std::thread::sleep(std::time::Duration::from_millis(150));
         let final_val = crate::tree::copy_string_attr(&owner, "AXValue");
         if final_val.as_deref() != Some(label.as_str()) {
-            tracing::debug!("value_relay: reverted to {final_val:?}, expected {label:?}");
+            tracing::debug!(
+                observed_chars = final_val.as_deref().map(|value| value.chars().count()),
+                expected_chars = label.chars().count(),
+                "value_relay: value reverted"
+            );
         }
         Ok(final_val.as_deref() == Some(label.as_str()))
     }

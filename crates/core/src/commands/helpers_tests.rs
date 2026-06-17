@@ -2,6 +2,7 @@ use super::test_support::entry;
 use super::*;
 use crate::action::Action;
 use crate::adapter::NativeHandle;
+use crate::capability;
 use crate::error::{AdapterError, ErrorCode};
 use crate::node::AppInfo;
 use crate::refs::RefMap;
@@ -171,7 +172,15 @@ impl PlatformAdapter for CountingPipelineAdapter {
         _handle: &NativeHandle,
     ) -> Result<crate::adapter::LiveElement, AdapterError> {
         self.live_reads.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::adapter::LiveElement::default())
+        Ok(crate::adapter::LiveElement {
+            state: Some(crate::element_state::ElementState {
+                role: "button".into(),
+                states: vec![],
+                value: None,
+            }),
+            bounds: None,
+            available_actions: Some(vec![capability::CLICK.into()]),
+        })
     }
 
     fn execute_action(

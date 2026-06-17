@@ -31,7 +31,16 @@ pub fn run_wait_element_command(
     entry: RefEntry,
     context: &CommandContext,
 ) -> Result<serde_json::Value, agent_desktop_core::AppError> {
-    with_saved_entry(entry, context, |snapshot_id| {
+    run_wait_element_command_with_predicate(adapter, entry, context, WaitPredicate::new("exists"))
+}
+
+pub fn run_wait_element_command_with_predicate(
+    adapter: &dyn PlatformAdapter,
+    entry: RefEntry,
+    context: &CommandContext,
+    predicate: WaitPredicate<'_>,
+) -> Result<serde_json::Value, agent_desktop_core::AppError> {
+    with_saved_entry(entry, context, |_| {
         wait::execute(
             wait::WaitArgs {
                 mode: wait::WaitModeArgs {
@@ -44,10 +53,10 @@ pub fn run_wait_element_command(
                     notification: false,
                 },
                 predicate: wait::WaitPredicateArgs {
-                    snapshot_id: Some(snapshot_id),
-                    predicate: Some("exists".into()),
-                    value: None,
-                    action: None,
+                    snapshot_id: None,
+                    predicate: Some(predicate.name.into()),
+                    value: predicate.value.map(String::from),
+                    action: predicate.action.map(String::from),
                     count: None,
                 },
                 timeout_ms: 100,
@@ -57,6 +66,32 @@ pub fn run_wait_element_command(
             context,
         )
     })
+}
+
+pub struct WaitPredicate<'a> {
+    name: &'a str,
+    value: Option<&'a str>,
+    action: Option<&'a str>,
+}
+
+impl<'a> WaitPredicate<'a> {
+    pub fn new(name: &'a str) -> Self {
+        Self {
+            name,
+            value: None,
+            action: None,
+        }
+    }
+
+    pub fn with_value(mut self, value: &'a str) -> Self {
+        self.value = Some(value);
+        self
+    }
+
+    pub fn with_action(mut self, action: &'a str) -> Self {
+        self.action = Some(action);
+        self
+    }
 }
 
 fn with_saved_entry<T>(

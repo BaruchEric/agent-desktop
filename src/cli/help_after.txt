@@ -30,12 +30,12 @@ KEYBOARD
   key-up <combo>             Release a held key or modifier
 
 MOUSE
-  hover <ref|--xy>           Move cursor to element or coordinates
-  drag                       Drag from one element/point to another
-  mouse-move --xy x,y        Move cursor to absolute coordinates
-  mouse-click --xy x,y       Click at coordinates (--button, --count)
-  mouse-down --xy x,y        Press mouse button at coordinates
-  mouse-up --xy x,y          Release mouse button at coordinates
+  hover <ref|--xy>           Move cursor to element or coordinates (requires --headed)
+  drag                       Drag from one element/point to another (requires --headed)
+  mouse-move --xy x,y        Move cursor to absolute coordinates (requires --headed)
+  mouse-click --xy x,y       Click at coordinates (--button, --count; requires --headed)
+  mouse-down --xy x,y        Press mouse button at coordinates (requires --headed)
+  mouse-up --xy x,y          Release mouse button at coordinates (requires --headed)
 
 APP & WINDOW
   launch <app>               Launch app and wait until window is visible
@@ -111,11 +111,11 @@ EXAMPLES
   agent-desktop check @e3 --snapshot <snapshot_id>
   agent-desktop type @e2 --snapshot <snapshot_id> "hello@example.com"
   agent-desktop press cmd+z
-  agent-desktop drag --from @e1 --to @e5
-  agent-desktop hover @e5
+  agent-desktop --headed drag --from @e1 --to @e5
+  agent-desktop --headed hover @e5
   agent-desktop minimize --app TextEdit
   agent-desktop resize-window --app TextEdit --width 800 --height 600
-  agent-desktop mouse-click --xy 500,300
+  agent-desktop --headed mouse-click --xy 500,300
   agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
   agent-desktop wait --element @e5 --predicate actionable --timeout 5000
   agent-desktop --session run-a --trace /tmp/ad.jsonl click @e5

@@ -63,7 +63,7 @@ pub(crate) struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Run ref actions headed: permit cursor movement and focus stealing so physical click/scroll/keypress fallbacks can complete. Default is headless (AX-only, no cursor)."
+        help = "Permit cursor movement and focus stealing for physical input commands and fallbacks. Default is headless (AX-only, no cursor)."
     )]
     pub headed: bool,
 
@@ -123,17 +123,17 @@ pub(crate) enum Commands {
     KeyDown(KeyComboArgs),
     #[command(about = "Release a held key or modifier")]
     KeyUp(KeyComboArgs),
-    #[command(about = "Move cursor to element center or coordinates")]
+    #[command(about = "Move cursor to element center or coordinates (requires --headed)")]
     Hover(HoverArgs),
-    #[command(about = "Drag from one element or point to another")]
+    #[command(about = "Drag from one element or point to another (requires --headed)")]
     Drag(DragCliArgs),
-    #[command(about = "Move cursor to absolute screen coordinates")]
+    #[command(about = "Move cursor to absolute screen coordinates (requires --headed)")]
     MouseMove(MouseMoveArgs),
-    #[command(about = "Click at absolute screen coordinates")]
+    #[command(about = "Click at absolute screen coordinates (requires --headed)")]
     MouseClick(MouseClickArgs),
-    #[command(about = "Press mouse button at coordinates (without releasing)")]
+    #[command(about = "Press mouse button at coordinates (requires --headed)")]
     MouseDown(MousePointArgs),
-    #[command(about = "Release mouse button at coordinates")]
+    #[command(about = "Release mouse button at coordinates (requires --headed)")]
     MouseUp(MousePointArgs),
     #[command(about = "Launch application and wait until its window is visible")]
     Launch(LaunchArgs),

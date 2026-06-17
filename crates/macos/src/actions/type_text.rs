@@ -49,8 +49,8 @@ impl Drop for ClipboardRestore {
 fn type_via_clipboard_paste(el: &AXElement, text: &str) -> Result<(), AdapterError> {
     let before = readable_value(el);
     let previous = crate::input::clipboard::get().unwrap_or_default();
-    crate::input::clipboard::set(text)?;
     let _restore = ClipboardRestore { previous };
+    crate::input::clipboard::set(text)?;
     std::thread::sleep(std::time::Duration::from_millis(50));
     let combo = agent_desktop_core::action::KeyCombo {
         key: "v".into(),

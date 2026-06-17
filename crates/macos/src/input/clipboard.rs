@@ -38,18 +38,10 @@ mod imp {
         tracing::debug!("clipboard: get");
         unsafe {
             let pb = pasteboard()?;
-            let sel = sel_registerName(c"stringForType:".as_ptr());
-            let send: unsafe extern "C" fn(Id, Sel, Id) -> Id =
-                std::mem::transmute(objc_msgSend as *const c_void);
-            let ns_string = send(pb, sel, NSPasteboardTypeString);
-            if ns_string.is_null() {
+            let Some(result) = read_string(pb) else {
                 tracing::debug!("clipboard: get -> empty");
                 return Ok(String::new());
-            }
-            let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
-                ns_string as core_foundation_sys::string::CFStringRef,
-            );
-            let result = cf_str.to_string();
+            };
             tracing::debug!("clipboard: get -> {} chars", result.len());
             Ok(result)
         }
@@ -59,18 +51,10 @@ mod imp {
         tracing::debug!("clipboard: set {} chars", text.len());
         unsafe {
             let pb = pasteboard()?;
-            let clear_sel = sel_registerName(c"clearContents".as_ptr());
-            let send_void: unsafe extern "C" fn(Id, Sel) =
-                std::mem::transmute(objc_msgSend as *const c_void);
-            send_void(pb, clear_sel);
-
-            let cf_text = core_foundation::string::CFString::new(text);
-            let ns_text = cf_text.as_concrete_TypeRef() as Id;
-            let set_sel = sel_registerName(c"setString:forType:".as_ptr());
-            let send_two: unsafe extern "C" fn(Id, Sel, Id, Id) -> bool =
-                std::mem::transmute(objc_msgSend as *const c_void);
-            let ok = send_two(pb, set_sel, ns_text, NSPasteboardTypeString);
-            if !ok {
+            let previous = read_string(pb);
+            clear_pasteboard(pb);
+            if !write_string(pb, text) {
+                restore_after_failed_set(pb, previous.as_deref());
                 return Err(AdapterError::internal(
                     "NSPasteboard setString:forType: failed",
                 ));
@@ -83,11 +67,55 @@ mod imp {
         tracing::debug!("clipboard: clear");
         unsafe {
             let pb = pasteboard()?;
-            let sel = sel_registerName(c"clearContents".as_ptr());
-            let send: unsafe extern "C" fn(Id, Sel) =
-                std::mem::transmute(objc_msgSend as *const c_void);
-            send(pb, sel);
+            clear_pasteboard(pb);
             Ok(())
+        }
+    }
+
+    unsafe fn read_string(pb: Id) -> Option<String> {
+        unsafe {
+            let sel = sel_registerName(c"stringForType:".as_ptr());
+            let send: unsafe extern "C" fn(Id, Sel, Id) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            let ns_string = send(pb, sel, NSPasteboardTypeString);
+            if ns_string.is_null() {
+                return None;
+            }
+            let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
+                ns_string as core_foundation_sys::string::CFStringRef,
+            );
+            Some(cf_str.to_string())
+        }
+    }
+
+    unsafe fn clear_pasteboard(pb: Id) {
+        unsafe {
+            let clear_sel = sel_registerName(c"clearContents".as_ptr());
+            let send_void: unsafe extern "C" fn(Id, Sel) =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send_void(pb, clear_sel);
+        }
+    }
+
+    unsafe fn write_string(pb: Id, text: &str) -> bool {
+        unsafe {
+            let cf_text = core_foundation::string::CFString::new(text);
+            let ns_text = cf_text.as_concrete_TypeRef() as Id;
+            let set_sel = sel_registerName(c"setString:forType:".as_ptr());
+            let send_two: unsafe extern "C" fn(Id, Sel, Id, Id) -> bool =
+                std::mem::transmute(objc_msgSend as *const c_void);
+            send_two(pb, set_sel, ns_text, NSPasteboardTypeString)
+        }
+    }
+
+    unsafe fn restore_after_failed_set(pb: Id, previous: Option<&str>) {
+        unsafe {
+            match previous {
+                Some(previous) => {
+                    let _ = write_string(pb, previous);
+                }
+                None => clear_pasteboard(pb),
+            }
         }
     }
 }
