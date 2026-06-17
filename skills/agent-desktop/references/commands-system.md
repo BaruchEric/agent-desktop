@@ -23,7 +23,7 @@ agent-desktop close-app "TextEdit" --force
 Requests an application quit. A graceful quit is asynchronous — the app may show an unsaved-changes dialog or refuse — so the response reports only what was guaranteed, never a termination it cannot confirm without blocking:
 
 - Graceful: `{ "app": "TextEdit", "method": "graceful", "requested": true }`. The quit was sent. To confirm it actually closed, observe with `list-apps` or `wait --window`; if a save dialog appears, `snapshot` it and click the choice (`find --role button --name Delete`).
-- `--force`: `{ "app": "TextEdit", "method": "force", "requested": true, "closed": true }`. A forced kill is synchronous, so termination is assured.
+- `--force`: `{ "app": "TextEdit", "method": "force", "requested": true, "closed": true }`. Sends SIGTERM to matching app processes, escalates survivors to SIGKILL, and returns success only after termination is verified.
 
 ### list-apps
 ```bash

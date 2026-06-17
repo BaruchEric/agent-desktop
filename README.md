@@ -244,7 +244,7 @@ agent-desktop --headed mouse-up --xy 500,300      # release at coordinates
 agent-desktop launch Safari              # launch app by name
 agent-desktop launch com.apple.Safari    # launch by bundle ID
 agent-desktop close-app Safari           # quit app
-agent-desktop close-app Safari --force   # force quit (SIGKILL)
+agent-desktop close-app Safari --force   # force quit (SIGTERM, then SIGKILL if needed)
 agent-desktop list-apps                  # list running GUI apps
 agent-desktop list-windows               # list visible windows
 agent-desktop list-windows --app Finder  # windows for specific app

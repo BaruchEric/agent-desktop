@@ -205,24 +205,15 @@ pub fn close_app_impl(id: &str, force: bool) -> Result<(), AdapterError> {
     const QUIT_TIMEOUT: Duration = Duration::from_secs(3);
 
     if force {
-        let pid = crate::system::app_list::pid_for_app_name(id).ok_or_else(|| {
-            AdapterError::new(
+        let pids = crate::system::app_list::pids_for_app_name(id);
+        if pids.is_empty() {
+            return Err(AdapterError::new(
                 ErrorCode::AppNotFound,
                 format!("App '{id}' was not running or could not be matched for force close"),
             )
-            .with_suggestion("Use 'list-apps' to verify the running app name before retrying.")
-        })?;
-        let mut command = Command::new("/bin/kill");
-        command.arg("-TERM").arg(pid.to_string());
-        let output = crate::system::process::run_with_timeout(&mut command, "kill", QUIT_TIMEOUT)?;
-        if !output.status.success() {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                format!("Failed to terminate app '{id}' with pid {pid}"),
-            )
-            .with_suggestion("Use 'list-apps' to verify the running app before retrying."));
+            .with_suggestion("Use 'list-apps' to verify the running app name before retrying."));
         }
-        wait_until_pid_exits(id, pid, QUIT_TIMEOUT)?;
+        crate::system::force_close::terminate_app(id, &pids, QUIT_TIMEOUT)?;
     } else {
         let pid = crate::system::key_dispatch::find_pid_by_name(id)?;
         let app_ax = crate::tree::element_for_pid(pid);
@@ -250,36 +241,6 @@ end tell"#
         }
     }
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn wait_until_pid_exits(id: &str, pid: i32, timeout: Duration) -> Result<(), AdapterError> {
-    use std::time::Instant;
-
-    let start = Instant::now();
-    while start.elapsed() < timeout {
-        if !process_is_running(pid) {
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    Err(AdapterError::timeout(format!(
-        "App '{id}' with pid {pid} did not terminate after force close"
-    ))
-    .with_suggestion("Retry after checking for save dialogs or helper processes with 'list-apps'."))
-}
-
-#[cfg(target_os = "macos")]
-fn process_is_running(pid: i32) -> bool {
-    const POSIX_ESRCH: i32 = 3;
-
-    unsafe extern "C" {
-        fn kill(pid: i32, sig: i32) -> i32;
-    }
-    if unsafe { kill(pid, 0) } == 0 {
-        return true;
-    }
-    std::io::Error::last_os_error().raw_os_error() != Some(POSIX_ESRCH)
 }
 
 #[cfg(target_os = "macos")]

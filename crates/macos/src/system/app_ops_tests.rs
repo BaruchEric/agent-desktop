@@ -40,18 +40,3 @@ fn adapter_guard_refuses_protected_processes_with_the_cli_contract() {
     assert!(err.suggestion.is_some());
     assert!(ensure_not_protected("TextEdit").is_ok());
 }
-
-#[test]
-fn force_close_verification_uses_pid_liveness() {
-    assert!(wait_until_pid_exits("missing", 999_999, std::time::Duration::from_millis(1)).is_ok());
-
-    let err = wait_until_pid_exits(
-        "current",
-        std::process::id() as i32,
-        std::time::Duration::from_millis(1),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code, agent_desktop_core::error::ErrorCode::Timeout);
-    assert!(err.message.contains(&std::process::id().to_string()));
-}

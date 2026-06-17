@@ -185,7 +185,7 @@ agent-desktop --headed mouse-up --xy 300,400    # Release mouse button
 ```
 agent-desktop launch "System Settings"          # Launch and wait
 agent-desktop close-app "TextEdit"              # Quit gracefully
-agent-desktop close-app "TextEdit" --force      # Force kill
+agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
 agent-desktop list-windows --app "Finder"       # List windows
 agent-desktop list-apps                         # List running GUI apps
 agent-desktop focus-window --app "Finder"       # Bring to front

@@ -39,7 +39,7 @@ MOUSE
 
 APP & WINDOW
   launch <app>               Launch app and wait until window is visible
-  close-app <app>            Quit app gracefully (--force to kill)
+  close-app <app>            Quit app gracefully (--force to terminate)
   list-windows               All visible windows (--app to filter)
   list-apps                  All running GUI applications (--app substring filter)
   focus-window               Bring window to front and confirm focus

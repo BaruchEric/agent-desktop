@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 pub(crate) struct LatestRefCache<'a> {
     store: &'a RefStore,
     snapshot_id: Option<String>,
+    missing_latest_snapshot_id: Option<String>,
     refmap: RefMap,
     last_refresh: Instant,
 }
@@ -19,6 +20,7 @@ impl<'a> LatestRefCache<'a> {
         Ok(Self {
             store,
             snapshot_id,
+            missing_latest_snapshot_id: None,
             refmap,
             last_refresh: Instant::now() - Duration::from_millis(500),
         })
@@ -37,9 +39,13 @@ impl<'a> LatestRefCache<'a> {
             if self.snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
                 return Ok(());
             }
+            if self.missing_latest_snapshot_id.as_deref() == Some(snapshot_id.as_str()) {
+                return Ok(());
+            }
             match self.store.load_snapshot(&snapshot_id) {
                 Ok(refmap) => {
                     self.snapshot_id = Some(snapshot_id);
+                    self.missing_latest_snapshot_id = None;
                     self.refmap = refmap;
                     Ok(())
                 }
@@ -48,10 +54,9 @@ impl<'a> LatestRefCache<'a> {
                         "latest snapshot {snapshot_id} unreadable during wait refresh: {err}"
                     );
                     if err.code() == "SNAPSHOT_NOT_FOUND" {
-                        Ok(())
-                    } else {
-                        Err(err)
+                        self.missing_latest_snapshot_id = Some(snapshot_id);
                     }
+                    Ok(())
                 }
             }
         } else {
@@ -59,15 +64,12 @@ impl<'a> LatestRefCache<'a> {
                 Ok(refmap) => {
                     self.refmap = refmap;
                     self.snapshot_id = self.store.latest_snapshot_id();
+                    self.missing_latest_snapshot_id = None;
                     Ok(())
                 }
                 Err(err) => {
                     tracing::warn!("latest refmap unreadable during wait refresh: {err}");
-                    if err.code() == "SNAPSHOT_NOT_FOUND" {
-                        Ok(())
-                    } else {
-                        Err(err)
-                    }
+                    Ok(())
                 }
             }
         }

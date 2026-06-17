@@ -137,7 +137,7 @@ pub(crate) enum Commands {
     MouseUp(MousePointArgs),
     #[command(about = "Launch application and wait until its window is visible")]
     Launch(LaunchArgs),
-    #[command(about = "Quit an application gracefully (--force to kill)")]
+    #[command(about = "Quit an application gracefully (--force to terminate)")]
     CloseApp(CloseAppArgs),
     #[command(about = "List all visible windows (--app to filter by application)")]
     ListWindows(ListWindowsArgs),

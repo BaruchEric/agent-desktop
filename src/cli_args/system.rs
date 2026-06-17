@@ -28,7 +28,10 @@ pub(crate) struct LaunchArgs {
 pub(crate) struct CloseAppArgs {
     #[arg(value_name = "APP", help = "Application name")]
     pub app: String,
-    #[arg(long, help = "Force-kill the process instead of quitting gracefully")]
+    #[arg(
+        long,
+        help = "Terminate matching app processes instead of quitting gracefully"
+    )]
     #[serde(default)]
     pub force: bool,
 }

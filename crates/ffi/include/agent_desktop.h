@@ -579,7 +579,8 @@ AdResult ad_check_permissions(const struct AdAdapter *adapter);
 /**
  * Closes the application identified by `id` (bundle id on macOS,
  * executable path on other platforms). `force = true` skips the
- * graceful-shutdown path (equivalent to `kill -9`).
+ * graceful-shutdown path, sends SIGTERM, escalates survivors to SIGKILL,
+ * and returns success only after termination is verified.
  *
  * # Safety
  * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
