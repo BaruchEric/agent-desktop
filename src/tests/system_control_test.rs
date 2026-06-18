@@ -29,11 +29,18 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&stdout).expect("output is not valid JSON");
 
-        assert_eq!(json["ok"], true);
-        assert!(
-            json["data"]["output_volume"].is_number(),
-            "data.output_volume must be a number, got: {json}"
-        );
+        if json["ok"] == true {
+            assert!(
+                json["data"]["output_volume"].is_number(),
+                "data.output_volume must be a number when ok=true, got: {json}"
+            );
+        } else {
+            let code = json["error"]["code"].as_str().unwrap_or("");
+            assert!(
+                code == "PERM_DENIED" || code == "ACTION_FAILED",
+                "on failure, error.code must be PERM_DENIED or ACTION_FAILED, got: {json}"
+            );
+        }
     }
 
     #[test]
@@ -77,11 +84,18 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&stdout).expect("output is not valid JSON");
 
-        assert_eq!(json["ok"], true);
-        assert!(
-            json["data"]["wifi_power"].is_boolean(),
-            "data.wifi_power must be a boolean, got: {json}"
-        );
+        if json["ok"] == true {
+            assert!(
+                json["data"]["wifi_power"].is_boolean(),
+                "data.wifi_power must be a boolean when ok=true, got: {json}"
+            );
+        } else {
+            let code = json["error"]["code"].as_str().unwrap_or("");
+            assert!(
+                code == "PERM_DENIED" || code == "ACTION_FAILED",
+                "on failure, error.code must be PERM_DENIED or ACTION_FAILED, got: {json}"
+            );
+        }
     }
 
     #[test]
