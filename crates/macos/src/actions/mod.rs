@@ -10,6 +10,7 @@ pub(crate) mod chain_web_steps;
 pub(crate) mod discovery;
 pub(crate) mod dispatch;
 pub(crate) mod extras;
+pub mod menu_path;
 pub(crate) mod post_state;
 pub(crate) mod scroll;
 pub(crate) mod toggle_state;
@@ -19,3 +20,4 @@ pub(crate) mod type_text;
 mod chain_steps_tests;
 
 pub(crate) use dispatch::perform_action;
+pub use menu_path::{list_menu_paths, select_menu_path};

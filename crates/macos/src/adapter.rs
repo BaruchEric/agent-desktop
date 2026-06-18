@@ -309,6 +309,14 @@ impl PlatformAdapter for MacOSAdapter {
             })
         })
     }
+
+    fn select_menu_path(&self, pid: i32, path: &[String]) -> Result<ActionResult, AdapterError> {
+        crate::actions::select_menu_path(pid, path)
+    }
+
+    fn list_menu_paths(&self, pid: i32) -> Result<Vec<String>, AdapterError> {
+        crate::actions::list_menu_paths(pid)
+    }
 }
 
 fn execute_action_impl(
