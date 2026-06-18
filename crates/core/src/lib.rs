@@ -56,5 +56,6 @@ pub use refs::{RefEntry, RefMap};
 pub use refs_store::RefStore;
 pub use system::appearance::{AppearanceRequest, AppearanceState};
 pub use system::audio::{AudioRequest, AudioState};
+pub use system::controller::SystemController;
 pub use system::external::{ExternalKind, ExternalRequest, ExternalResult};
 pub use system::network::{NetworkRequest, NetworkState};

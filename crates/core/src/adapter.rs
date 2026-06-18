@@ -371,6 +371,10 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("notification_action"))
     }
 
+    fn system(&self) -> &dyn crate::system::controller::SystemController {
+        &crate::system::controller::UNSUPPORTED_SYSTEM
+    }
+
     fn get_subtree(
         &self,
         _handle: &NativeHandle,
