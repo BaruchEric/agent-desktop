@@ -25,7 +25,9 @@ pub(super) fn path_candidate_roots(
     }
     let roots: Vec<_> = scoped_surface_root(entry, deadline)?.into_iter().collect();
     Ok(CandidateRoots {
-        scope_verified: source_window_scope_required(entry) && !roots.is_empty(),
+        scope_verified: (source_window_scope_required(entry)
+            || surface_is_scoped_non_window(entry))
+            && !roots.is_empty(),
         roots,
     })
 }
@@ -37,6 +39,13 @@ pub(super) fn candidate_roots(
 ) -> Result<CandidateRoots, AdapterError> {
     if source_window_scope_required(entry) {
         return source_window_scoped_roots(entry, deadline);
+    }
+    if surface_is_scoped_non_window(entry) {
+        let roots: Vec<_> = scoped_surface_root(entry, deadline)?.into_iter().collect();
+        return Ok(CandidateRoots {
+            scope_verified: !roots.is_empty(),
+            roots,
+        });
     }
 
     let root = element_for_pid(entry.pid);
@@ -218,6 +227,18 @@ fn fallback_source_window_root(
         Ok::<bool, AdapterError>(copy_string_attr(win, "AXRole").as_deref() == Some("AXWindow"))
     })?;
     windows.get(index).cloned()
+}
+
+/// Returns true for surfaces that root to a tight, freshly-resolved AX subtree
+/// and whose bounds are unstable or absent (menu bar, extras menu bar, Dock).
+/// A single identity match within that subtree is trustworthy as scope verification;
+/// ambiguous or duplicate names still return `AMBIGUOUS_TARGET`, never a wrong element.
+#[cfg(target_os = "macos")]
+pub(super) fn surface_is_scoped_non_window(entry: &RefEntry) -> bool {
+    matches!(
+        entry.source_surface,
+        SnapshotSurface::Menubar | SnapshotSurface::ExtrasMenubar | SnapshotSurface::Dock
+    )
 }
 
 #[cfg(target_os = "macos")]

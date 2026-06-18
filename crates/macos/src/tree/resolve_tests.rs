@@ -1,7 +1,7 @@
 use super::*;
 use crate::tree::resolve_roots::{
     single_window_fallback_allowed, sole_source_window_fallback_allowed, source_window_number,
-    unique_fallible_matching_index,
+    surface_is_scoped_non_window, unique_fallible_matching_index,
 };
 use agent_desktop_core::adapter::SnapshotSurface;
 
@@ -304,4 +304,42 @@ fn description_entry() -> RefEntry {
     entry.name = None;
     entry.description = Some("Insert Text Box".into());
     entry
+}
+
+#[test]
+fn surface_is_scoped_non_window_accepts_menubar_extrasmenubar_dock() {
+    let mut menubar_entry = entry(None, None, None, None);
+    menubar_entry.source_surface = SnapshotSurface::Menubar;
+    assert!(surface_is_scoped_non_window(&menubar_entry));
+
+    let mut extras_entry = entry(None, None, None, None);
+    extras_entry.source_surface = SnapshotSurface::ExtrasMenubar;
+    assert!(surface_is_scoped_non_window(&extras_entry));
+
+    let mut dock_entry = entry(None, None, None, None);
+    dock_entry.source_surface = SnapshotSurface::Dock;
+    assert!(surface_is_scoped_non_window(&dock_entry));
+
+    let window_entry = entry(None, Some("w-10"), None, None);
+    assert!(!surface_is_scoped_non_window(&window_entry));
+
+    let mut menu_entry = entry(None, None, None, None);
+    menu_entry.source_surface = SnapshotSurface::Menu;
+    assert!(!surface_is_scoped_non_window(&menu_entry));
+
+    let mut sheet_entry = entry(None, None, None, None);
+    sheet_entry.source_surface = SnapshotSurface::Sheet;
+    assert!(!surface_is_scoped_non_window(&sheet_entry));
+
+    let mut popover_entry = entry(None, None, None, None);
+    popover_entry.source_surface = SnapshotSurface::Popover;
+    assert!(!surface_is_scoped_non_window(&popover_entry));
+
+    let mut alert_entry = entry(None, None, None, None);
+    alert_entry.source_surface = SnapshotSurface::Alert;
+    assert!(!surface_is_scoped_non_window(&alert_entry));
+
+    let mut focused_entry = entry(None, None, None, None);
+    focused_entry.source_surface = SnapshotSurface::Focused;
+    assert!(!surface_is_scoped_non_window(&focused_entry));
 }
