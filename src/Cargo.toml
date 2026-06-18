@@ -38,5 +38,50 @@ path = "tests/conformance.rs"
 name = "system_control_test"
 path = "tests/system_control_test.rs"
 
+# Gated real-app e2e suite. Every test is #[ignore]-d and macOS-gated; they
+# launch and drive real apps (browsers, TextEdit, Finder) and need Accessibility
+# permission. These tests share the desktop and ~/.agent-desktop, so they must
+# be serialized. Run the whole suite with scripts/e2e-macos.sh; for a single
+# target use: cargo test --test <name> -- --ignored --test-threads=1
+[[test]]
+name = "browser_test"
+path = "tests/browser_test.rs"
+
+[[test]]
+name = "interaction_test"
+path = "tests/interaction_test.rs"
+
+[[test]]
+name = "clipboard_test"
+path = "tests/clipboard_test.rs"
+
+[[test]]
+name = "window_test"
+path = "tests/window_test.rs"
+
+[[test]]
+name = "batch_test"
+path = "tests/batch_test.rs"
+
+[[test]]
+name = "keyboard_test"
+path = "tests/keyboard_test.rs"
+
+[[test]]
+name = "mouse_test"
+path = "tests/mouse_test.rs"
+
+[[test]]
+name = "scroll_test"
+path = "tests/scroll_test.rs"
+
+[[test]]
+name = "notifications_test"
+path = "tests/notifications_test.rs"
+
+[[test]]
+name = "wait_test"
+path = "tests/wait_test.rs"
+
 [lints]
 workspace = true

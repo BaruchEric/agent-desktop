@@ -1,0 +1,52 @@
+name: E2E (macOS, manual)
+
+# Opt-in only: the gated real-app e2e suite launches and drives real apps and
+# needs Accessibility permission, which hosted runners may not grant. It never
+# runs on push/PR — trigger it by hand from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Space-separated e2e targets (blank = all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  AGENT_DESKTOP_ENABLE_EXEC: "1"
+
+jobs:
+  e2e:
+    name: Real-app e2e
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run gated e2e suite
+        # The suite is permission-tolerant: without Accessibility access each
+        # test skips cleanly rather than failing, so this job is a smoke check
+        # of the harness + binary on hosted runners and a full run locally.
+        run: scripts/e2e-macos.sh ${{ github.event.inputs.targets }}
