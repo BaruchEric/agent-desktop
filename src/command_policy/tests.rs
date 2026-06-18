@@ -77,6 +77,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "skills"
             | "volume"
             | "appearance"
+            | "wifi"
     )
 }
 

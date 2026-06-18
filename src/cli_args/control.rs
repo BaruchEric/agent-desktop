@@ -18,6 +18,20 @@ pub(crate) struct AppearanceArgs {
     pub toggle: bool,
 }
 
+#[derive(clap::Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WifiArgs {
+    #[arg(long, help = "Turn Wi-Fi on")]
+    #[serde(default)]
+    pub on: bool,
+    #[arg(long, help = "Turn Wi-Fi off")]
+    #[serde(default)]
+    pub off: bool,
+    #[arg(long, help = "Print Wi-Fi power and current SSID")]
+    #[serde(default)]
+    pub status: bool,
+}
+
 fn default_step() -> u8 {
     5
 }

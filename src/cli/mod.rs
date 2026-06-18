@@ -7,7 +7,9 @@ use crate::cli_args::{
         DragCliArgs, HoverArgs, KeyComboArgs, MenuArgs, MouseClickArgs, MouseMoveArgs,
         MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
-    control::{AppearanceArgs as AppearanceCliArgs, VolumeArgs as VolumeCliArgs},
+    control::{
+        AppearanceArgs as AppearanceCliArgs, VolumeArgs as VolumeCliArgs, WifiArgs as WifiCliArgs,
+    },
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
@@ -185,6 +187,8 @@ pub(crate) enum Commands {
     Volume(VolumeCliArgs),
     #[command(about = "Get or set Dark/Light appearance")]
     Appearance(AppearanceCliArgs),
+    #[command(about = "Control Wi-Fi power and read status")]
+    Wifi(WifiCliArgs),
 }
 
 impl Commands {
@@ -247,6 +251,7 @@ impl Commands {
             Self::Skills(_) => "skills",
             Self::Volume(_) => "volume",
             Self::Appearance(_) => "appearance",
+            Self::Wifi(_) => "wifi",
         }
     }
 }

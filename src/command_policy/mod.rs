@@ -76,6 +76,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
 
         Commands::Volume(_) => None,
         Commands::Appearance(_) => None,
+        Commands::Wifi(_) => None,
     }
 }
 
@@ -197,6 +198,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Version(_)
         | Commands::Volume(_)
         | Commands::Appearance(_)
+        | Commands::Wifi(_)
         | Commands::Batch(_)
         | Commands::Skills(_)
         | Commands::Menu(_) => {}

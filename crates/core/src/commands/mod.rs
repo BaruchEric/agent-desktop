@@ -61,6 +61,7 @@ pub(crate) mod wait_mode;
 pub(crate) mod wait_predicate;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;
+pub mod wifi;
 
 #[cfg(test)]
 mod ref_policy_tests;

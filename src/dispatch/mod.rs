@@ -11,6 +11,7 @@ use agent_desktop_core::{
         minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
         skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, volume, wait,
+        wifi,
     },
     context::CommandContext,
     error::AppError,
@@ -376,6 +377,15 @@ pub(crate) fn dispatch(
                 dark: a.dark,
                 light: a.light,
                 toggle: a.toggle,
+            },
+            adapter,
+        ),
+
+        Commands::Wifi(a) => wifi::execute(
+            wifi::WifiArgs {
+                on: a.on,
+                off: a.off,
+                status: a.status,
             },
             adapter,
         ),
