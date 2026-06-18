@@ -226,4 +226,209 @@ mod tests {
             assert_eq!(json["error"]["code"], "PLATFORM_NOT_SUPPORTED");
         }
     }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn menu_path_activates_textedit_format_item() {
+        let bin = agent_desktop_bin();
+
+        Command::new(&bin)
+            .args(["launch", "TextEdit", "--timeout", "8000"])
+            .output()
+            .expect("failed to launch TextEdit");
+
+        Command::new(&bin)
+            .args(["press", "cmd+n", "--app", "TextEdit"])
+            .output()
+            .expect("failed to open new TextEdit document");
+
+        let format_path = if menu_path_exists(&bin, "TextEdit", "Format > Make Plain Text") {
+            "Format > Make Plain Text"
+        } else {
+            "Format > Make Rich Text"
+        };
+
+        let output = Command::new(&bin)
+            .args(["menu", "--app", "TextEdit", "--path", format_path])
+            .output()
+            .expect("failed to run menu command");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).expect("output is not valid JSON");
+
+        Command::new(&bin)
+            .args(["close-app", "TextEdit", "--force"])
+            .output()
+            .ok();
+
+        assert_eq!(json["ok"], true, "menu --path must succeed, got: {json}");
+        assert_eq!(json["data"]["action"], "menu");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn menu_list_returns_non_empty_paths_for_running_app() {
+        let bin = agent_desktop_bin();
+
+        let output = Command::new(&bin)
+            .args(["menu", "--app", "Finder", "--list"])
+            .output()
+            .expect("failed to run menu --list");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).expect("output is not valid JSON");
+
+        assert_eq!(json["ok"], true);
+        let paths = json["data"]["paths"]
+            .as_array()
+            .expect("data.paths must be an array");
+        assert!(
+            !paths.is_empty(),
+            "menu --list must return at least one path"
+        );
+
+        let has_apple = paths.iter().any(|p| {
+            p.as_str()
+                .map(|s| s.starts_with("Apple >"))
+                .unwrap_or(false)
+        });
+        assert!(
+            has_apple,
+            "Finder menu must include at least one Apple > item"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn dock_surface_snapshot_yields_dockitem_refs() {
+        let bin = agent_desktop_bin();
+
+        let output = Command::new(&bin)
+            .args(["snapshot", "--app", "Dock", "--surface", "dock"])
+            .output()
+            .expect("failed to run snapshot --surface dock");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).expect("output is not valid JSON");
+
+        assert_eq!(
+            json["ok"], true,
+            "dock surface snapshot must succeed, got: {json}"
+        );
+        assert!(
+            json["data"]["ref_count"].as_u64().unwrap_or(0) > 0,
+            "Dock snapshot must allocate at least one ref"
+        );
+
+        let has_dockitem = any_node_has_role(&json["data"]["tree"], "dockitem");
+        assert!(
+            has_dockitem,
+            "Dock surface tree must contain at least one dockitem node"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn dock_ref_resolves_to_dockitem_role() {
+        let bin = agent_desktop_bin();
+
+        let snap_out = Command::new(&bin)
+            .args(["snapshot", "--app", "Dock", "--surface", "dock"])
+            .output()
+            .expect("failed to snapshot Dock");
+
+        let snap_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&snap_out.stdout)).unwrap();
+        assert_eq!(snap_json["ok"], true);
+
+        let snapshot_id = snap_json["data"]["snapshot_id"]
+            .as_str()
+            .unwrap_or_default();
+        let ref_id = match first_ref_id(&snap_json["data"]["tree"]) {
+            Some(r) => r,
+            None => return,
+        };
+
+        let get_out = Command::new(&bin)
+            .args([
+                "get",
+                &ref_id,
+                "--snapshot",
+                snapshot_id,
+                "--property",
+                "role",
+            ])
+            .output()
+            .expect("failed to run get command");
+
+        let get_json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&get_out.stdout)).unwrap();
+
+        assert_eq!(
+            get_json["ok"], true,
+            "get on dock ref must succeed, got: {get_json}"
+        );
+        assert_eq!(get_json["data"]["value"], "dockitem");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires Accessibility permissions and running macOS apps"]
+    fn control_center_extras_menubar_surface_non_empty() {
+        let bin = agent_desktop_bin();
+
+        let output = Command::new(&bin)
+            .args([
+                "snapshot",
+                "--app",
+                "ControlCenter",
+                "--surface",
+                "extras-menubar",
+            ])
+            .output()
+            .expect("failed to run snapshot --surface extras-menubar");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).expect("output is not valid JSON");
+
+        assert_eq!(
+            json["ok"], true,
+            "extras-menubar snapshot must succeed, got: {json}"
+        );
+        assert!(
+            json["data"]["tree"].is_object(),
+            "data.tree must be present"
+        );
+    }
+
+    fn menu_path_exists(bin: &std::path::Path, app: &str, path: &str) -> bool {
+        let out = Command::new(bin)
+            .args(["menu", "--app", app, "--list"])
+            .output()
+            .unwrap_or_else(|_| panic!("failed to list menus for {app}"));
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).unwrap_or_default();
+        json["data"]["paths"]
+            .as_array()
+            .map(|paths| paths.iter().any(|p| p.as_str() == Some(path)))
+            .unwrap_or(false)
+    }
+
+    fn any_node_has_role(node: &serde_json::Value, role: &str) -> bool {
+        if node.get("role").and_then(|r| r.as_str()) == Some(role) {
+            return true;
+        }
+        node.get("children")
+            .and_then(|c| c.as_array())
+            .map(|children| children.iter().any(|c| any_node_has_role(c, role)))
+            .unwrap_or(false)
+    }
 }

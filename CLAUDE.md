@@ -155,7 +155,7 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (54 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (55 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
@@ -319,6 +319,8 @@ Error responses:
 - Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
 - Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
 - RefMap size check: write-side guard prevents >1MB refmap files
+- `--surface` values: `window` (default), `dock`, `extras-menubar`. Windowless processes (Dock, Control Center) are snapshot-able via app-root — no window required. `dock` yields `dockitem` refs; `extras-menubar` yields the Control-Center-owned menu-bar items on macOS 26+.
+- Menu-bar item activation: `menu --app <App> --path "Top > Item"` activates by title path; `menu --app <App> --list` returns all available paths. Dock and menu/extras refs resolve by identity (bounds-independent).
 
 ## PlatformAdapter Trait
 
@@ -445,15 +447,15 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (54)
+## Implemented Commands (55)
 
-> **Platform note:** All 54 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
+> **Platform note:** All 55 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
 
 | Category | Commands |
 |----------|----------|
 | App/Window (10) | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` |
 | Observation (6) | `snapshot`, `screenshot`, `find`, `get`, `is`, `list-surfaces` |
-| Interaction (14) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse` |
+| Interaction (15) | `click`, `double-click`, `triple-click`, `right-click`, `type`, `set-value`, `clear`, `focus`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `menu` |
 | Scroll (2) | `scroll`, `scroll-to` |
 | Keyboard (3) | `press`, `key-down`, `key-up` |
 | Mouse (6) | `hover`, `drag`, `mouse-move`, `mouse-click`, `mouse-down`, `mouse-up` |
