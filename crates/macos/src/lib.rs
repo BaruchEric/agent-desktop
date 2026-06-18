@@ -1,6 +1,7 @@
 mod actions;
 mod adapter;
 mod cf_type;
+mod control;
 mod input;
 mod notifications;
 mod system;

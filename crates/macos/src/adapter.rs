@@ -15,11 +15,15 @@ use agent_desktop_core::{
 };
 use rustc_hash::FxHashSet;
 
-pub struct MacOSAdapter;
+pub struct MacOSAdapter {
+    system: crate::control::MacSystemController,
+}
 
 impl MacOSAdapter {
     pub fn new() -> Self {
-        Self
+        Self {
+            system: crate::control::MacSystemController::new(),
+        }
     }
 }
 
@@ -30,6 +34,10 @@ impl Default for MacOSAdapter {
 }
 
 impl PlatformAdapter for MacOSAdapter {
+    fn system(&self) -> &dyn agent_desktop_core::system::controller::SystemController {
+        &self.system
+    }
+
     fn permission_report(&self) -> PermissionReport {
         crate::system::permissions::report()
     }
