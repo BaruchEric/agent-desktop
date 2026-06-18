@@ -28,6 +28,7 @@ pub mod roles;
 pub(crate) mod search_text;
 pub mod snapshot;
 pub mod snapshot_ref;
+pub mod system;
 pub mod trace;
 mod window_lookup;
 
@@ -53,3 +54,7 @@ pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use refs::{RefEntry, RefMap};
 pub use refs_store::RefStore;
+pub use system::appearance::{AppearanceRequest, AppearanceState};
+pub use system::audio::{AudioRequest, AudioState};
+pub use system::external::{ExternalKind, ExternalRequest, ExternalResult};
+pub use system::network::{NetworkRequest, NetworkState};
