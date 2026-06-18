@@ -1,4 +1,7 @@
-use crate::{adapter::PlatformAdapter, error::AppError, system::network::NetworkRequest};
+use crate::{
+    adapter::PlatformAdapter, commands::helpers::exactly_one, error::AppError,
+    system::network::NetworkRequest,
+};
 use serde_json::{Value, json};
 
 pub struct WifiArgs {
@@ -8,11 +11,7 @@ pub struct WifiArgs {
 }
 
 pub fn execute(args: WifiArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let selected = [args.on, args.off, args.status]
-        .iter()
-        .filter(|x| **x)
-        .count();
-    if selected != 1 {
+    if !exactly_one(&[args.on, args.off, args.status]) {
         return Err(AppError::invalid_input(
             "wifi needs exactly one of --on/--off/--status",
         ));

@@ -45,26 +45,75 @@ unsafe extern "C" {
     fn AudioObjectHasProperty(id: AudioObjectID, addr: *const AudioObjectPropertyAddress) -> bool;
 }
 
-fn default_output() -> Result<AudioObjectID, AdapterError> {
+fn get_property<T: Copy + Default>(
+    id: AudioObjectID,
+    selector: c_uint,
+    scope: c_uint,
+    element: c_uint,
+    what: &str,
+) -> Result<T, AdapterError> {
     let addr = AudioObjectPropertyAddress {
-        selector: DEFAULT_OUTPUT,
-        scope: SCOPE_GLOBAL,
-        element: ELEMENT_MAIN,
+        selector,
+        scope,
+        element,
     };
-    let mut dev: AudioObjectID = 0;
-    let mut size = std::mem::size_of::<AudioObjectID>() as u32;
+    let mut value = T::default();
+    let mut size = std::mem::size_of::<T>() as u32;
     let st = unsafe {
         AudioObjectGetPropertyData(
-            SYSTEM_OBJECT,
+            id,
             &addr,
             0,
             std::ptr::null(),
             &mut size,
-            &mut dev as *mut _ as *mut c_void,
+            &mut value as *mut _ as *mut c_void,
         )
     };
-    if st != 0 || dev == 0 {
-        return Err(fail("default output device", st));
+    if st != 0 {
+        return Err(fail(what, st));
+    }
+    Ok(value)
+}
+
+fn set_property<T: Copy>(
+    id: AudioObjectID,
+    selector: c_uint,
+    scope: c_uint,
+    element: c_uint,
+    value: T,
+    what: &str,
+) -> Result<(), AdapterError> {
+    let addr = AudioObjectPropertyAddress {
+        selector,
+        scope,
+        element,
+    };
+    let st = unsafe {
+        AudioObjectSetPropertyData(
+            id,
+            &addr,
+            0,
+            std::ptr::null(),
+            std::mem::size_of::<T>() as u32,
+            &value as *const _ as *const c_void,
+        )
+    };
+    if st != 0 {
+        return Err(fail(what, st));
+    }
+    Ok(())
+}
+
+fn default_output() -> Result<AudioObjectID, AdapterError> {
+    let dev: AudioObjectID = get_property(
+        SYSTEM_OBJECT,
+        DEFAULT_OUTPUT,
+        SCOPE_GLOBAL,
+        ELEMENT_MAIN,
+        "default output device",
+    )?;
+    if dev == 0 {
+        return Err(fail("default output device", 0));
     }
     Ok(dev)
 }
@@ -74,96 +123,48 @@ fn has_virtual_volume(dev: AudioObjectID) -> bool {
 }
 
 fn read_volume_virtual(dev: AudioObjectID) -> Result<u8, AdapterError> {
-    let addr = AudioObjectPropertyAddress {
-        selector: VIRTUAL_MAIN_VOLUME,
-        scope: SCOPE_OUTPUT,
-        element: ELEMENT_MAIN,
-    };
-    let mut v: f32 = 0.0;
-    let mut size = std::mem::size_of::<f32>() as u32;
-    let st = unsafe {
-        AudioObjectGetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            &mut size,
-            &mut v as *mut _ as *mut c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("read virtual volume", st));
-    }
+    let v: f32 = get_property(
+        dev,
+        VIRTUAL_MAIN_VOLUME,
+        SCOPE_OUTPUT,
+        ELEMENT_MAIN,
+        "read virtual volume",
+    )?;
     Ok((v.clamp(0.0, 1.0) * 100.0).round() as u8)
 }
 
 fn write_volume_virtual(dev: AudioObjectID, pct: u8) -> Result<(), AdapterError> {
-    let addr = AudioObjectPropertyAddress {
-        selector: VIRTUAL_MAIN_VOLUME,
-        scope: SCOPE_OUTPUT,
-        element: ELEMENT_MAIN,
-    };
     let v = f32::from(pct.min(100)) / 100.0;
-    let st = unsafe {
-        AudioObjectSetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            std::mem::size_of::<f32>() as u32,
-            &v as *const _ as *const c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("set virtual volume", st));
-    }
-    Ok(())
+    set_property(
+        dev,
+        VIRTUAL_MAIN_VOLUME,
+        SCOPE_OUTPUT,
+        ELEMENT_MAIN,
+        v,
+        "set virtual volume",
+    )
 }
 
 fn read_channel_volume(dev: AudioObjectID, element: c_uint) -> Result<f32, AdapterError> {
-    let addr = AudioObjectPropertyAddress {
-        selector: VOLUME_SCALAR,
-        scope: SCOPE_OUTPUT,
+    let v: f32 = get_property(
+        dev,
+        VOLUME_SCALAR,
+        SCOPE_OUTPUT,
         element,
-    };
-    let mut v: f32 = 0.0;
-    let mut size = std::mem::size_of::<f32>() as u32;
-    let st = unsafe {
-        AudioObjectGetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            &mut size,
-            &mut v as *mut _ as *mut c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("read channel volume", st));
-    }
+        "read channel volume",
+    )?;
     Ok(v.clamp(0.0, 1.0))
 }
 
 fn write_channel_volume(dev: AudioObjectID, element: c_uint, v: f32) -> Result<(), AdapterError> {
-    let addr = AudioObjectPropertyAddress {
-        selector: VOLUME_SCALAR,
-        scope: SCOPE_OUTPUT,
+    set_property(
+        dev,
+        VOLUME_SCALAR,
+        SCOPE_OUTPUT,
         element,
-    };
-    let st = unsafe {
-        AudioObjectSetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            std::mem::size_of::<f32>() as u32,
-            &v as *const _ as *const c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("set channel volume", st));
-    }
-    Ok(())
+        v,
+        "set channel volume",
+    )
 }
 
 fn read_volume_scalar(dev: AudioObjectID) -> Result<u8, AdapterError> {
@@ -208,50 +209,19 @@ fn read_muted(dev: AudioObjectID) -> Result<bool, AdapterError> {
     if !has_property(dev, MUTE, SCOPE_OUTPUT) {
         return Ok(false);
     }
-    let addr = AudioObjectPropertyAddress {
-        selector: MUTE,
-        scope: SCOPE_OUTPUT,
-        element: ELEMENT_MAIN,
-    };
-    let mut m: u32 = 0;
-    let mut size = std::mem::size_of::<u32>() as u32;
-    let st = unsafe {
-        AudioObjectGetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            &mut size,
-            &mut m as *mut _ as *mut c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("read mute", st));
-    }
+    let m: u32 = get_property(dev, MUTE, SCOPE_OUTPUT, ELEMENT_MAIN, "read mute")?;
     Ok(m != 0)
 }
 
 fn write_muted(dev: AudioObjectID, on: bool) -> Result<(), AdapterError> {
-    let addr = AudioObjectPropertyAddress {
-        selector: MUTE,
-        scope: SCOPE_OUTPUT,
-        element: ELEMENT_MAIN,
-    };
-    let m: u32 = u32::from(on);
-    let st = unsafe {
-        AudioObjectSetPropertyData(
-            dev,
-            &addr,
-            0,
-            std::ptr::null(),
-            std::mem::size_of::<u32>() as u32,
-            &m as *const _ as *const c_void,
-        )
-    };
-    if st != 0 {
-        return Err(fail("set mute", st));
-    }
-    Ok(())
+    set_property(
+        dev,
+        MUTE,
+        SCOPE_OUTPUT,
+        ELEMENT_MAIN,
+        u32::from(on),
+        "set mute",
+    )
 }
 
 fn fail(what: &str, st: OSStatus) -> AdapterError {

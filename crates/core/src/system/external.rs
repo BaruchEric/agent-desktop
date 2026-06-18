@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_EXTERNAL_TIMEOUT_MS: u64 = 30_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalKind {
     Shell,

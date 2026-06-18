@@ -33,7 +33,7 @@ pub(crate) struct WifiArgs {
 }
 
 fn default_exec_timeout() -> u64 {
-    30000
+    agent_desktop_core::system::external::DEFAULT_EXTERNAL_TIMEOUT_MS
 }
 
 #[derive(clap::Parser, Debug, Deserialize)]
@@ -44,7 +44,7 @@ pub(crate) struct RunScriptArgs {
     #[arg(
         long,
         value_name = "MS",
-        default_value = "30000",
+        default_value_t = default_exec_timeout(),
         help = "Kill the child after this many milliseconds"
     )]
     #[serde(default = "default_exec_timeout")]

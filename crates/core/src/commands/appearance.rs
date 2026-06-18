@@ -1,4 +1,7 @@
-use crate::{adapter::PlatformAdapter, error::AppError, system::appearance::AppearanceRequest};
+use crate::{
+    adapter::PlatformAdapter, commands::helpers::exactly_one, error::AppError,
+    system::appearance::AppearanceRequest,
+};
 use serde_json::{Value, json};
 
 pub struct AppearanceArgs {
@@ -9,11 +12,7 @@ pub struct AppearanceArgs {
 }
 
 pub fn execute(args: AppearanceArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    let selected = [args.get, args.dark, args.light, args.toggle]
-        .iter()
-        .filter(|x| **x)
-        .count();
-    if selected != 1 {
+    if !exactly_one(&[args.get, args.dark, args.light, args.toggle]) {
         return Err(AppError::invalid_input(
             "appearance needs exactly one of --get/--dark/--light/--toggle",
         ));

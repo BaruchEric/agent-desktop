@@ -1,4 +1,7 @@
-use crate::{adapter::PlatformAdapter, error::AppError, system::audio::AudioRequest};
+use crate::{
+    adapter::PlatformAdapter, commands::helpers::exactly_one, error::AppError,
+    system::audio::AudioRequest,
+};
 use serde_json::{Value, json};
 
 pub struct VolumeArgs {
@@ -18,18 +21,14 @@ pub fn execute(args: VolumeArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
 }
 
 fn to_request(args: &VolumeArgs) -> Result<AudioRequest, AppError> {
-    let selected = [
+    if !exactly_one(&[
         args.get,
         args.set.is_some(),
         args.up,
         args.down,
         args.mute,
         args.unmute,
-    ]
-    .iter()
-    .filter(|x| **x)
-    .count();
-    if selected != 1 {
+    ]) {
         return Err(AppError::invalid_input(
             "volume needs exactly one of --get/--set/--up/--down/--mute/--unmute",
         ));

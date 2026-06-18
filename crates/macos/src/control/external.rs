@@ -1,11 +1,11 @@
 use agent_desktop_core::{
     error::AdapterError,
-    system::external::{ExternalKind, ExternalRequest, ExternalResult},
+    system::external::{
+        DEFAULT_EXTERNAL_TIMEOUT_MS, ExternalKind, ExternalRequest, ExternalResult,
+    },
 };
 use std::process::Command;
 use std::time::{Duration, Instant};
-
-const DEFAULT_EXTERNAL_TIMEOUT_MS: u64 = 30_000;
 
 fn build(req: &ExternalRequest) -> Command {
     match req.kind {

@@ -3,16 +3,14 @@ use agent_desktop_core::{
     system::appearance::{AppearanceRequest, AppearanceState},
 };
 use std::process::Command;
+use std::time::Duration;
+
+const OSA_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run_osa(script: &str) -> Result<String, AdapterError> {
-    let out = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-        .map_err(|e| {
-            AdapterError::new(ErrorCode::ActionFailed, "osascript spawn failed")
-                .with_platform_detail(e.to_string())
-        })?;
+    let mut cmd = Command::new("osascript");
+    cmd.arg("-e").arg(script);
+    let out = crate::system::process::run_with_timeout(&mut cmd, "osascript", OSA_TIMEOUT)?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
         let code = if stderr.contains("Not authorized") || stderr.contains("-1743") {
@@ -36,21 +34,18 @@ fn read_dark() -> Result<bool, AdapterError> {
     Ok(v == "true")
 }
 
-fn set_dark(on: bool) -> Result<(), AdapterError> {
+fn set_and_read(value_expr: &str) -> Result<bool, AdapterError> {
     let script = format!(
-        "tell application \"System Events\" to tell appearance preferences to set dark mode to {on}"
+        "tell application \"System Events\"\ntell appearance preferences\nset dark mode to {value_expr}\nreturn dark mode\nend tell\nend tell"
     );
-    run_osa(&script).map(|_| ())
+    Ok(run_osa(&script)? == "true")
 }
 
 pub fn handle(req: AppearanceRequest) -> Result<AppearanceState, AdapterError> {
-    match req {
-        AppearanceRequest::Get => {}
-        AppearanceRequest::SetDark(v) => set_dark(v)?,
-        AppearanceRequest::Toggle => {
-            let cur = read_dark()?;
-            set_dark(!cur)?;
-        }
-    }
-    Ok(AppearanceState { dark: read_dark()? })
+    let dark = match req {
+        AppearanceRequest::Get => read_dark()?,
+        AppearanceRequest::SetDark(v) => set_and_read(if v { "true" } else { "false" })?,
+        AppearanceRequest::Toggle => set_and_read("not dark mode")?,
+    };
+    Ok(AppearanceState { dark })
 }

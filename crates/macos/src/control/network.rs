@@ -3,15 +3,15 @@ use agent_desktop_core::{
     system::network::{NetworkRequest, NetworkState},
 };
 use std::process::Command;
+use std::time::Duration;
+
+const NETWORKSETUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run(args: &[&str]) -> Result<String, AdapterError> {
-    let out = Command::new("networksetup")
-        .args(args)
-        .output()
-        .map_err(|e| {
-            AdapterError::new(ErrorCode::ActionFailed, "networksetup spawn failed")
-                .with_platform_detail(e.to_string())
-        })?;
+    let mut cmd = Command::new("networksetup");
+    cmd.args(args);
+    let out =
+        crate::system::process::run_with_timeout(&mut cmd, "networksetup", NETWORKSETUP_TIMEOUT)?;
     if !out.status.success() {
         return Err(
             AdapterError::new(ErrorCode::ActionFailed, "networksetup failed")

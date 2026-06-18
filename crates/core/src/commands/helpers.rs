@@ -13,6 +13,10 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+pub(crate) fn exactly_one(flags: &[bool]) -> bool {
+    flags.iter().filter(|f| **f).count() == 1
+}
+
 pub struct AppArgs {
     pub app: Option<String>,
 }
