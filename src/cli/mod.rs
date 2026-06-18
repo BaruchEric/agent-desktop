@@ -8,7 +8,8 @@ use crate::cli_args::{
         MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
     control::{
-        AppearanceArgs as AppearanceCliArgs, VolumeArgs as VolumeCliArgs, WifiArgs as WifiCliArgs,
+        AppearanceArgs as AppearanceCliArgs, RunScriptArgs as RunScriptCliArgs,
+        VolumeArgs as VolumeCliArgs, WifiArgs as WifiCliArgs,
     },
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
@@ -189,6 +190,8 @@ pub(crate) enum Commands {
     Appearance(AppearanceCliArgs),
     #[command(about = "Control Wi-Fi power and read status")]
     Wifi(WifiCliArgs),
+    #[command(about = "Run a shell command (requires AGENT_DESKTOP_ENABLE_EXEC=1)")]
+    RunShell(RunScriptCliArgs),
 }
 
 impl Commands {
@@ -252,6 +255,7 @@ impl Commands {
             Self::Volume(_) => "volume",
             Self::Appearance(_) => "appearance",
             Self::Wifi(_) => "wifi",
+            Self::RunShell(_) => "run-shell",
         }
     }
 }

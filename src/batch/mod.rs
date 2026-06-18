@@ -106,6 +106,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "volume" => decode(command, item.args).map(Commands::Volume),
         "appearance" => decode(command, item.args).map(Commands::Appearance),
         "wifi" => decode(command, item.args).map(Commands::Wifi),
+        "run-shell" => decode(command, item.args).map(Commands::RunShell),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",
             "Flatten nested batches into one top-level batch array",

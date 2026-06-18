@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const NON_COMMAND_MODULES: &[&str] = &[
+    "external_run",
     "helpers",
     "mod",
     "wait_latest_ref_cache",
@@ -47,7 +48,7 @@ const SHARED_REF_ACTION_TESTS: &[&str] = &[
 
 const BINARY_CONTRACT_TESTS: &[&str] = &["batch", "permissions", "version"];
 
-const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume", "appearance", "wifi"];
+const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume", "appearance", "wifi", "run-shell"];
 
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",

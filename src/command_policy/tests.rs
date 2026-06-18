@@ -78,6 +78,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "volume"
             | "appearance"
             | "wifi"
+            | "run-shell"
     )
 }
 

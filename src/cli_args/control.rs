@@ -32,6 +32,19 @@ pub(crate) struct WifiArgs {
     pub status: bool,
 }
 
+#[derive(clap::Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RunScriptArgs {
+    #[arg(value_name = "SCRIPT", help = "Script/command body to execute")]
+    pub script: String,
+    #[arg(
+        long,
+        value_name = "MS",
+        help = "Kill the child after this many milliseconds"
+    )]
+    pub timeout: Option<u64>,
+}
+
 fn default_step() -> u8 {
     5
 }

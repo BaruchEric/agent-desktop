@@ -9,9 +9,9 @@ use agent_desktop_core::{
         collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
         is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, menu,
         minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, volume, wait,
-        wifi,
+        resize_window, restore, right_click, run_shell, screenshot, scroll, scroll_to, select,
+        set_value, skills, snapshot, status, toggle, triple_click, type_text, uncheck, version,
+        volume, wait, wifi,
     },
     context::CommandContext,
     error::AppError,
@@ -386,6 +386,14 @@ pub(crate) fn dispatch(
                 on: a.on,
                 off: a.off,
                 status: a.status,
+            },
+            adapter,
+        ),
+
+        Commands::RunShell(a) => run_shell::execute(
+            run_shell::RunScriptArgs {
+                script: a.script,
+                timeout: a.timeout,
             },
             adapter,
         ),
