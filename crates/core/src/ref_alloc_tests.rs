@@ -177,6 +177,52 @@ fn allocate_refs_keeps_bounds_hash_when_snapshot_hides_bounds() {
     assert_eq!(entry.source_window_title.as_deref(), Some("Documents"));
 }
 
+#[test]
+fn menuitem_ref_has_no_bounds_hash() {
+    let n = node("menuitem", Some("New"));
+    let mut refmap = RefMap::new();
+    let config = RefAllocConfig {
+        include_bounds: true,
+        interactive_only: true,
+        compact: false,
+        pid: 1,
+        source_app: None,
+        source_window_id: None,
+        source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Menubar,
+        root_ref_id: None,
+        path_prefix: &[],
+    };
+    let out = allocate_refs(n, &mut refmap, &config);
+    let ref_id = out.ref_id.as_deref().expect("menuitem should get a ref");
+    let entry = refmap.get(ref_id).expect("ref must exist in refmap");
+    assert!(entry.bounds_hash.is_none());
+    assert!(entry.bounds.is_none());
+}
+
+#[test]
+fn dockitem_ref_has_no_bounds_hash() {
+    let n = node("dockitem", Some("Finder"));
+    let mut refmap = RefMap::new();
+    let config = RefAllocConfig {
+        include_bounds: true,
+        interactive_only: true,
+        compact: false,
+        pid: 1,
+        source_app: None,
+        source_window_id: None,
+        source_window_title: None,
+        source_surface: crate::adapter::SnapshotSurface::Dock,
+        root_ref_id: None,
+        path_prefix: &[],
+    };
+    let out = allocate_refs(n, &mut refmap, &config);
+    let ref_id = out.ref_id.as_deref().expect("dockitem should get a ref");
+    let entry = refmap.get(ref_id).expect("ref must exist in refmap");
+    assert!(entry.bounds_hash.is_none());
+    assert!(entry.bounds.is_none());
+}
+
 fn entry_hash() -> u64 {
     Rect {
         x: 0.0,

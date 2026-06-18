@@ -13,6 +13,8 @@ pub(crate) fn ref_entry_from_node(
     root_ref: Option<String>,
     path: &[usize],
 ) -> RefEntry {
+    let bounds_unstable = matches!(node.role.as_str(), "menuitem" | "dockitem");
+    let entry_bounds = if bounds_unstable { None } else { node.bounds };
     RefEntry {
         pid,
         role: node.role.clone(),
@@ -20,8 +22,8 @@ pub(crate) fn ref_entry_from_node(
         value: meaningful_string(node.value.clone()),
         description: meaningful_string(node.description.clone()),
         states: node.states.clone(),
-        bounds: node.bounds,
-        bounds_hash: node.bounds.as_ref().map(|b| b.bounds_hash()),
+        bounds: entry_bounds,
+        bounds_hash: entry_bounds.as_ref().map(|b| b.bounds_hash()),
         available_actions: if node.available_actions.is_empty() {
             crate::capability::defaults_for_role(&node.role)
         } else {
