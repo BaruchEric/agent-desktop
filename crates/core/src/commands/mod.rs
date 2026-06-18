@@ -27,6 +27,7 @@ pub mod list_notifications;
 pub mod list_surfaces;
 pub mod list_windows;
 pub mod maximize;
+pub mod menu;
 pub mod minimize;
 pub mod mouse_click;
 pub mod mouse_down;

@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use crate::cli_args::{
     FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
     actions::{
-        DragCliArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs,
-        PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
+        DragCliArgs, HoverArgs, KeyComboArgs, MenuArgs, MouseClickArgs, MouseMoveArgs,
+        MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
@@ -106,6 +106,8 @@ pub(crate) enum Commands {
     Expand(RefArgs),
     #[command(about = "Collapse a disclosure triangle or tree item")]
     Collapse(RefArgs),
+    #[command(about = "Activate a menu-bar item by title path or list all paths")]
+    Menu(MenuArgs),
     #[command(about = "Scroll element (--direction up/down/left/right, --amount N)")]
     Scroll(ScrollArgs),
     #[command(about = "Scroll element into visible area")]
@@ -202,6 +204,7 @@ impl Commands {
             Self::Uncheck(_) => "uncheck",
             Self::Expand(_) => "expand",
             Self::Collapse(_) => "collapse",
+            Self::Menu(_) => "menu",
             Self::Scroll(_) => "scroll",
             Self::ScrollTo(_) => "scroll-to",
             Self::Press(_) => "press",

@@ -71,7 +71,8 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::Restore(_)
         | Commands::DismissNotification(_)
         | Commands::DismissAllNotifications(_)
-        | Commands::NotificationAction(_) => Accessibility,
+        | Commands::NotificationAction(_)
+        | Commands::Menu(_) => Accessibility,
     }
 }
 
@@ -192,7 +193,8 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Permissions(_)
         | Commands::Version(_)
         | Commands::Batch(_)
-        | Commands::Skills(_) => {}
+        | Commands::Skills(_)
+        | Commands::Menu(_) => {}
     }
     Ok(())
 }

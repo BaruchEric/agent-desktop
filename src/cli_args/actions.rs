@@ -186,3 +186,18 @@ pub(crate) struct MousePointArgs {
     #[serde(default = "default_mouse_button")]
     pub button: String,
 }
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MenuArgs {
+    /// Target application name (required for --path; resolves the pid).
+    #[arg(long)]
+    pub app: Option<String>,
+    /// Menu title path, e.g. "File > Export as PDF...".
+    #[arg(long)]
+    pub path: Option<String>,
+    /// List all available "Top > Item" menu paths instead of activating.
+    #[arg(long)]
+    #[serde(default)]
+    pub list: bool,
+}
