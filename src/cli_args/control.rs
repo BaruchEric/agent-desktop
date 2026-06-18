@@ -45,6 +45,13 @@ pub(crate) struct RunScriptArgs {
     pub timeout: Option<u64>,
 }
 
+#[derive(clap::Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OpenTargetArgs {
+    #[arg(value_name = "TARGET", help = "URL or filesystem path to open")]
+    pub target: String,
+}
+
 fn default_step() -> u8 {
     5
 }

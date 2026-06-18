@@ -107,6 +107,10 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "appearance" => decode(command, item.args).map(Commands::Appearance),
         "wifi" => decode(command, item.args).map(Commands::Wifi),
         "run-shell" => decode(command, item.args).map(Commands::RunShell),
+        "run-applescript" => decode(command, item.args).map(Commands::RunApplescript),
+        "run-jxa" => decode(command, item.args).map(Commands::RunJxa),
+        "open-url" => decode(command, item.args).map(Commands::OpenUrl),
+        "open-path" => decode(command, item.args).map(Commands::OpenPath),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",
             "Flatten nested batches into one top-level batch array",

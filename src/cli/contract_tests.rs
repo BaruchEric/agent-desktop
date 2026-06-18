@@ -48,7 +48,16 @@ const SHARED_REF_ACTION_TESTS: &[&str] = &[
 
 const BINARY_CONTRACT_TESTS: &[&str] = &["batch", "permissions", "version"];
 
-const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume", "appearance", "wifi", "run-shell"];
+const SYSTEM_CONTROL_COMMANDS: &[&str] = &[
+    "appearance",
+    "open-path",
+    "open-url",
+    "run-applescript",
+    "run-jxa",
+    "run-shell",
+    "volume",
+    "wifi",
+];
 
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",

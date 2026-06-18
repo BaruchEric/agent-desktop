@@ -81,3 +81,7 @@ fn audit(kind: ExternalKind, payload: &str) {
 #[cfg(test)]
 #[path = "external_run_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "external_kind_tests.rs"]
+mod kind_tests;

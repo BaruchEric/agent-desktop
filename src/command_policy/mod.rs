@@ -78,6 +78,10 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Appearance(_) => None,
         Commands::Wifi(_) => None,
         Commands::RunShell(_) => None,
+        Commands::RunApplescript(_) => None,
+        Commands::RunJxa(_) => None,
+        Commands::OpenUrl(_) => None,
+        Commands::OpenPath(_) => None,
     }
 }
 
@@ -201,6 +205,10 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Appearance(_)
         | Commands::Wifi(_)
         | Commands::RunShell(_)
+        | Commands::RunApplescript(_)
+        | Commands::RunJxa(_)
+        | Commands::OpenUrl(_)
+        | Commands::OpenPath(_)
         | Commands::Batch(_)
         | Commands::Skills(_)
         | Commands::Menu(_) => {}

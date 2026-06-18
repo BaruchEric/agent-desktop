@@ -79,6 +79,10 @@ fn command_name_is_covered(name: &str) -> bool {
             | "appearance"
             | "wifi"
             | "run-shell"
+            | "run-applescript"
+            | "run-jxa"
+            | "open-url"
+            | "open-path"
     )
 }
 

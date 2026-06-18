@@ -8,10 +8,10 @@ use agent_desktop_core::{
         appearance, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
         collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
         is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, menu,
-        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
-        resize_window, restore, right_click, run_shell, screenshot, scroll, scroll_to, select,
-        set_value, skills, snapshot, status, toggle, triple_click, type_text, uncheck, version,
-        volume, wait, wifi,
+        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, open_path, open_url,
+        permissions, press, resize_window, restore, right_click, run_applescript, run_jxa,
+        run_shell, screenshot, scroll, scroll_to, select, set_value, skills, snapshot, status,
+        toggle, triple_click, type_text, uncheck, version, volume, wait, wifi,
     },
     context::CommandContext,
     error::AppError,
@@ -397,6 +397,30 @@ pub(crate) fn dispatch(
             },
             adapter,
         ),
+
+        Commands::RunApplescript(a) => run_applescript::execute(
+            run_shell::RunScriptArgs {
+                script: a.script,
+                timeout: a.timeout,
+            },
+            adapter,
+        ),
+
+        Commands::RunJxa(a) => run_jxa::execute(
+            run_shell::RunScriptArgs {
+                script: a.script,
+                timeout: a.timeout,
+            },
+            adapter,
+        ),
+
+        Commands::OpenUrl(a) => {
+            open_url::execute(open_url::OpenTargetArgs { target: a.target }, adapter)
+        }
+
+        Commands::OpenPath(a) => {
+            open_path::execute(open_url::OpenTargetArgs { target: a.target }, adapter)
+        }
 
         Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report, context),
     }

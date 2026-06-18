@@ -8,8 +8,8 @@ use crate::cli_args::{
         MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
     control::{
-        AppearanceArgs as AppearanceCliArgs, RunScriptArgs as RunScriptCliArgs,
-        VolumeArgs as VolumeCliArgs, WifiArgs as WifiCliArgs,
+        AppearanceArgs as AppearanceCliArgs, OpenTargetArgs as OpenTargetCliArgs,
+        RunScriptArgs as RunScriptCliArgs, VolumeArgs as VolumeCliArgs, WifiArgs as WifiCliArgs,
     },
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
@@ -192,6 +192,16 @@ pub(crate) enum Commands {
     Wifi(WifiCliArgs),
     #[command(about = "Run a shell command (requires AGENT_DESKTOP_ENABLE_EXEC=1)")]
     RunShell(RunScriptCliArgs),
+    #[command(about = "Run AppleScript (macOS only; requires AGENT_DESKTOP_ENABLE_EXEC=1)")]
+    RunApplescript(RunScriptCliArgs),
+    #[command(about = "Run JXA JavaScript (macOS only; requires AGENT_DESKTOP_ENABLE_EXEC=1)")]
+    RunJxa(RunScriptCliArgs),
+    #[command(about = "Open a URL with the default handler (requires AGENT_DESKTOP_ENABLE_EXEC=1)")]
+    OpenUrl(OpenTargetCliArgs),
+    #[command(
+        about = "Open a file/path with the default handler (requires AGENT_DESKTOP_ENABLE_EXEC=1)"
+    )]
+    OpenPath(OpenTargetCliArgs),
 }
 
 impl Commands {
@@ -256,6 +266,10 @@ impl Commands {
             Self::Appearance(_) => "appearance",
             Self::Wifi(_) => "wifi",
             Self::RunShell(_) => "run-shell",
+            Self::RunApplescript(_) => "run-applescript",
+            Self::RunJxa(_) => "run-jxa",
+            Self::OpenUrl(_) => "open-url",
+            Self::OpenPath(_) => "open-path",
         }
     }
 }
