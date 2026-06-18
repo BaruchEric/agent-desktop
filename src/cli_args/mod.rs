@@ -26,6 +26,8 @@ pub(crate) enum Surface {
     Focused,
     Menu,
     Menubar,
+    ExtrasMenubar,
+    Dock,
     Sheet,
     Popover,
     Alert,
@@ -39,10 +41,27 @@ impl Surface {
             Self::Focused => SnapshotSurface::Focused,
             Self::Menu => SnapshotSurface::Menu,
             Self::Menubar => SnapshotSurface::Menubar,
+            Self::ExtrasMenubar => SnapshotSurface::ExtrasMenubar,
+            Self::Dock => SnapshotSurface::Dock,
             Self::Sheet => SnapshotSurface::Sheet,
             Self::Popover => SnapshotSurface::Popover,
             Self::Alert => SnapshotSurface::Alert,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn surface_extras_and_dock_map_to_core() {
+        use agent_desktop_core::adapter::SnapshotSurface;
+        assert_eq!(
+            Surface::ExtrasMenubar.to_core(),
+            SnapshotSurface::ExtrasMenubar
+        );
+        assert_eq!(Surface::Dock.to_core(), SnapshotSurface::Dock);
     }
 }
 

@@ -24,6 +24,8 @@ pub enum SnapshotSurface {
     Focused,
     Menu,
     Menubar,
+    ExtrasMenubar,
+    Dock,
     Sheet,
     Popover,
     Alert,

@@ -120,6 +120,8 @@ fn scoped_surface_root(
         SnapshotSurface::Focused => crate::tree::focused_surface_for_pid(entry.pid),
         SnapshotSurface::Menu => crate::tree::menu_element_for_pid(entry.pid),
         SnapshotSurface::Menubar => crate::tree::menubar_for_pid(entry.pid),
+        SnapshotSurface::ExtrasMenubar => None,
+        SnapshotSurface::Dock => None,
         SnapshotSurface::Sheet => crate::tree::sheet_for_pid(entry.pid),
         SnapshotSurface::Popover => crate::tree::popover_for_pid(entry.pid),
         SnapshotSurface::Alert => crate::tree::alert_for_pid(entry.pid),

@@ -55,6 +55,10 @@ impl PlatformAdapter for MacOSAdapter {
                 .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
             SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
+            SnapshotSurface::ExtrasMenubar => {
+                return Err(AdapterError::not_supported("surface extras-menubar"));
+            }
+            SnapshotSurface::Dock => return Err(AdapterError::not_supported("surface dock")),
             SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
             SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(win.pid)
