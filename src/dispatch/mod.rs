@@ -393,7 +393,7 @@ pub(crate) fn dispatch(
         Commands::RunShell(a) => run_shell::execute(
             run_shell::RunScriptArgs {
                 script: a.script,
-                timeout: a.timeout,
+                timeout: Some(a.timeout),
             },
             adapter,
         ),
@@ -401,7 +401,7 @@ pub(crate) fn dispatch(
         Commands::RunApplescript(a) => run_applescript::execute(
             run_shell::RunScriptArgs {
                 script: a.script,
-                timeout: a.timeout,
+                timeout: Some(a.timeout),
             },
             adapter,
         ),
@@ -409,7 +409,7 @@ pub(crate) fn dispatch(
         Commands::RunJxa(a) => run_jxa::execute(
             run_shell::RunScriptArgs {
                 script: a.script,
-                timeout: a.timeout,
+                timeout: Some(a.timeout),
             },
             adapter,
         ),

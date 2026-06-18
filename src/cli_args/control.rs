@@ -32,6 +32,10 @@ pub(crate) struct WifiArgs {
     pub status: bool,
 }
 
+fn default_exec_timeout() -> u64 {
+    30000
+}
+
 #[derive(clap::Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RunScriptArgs {
@@ -40,9 +44,11 @@ pub(crate) struct RunScriptArgs {
     #[arg(
         long,
         value_name = "MS",
+        default_value = "30000",
         help = "Kill the child after this many milliseconds"
     )]
-    pub timeout: Option<u64>,
+    #[serde(default = "default_exec_timeout")]
+    pub timeout: u64,
 }
 
 #[derive(clap::Parser, Debug, Deserialize)]
