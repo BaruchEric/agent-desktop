@@ -95,3 +95,13 @@ pub fn promoted_item_label(ax_role: Option<&str>, el: &crate::tree::AXElement) -
 }
 
 pub use agent_desktop_core::roles::is_toggleable_role;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dock_item_maps_to_dockitem() {
+        assert_eq!(ax_role_to_str("AXDockItem"), "dockitem");
+    }
+}
