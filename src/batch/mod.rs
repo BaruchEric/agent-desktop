@@ -93,6 +93,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "dismiss-all-notifications" => {
             decode(command, item.args).map(Commands::DismissAllNotifications)
         }
+        "menu" => decode(command, item.args).map(Commands::Menu),
         "notification-action" => decode(command, item.args).map(Commands::NotificationAction),
         "clipboard-get" => no_args(command, item.args).map(|()| Commands::ClipboardGet),
         "clipboard-set" => decode(command, item.args).map(Commands::ClipboardSet),

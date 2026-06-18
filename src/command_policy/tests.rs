@@ -35,6 +35,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "focus"
             | "select"
             | "toggle"
+            | "menu"
             | "check"
             | "uncheck"
             | "expand"

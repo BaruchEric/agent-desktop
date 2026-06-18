@@ -18,6 +18,7 @@ const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "focus-window",
     "is",
     "list-apps",
+    "menu",
     "right-click",
     "skills",
     "snapshot",
