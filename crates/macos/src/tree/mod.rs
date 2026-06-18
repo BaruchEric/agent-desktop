@@ -1,4 +1,5 @@
 pub mod action_list;
+pub mod app_tree;
 pub(crate) mod attributes;
 pub mod ax_element;
 pub(crate) mod ax_value;
@@ -17,6 +18,7 @@ mod resolve_roots;
 pub mod roles;
 pub mod surfaces;
 
+pub use app_tree::build_app_tree;
 pub(crate) use attributes::{
     cg_window_id, copy_ax_array, copy_bool_attr, copy_element_attr, copy_first_element_attr,
     copy_string_attr, copy_value_typed,
@@ -29,6 +31,6 @@ pub use element::{element_for_pid, resolve_element_name};
 pub use element_bounds::read_bounds;
 pub(crate) use node_attrs::NodeAttrs;
 pub use surfaces::{
-    alert_for_pid, focused_surface_for_pid, menu_element_for_pid, menubar_for_pid, popover_for_pid,
-    sheet_for_pid,
+    alert_for_pid, dock_root_for_pid, extras_menubar_for_pid, focused_surface_for_pid,
+    menu_element_for_pid, menubar_for_pid, popover_for_pid, sheet_for_pid,
 };

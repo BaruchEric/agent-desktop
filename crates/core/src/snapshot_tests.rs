@@ -1,5 +1,10 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use super::*;
-use crate::node::AccessibilityNode;
+use crate::adapter::{PlatformAdapter, TreeOptions, WindowFilter};
+use crate::error::AdapterError;
+use crate::node::{AccessibilityNode, AppInfo, WindowInfo};
 
 fn node(role: &str) -> AccessibilityNode {
     AccessibilityNode {
@@ -297,5 +302,74 @@ fn test_skeleton_fixture_matches_golden() {
         result_value["children"][2]["children"][1]["ref_id"],
         golden_value["children"][2]["children"][1]["ref_id"],
         "interactive textfield should be @e4"
+    );
+}
+
+struct WindowlessAdapter {
+    app_name: String,
+    pid: i32,
+    app_tree_called: Arc<AtomicBool>,
+}
+
+impl WindowlessAdapter {
+    fn new(app_name: &str, pid: i32) -> Self {
+        Self {
+            app_name: app_name.to_string(),
+            pid,
+            app_tree_called: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn get_app_tree_called(&self) -> bool {
+        self.app_tree_called.load(Ordering::SeqCst)
+    }
+}
+
+impl PlatformAdapter for WindowlessAdapter {
+    fn list_windows(&self, _filter: &WindowFilter) -> Result<Vec<WindowInfo>, AdapterError> {
+        Ok(vec![])
+    }
+
+    fn list_apps(&self) -> Result<Vec<AppInfo>, AdapterError> {
+        Ok(vec![AppInfo {
+            name: self.app_name.clone(),
+            pid: self.pid,
+            bundle_id: None,
+        }])
+    }
+
+    fn get_app_tree(
+        &self,
+        _pid: i32,
+        _opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        self.app_tree_called.store(true, Ordering::SeqCst);
+        Ok(AccessibilityNode {
+            ref_id: None,
+            role: "application".into(),
+            name: Some(self.app_name.clone()),
+            value: None,
+            description: None,
+            hint: None,
+            states: vec![],
+            available_actions: vec![],
+            bounds: None,
+            children_count: None,
+            children: vec![],
+        })
+    }
+}
+
+#[test]
+fn snapshots_windowless_app_via_app_tree() {
+    let adapter = WindowlessAdapter::new("Dock", 99);
+    let opts = TreeOptions::default();
+    let result = build(&adapter, &opts, Some("Dock"), None)
+        .expect("windowless app-root snapshot should succeed");
+    assert_eq!(result.window.pid, 99);
+    assert_eq!(result.window.id, "app-99");
+    assert!(
+        adapter.get_app_tree_called(),
+        "get_app_tree must be called for windowless apps"
     );
 }

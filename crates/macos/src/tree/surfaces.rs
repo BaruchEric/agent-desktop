@@ -157,6 +157,19 @@ mod imp {
         None
     }
 
+    pub fn extras_menubar_for_pid(pid: i32) -> Option<AXElement> {
+        let app = element_for_pid(pid);
+        copy_element_attr(&app, "AXExtrasMenuBar")
+    }
+
+    pub fn dock_root_for_pid(pid: i32) -> Option<AXElement> {
+        let app = element_for_pid(pid);
+        let children = copy_ax_array(&app, "AXChildren")?;
+        children
+            .into_iter()
+            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXList"))
+    }
+
     pub fn is_menu_open(pid: i32) -> bool {
         open_menubar_menu(pid).is_some() || context_menu_from_app(pid).is_some()
     }
@@ -305,6 +318,12 @@ mod imp {
     pub fn alert_for_pid(_pid: i32) -> Option<AXElement> {
         None
     }
+    pub fn extras_menubar_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
+    pub fn dock_root_for_pid(_pid: i32) -> Option<AXElement> {
+        None
+    }
     pub fn is_menu_open(_pid: i32) -> bool {
         false
     }
@@ -314,6 +333,7 @@ mod imp {
 }
 
 pub use imp::{
-    alert_for_pid, focused_surface_for_pid, is_menu_open, list_surfaces_for_pid,
-    menu_element_for_pid, menubar_for_pid, popover_for_pid, sheet_for_pid,
+    alert_for_pid, dock_root_for_pid, extras_menubar_for_pid, focused_surface_for_pid,
+    is_menu_open, list_surfaces_for_pid, menu_element_for_pid, menubar_for_pid, popover_for_pid,
+    sheet_for_pid,
 };

@@ -56,9 +56,11 @@ impl PlatformAdapter for MacOSAdapter {
             SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
             SnapshotSurface::ExtrasMenubar => {
-                return Err(AdapterError::not_supported("surface extras-menubar"));
+                crate::tree::surfaces::extras_menubar_for_pid(win.pid)
+                    .ok_or_else(|| AdapterError::element_not_found("No extras menu bar found"))?
             }
-            SnapshotSurface::Dock => return Err(AdapterError::not_supported("surface dock")),
+            SnapshotSurface::Dock => crate::tree::surfaces::dock_root_for_pid(win.pid)
+                .ok_or_else(|| AdapterError::element_not_found("No dock list element found"))?,
             SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(win.pid)
                 .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
             SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(win.pid)
@@ -312,6 +314,14 @@ impl PlatformAdapter for MacOSAdapter {
                 .with_suggestion("Run 'snapshot' to refresh refs, then retry.")
             })
         })
+    }
+
+    fn get_app_tree(
+        &self,
+        pid: i32,
+        opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        crate::tree::build_app_tree(pid, opts)
     }
 
     fn select_menu_path(&self, pid: i32, path: &[String]) -> Result<ActionResult, AdapterError> {
