@@ -155,7 +155,7 @@ Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries i
 
 ### Additive Phase Model
 
-- **Phase 1:** Foundation + macOS MVP (55 commands, core engine, macOS adapter)
+- **Phase 1:** Foundation + macOS MVP (63 commands, core engine, macOS adapter)
 - **Phase 2:** Windows + Linux adapters, 10+ new commands — core untouched
 - **Phase 3:** MCP server mode via `--mcp` flag — wraps existing commands
 - **Phase 4:** Daemon, sessions, enterprise quality gates
@@ -238,14 +238,21 @@ crates/{macos,windows,linux}/src/
 │   ├── keyboard.rs     # Key synthesis, text typing
 │   ├── mouse.rs        # Mouse events
 │   └── clipboard.rs    # Clipboard get/set
-└── system/             # App lifecycle, windows, permissions
-    ├── mod.rs          # re-exports
-    ├── app_ops.rs      # launch, close, focus
-    ├── window_ops.rs   # window operations
-    ├── key_dispatch.rs # app-targeted key press
-    ├── permissions.rs  # permission checks
-    ├── screenshot.rs   # screen capture
-    └── wait.rs         # wait utilities
+├── system/             # App lifecycle, windows, permissions
+│   ├── mod.rs          # re-exports
+│   ├── app_ops.rs      # launch, close, focus
+│   ├── window_ops.rs   # window operations
+│   ├── key_dispatch.rs # app-targeted key press
+│   ├── permissions.rs  # permission checks
+│   ├── screenshot.rs   # screen capture
+│   └── wait.rs         # wait utilities
+└── control/            # Non-AX OS state control (system hardware/settings)
+    ├── mod.rs
+    ├── controller.rs   # MacSystemController (impls SystemController)
+    ├── audio.rs        # CoreAudio volume
+    ├── appearance.rs   # osascript dark-mode
+    ├── network.rs      # networksetup Wi-Fi power
+    └── external.rs     # escape-hatch execution
 ```
 
 **Placement rules:**
@@ -253,6 +260,7 @@ crates/{macos,windows,linux}/src/
 - Element interaction/activation → `actions/`
 - Raw OS input (keyboard, mouse, clipboard) → `input/`
 - App lifecycle, windows, permissions, screenshots → `system/`
+- System state/hardware control (volume, appearance, network, escape hatch) → `control/`
 - `adapter.rs` stays at root — it's the PlatformAdapter impl that wires everything together
 
 ### Extensibility Pattern
@@ -447,9 +455,9 @@ Target binary size: <15MB per platform.
 - `cargo test --workspace`
 - Binary size check: fail if release binary exceeds 15MB
 
-## Implemented Commands (55)
+## Implemented Commands (63)
 
-> **Platform note:** All 55 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
+> **Platform note:** All 63 commands are implemented on macOS (Phase 1). Windows and Linux adapters are planned (Phase 2/3) and will support the same command surface; notification commands depend on platform-specific notification APIs.
 
 | Category | Commands |
 |----------|----------|
@@ -464,6 +472,9 @@ Target binary size: <15MB per platform.
 | Wait (1) | `wait` (with `--element`, `--window`, `--text`, `--menu`, `--notification` flags) |
 | System (4) | `status`, `permissions`, `version`, `skills` |
 | Batch (1) | `batch` |
+| System Control (8) *(macOS)* | `volume`, `appearance`, `wifi`, `run-shell`, `run-applescript`, `run-jxa`, `open-url`, `open-path` |
+
+> `run-shell`, `run-applescript`, `run-jxa`, `open-url`, and `open-path` require `AGENT_DESKTOP_ENABLE_EXEC=1` and append an audit line to `~/.agent-desktop/exec_audit.log`; the macOS escape hatch enforces a default 30s timeout.
 
 ## Non-Goals
 
