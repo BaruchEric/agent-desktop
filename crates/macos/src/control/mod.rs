@@ -1,3 +1,4 @@
+mod appearance;
 mod audio;
 pub mod controller;
 

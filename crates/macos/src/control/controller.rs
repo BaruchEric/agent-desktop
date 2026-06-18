@@ -1,6 +1,7 @@
 use agent_desktop_core::{
     error::AdapterError,
     system::{
+        appearance::{AppearanceRequest, AppearanceState},
         audio::{AudioRequest, AudioState},
         controller::SystemController,
     },
@@ -23,5 +24,9 @@ impl Default for MacSystemController {
 impl SystemController for MacSystemController {
     fn audio(&self, req: AudioRequest) -> Result<AudioState, AdapterError> {
         crate::control::audio::handle(req)
+    }
+
+    fn appearance(&self, req: AppearanceRequest) -> Result<AppearanceState, AdapterError> {
+        crate::control::appearance::handle(req)
     }
 }
