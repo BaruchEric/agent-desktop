@@ -18,7 +18,7 @@ pub mod roles;
 pub mod surfaces;
 
 pub(crate) use attributes::{
-    copy_ax_array, copy_bool_attr, copy_element_attr, copy_first_element_attr, copy_i64_attr,
+    cg_window_id, copy_ax_array, copy_bool_attr, copy_element_attr, copy_first_element_attr,
     copy_string_attr, copy_value_typed,
 };
 pub use ax_element::AXElement;

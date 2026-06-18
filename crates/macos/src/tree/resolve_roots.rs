@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::AXElement;
 use super::attributes::{
-    copy_ax_array, copy_element_attr, copy_i64_attr, copy_string_attr, set_messaging_timeout,
+    cg_window_id, copy_ax_array, copy_element_attr, copy_string_attr, set_messaging_timeout,
 };
 use super::element::element_for_pid;
 use super::element_dedupe::ElementDedupe;
@@ -178,7 +178,7 @@ fn window_by_number(
         .iter()
         .find(|win| {
             prepare_for_read(win, deadline).is_ok()
-                && copy_i64_attr(win, "AXWindowNumber") == Some(source_window_number)
+                && cg_window_id(win) == Some(source_window_number)
         })
         .cloned()
 }
