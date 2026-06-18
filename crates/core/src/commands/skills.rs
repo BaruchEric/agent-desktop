@@ -12,6 +12,10 @@ const SKILL_DESKTOP_REF_WORKFLOWS: &str =
     include_str!("../../../../skills/agent-desktop/references/workflows.md");
 const SKILL_DESKTOP_REF_MACOS: &str =
     include_str!("../../../../skills/agent-desktop/references/macos.md");
+const SKILL_DESKTOP_REF_SYSTEM_CONTROL: &str =
+    include_str!("../../../../skills/agent-desktop/references/commands-system-control.md");
+const SKILL_DESKTOP_REF_BROWSER_APPS: &str =
+    include_str!("../../../../skills/agent-desktop/references/browser-and-apps.md");
 
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
@@ -40,7 +44,7 @@ const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 54 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 63 commands across observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait, and system control (volume/appearance/wifi + audited escape hatch).",
         main: SKILL_DESKTOP_MAIN,
         refs: &[
             SkillRef {
@@ -54,6 +58,14 @@ const SKILLS: &[Skill] = &[
             SkillRef {
                 rel_path: "references/commands-system.md",
                 body: SKILL_DESKTOP_REF_SYSTEM,
+            },
+            SkillRef {
+                rel_path: "references/commands-system-control.md",
+                body: SKILL_DESKTOP_REF_SYSTEM_CONTROL,
+            },
+            SkillRef {
+                rel_path: "references/browser-and-apps.md",
+                body: SKILL_DESKTOP_REF_BROWSER_APPS,
             },
             SkillRef {
                 rel_path: "references/workflows.md",

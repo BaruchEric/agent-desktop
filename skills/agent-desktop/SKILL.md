@@ -1,6 +1,6 @@
 ---
 name: agent-desktop
-version: 0.1.14
+version: 0.2.3
 tags: desktop-automation, accessibility, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop
@@ -9,9 +9,10 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 54 commands across observation, interaction, keyboard/mouse, app lifecycle,
-  notifications (macOS), clipboard, wait, and a `skills` command that prints these
-  bundled docs straight from the binary.
+  Covers 63 commands across observation, interaction, keyboard/mouse, app lifecycle,
+  notifications (macOS), clipboard, wait, system control (volume/appearance/wifi plus
+  an audited shell/AppleScript/JXA escape hatch), and a `skills` command that prints
+  these bundled docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
   "take screenshot", "desktop automation", "agent-desktop", or any desktop GUI interaction task.
@@ -44,6 +45,8 @@ Detailed documentation is split into focused reference files. Read them as neede
 | `references/commands-observation.md` | snapshot, find, get, is, screenshot, list-surfaces — all flags, output examples |
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
 | `references/commands-system.md` | launch, close, windows, clipboard, wait, batch, status, permissions, version |
+| `references/commands-system-control.md` | volume, appearance, wifi, and the audited escape hatch (run-shell/applescript/jxa, open-url/path) — env gating, audit log |
+| `references/browser-and-apps.md` | driving browsers as accessibility apps + operating desktop apps end-to-end; observe→act→verify gotchas |
 | `references/workflows.md` | 12 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
 
@@ -124,7 +127,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `INVALID_ARGS` | Bad arguments | Check command syntax |
 | `NOTIFICATION_NOT_FOUND` | Notification index no longer exists | Re-run list-notifications |
 
-## Command Quick Reference (54 commands)
+## Command Quick Reference (63 commands)
 
 ### Observation
 ```
@@ -231,6 +234,22 @@ agent-desktop skills                            # List bundled skill docs
 agent-desktop skills get desktop --full         # Load this skill + all references
 ```
 
+### System Control (macOS)
+```
+agent-desktop volume --get                      # { output_volume, muted }
+agent-desktop volume --set 40                   # Set 0..=100 (returns new state)
+agent-desktop volume --up --step 10             # Raise; also --down/--mute/--unmute
+agent-desktop appearance --get                  # { dark }
+agent-desktop appearance --toggle               # Also --dark/--light
+agent-desktop wifi --status                     # { wifi_power, ssid? }; also --on/--off
+AGENT_DESKTOP_ENABLE_EXEC=1 agent-desktop run-shell "ls ~"        # Escape hatch (audited)
+AGENT_DESKTOP_ENABLE_EXEC=1 agent-desktop run-applescript '...'   # AppleScript
+AGENT_DESKTOP_ENABLE_EXEC=1 agent-desktop run-jxa '...'           # JXA
+AGENT_DESKTOP_ENABLE_EXEC=1 agent-desktop open-url "https://..."  # Default opener
+AGENT_DESKTOP_ENABLE_EXEC=1 agent-desktop open-path "~/file.pdf"  # Default opener
+```
+The five exec commands need `AGENT_DESKTOP_ENABLE_EXEC=1` (else `POLICY_DENIED`) and append to `~/.agent-desktop/exec_audit.log`. See `references/commands-system-control.md`.
+
 ## Key Principles for Agents
 
 1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps.
@@ -246,3 +265,5 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 11. **Headless by default.** Ref actions use semantic AX paths and block silent focus stealing, cursor movement, keyboard synthesis, and pasteboard insertion. Use explicit `focus`, `press`, `hover`, `drag`, or `mouse-*` commands only when physical/headed interaction is intended.
 12. **Use sessions for parallel work.** Add `--session <id>` when multiple agents or batches can run at once.
 13. **Trace hard failures.** Add `--trace /tmp/agent-desktop.jsonl` when diagnosing stale, ambiguous, or actionability failures.
+14. **Browsers are apps, not pages.** Drive browser *chrome* (address field, tabs, toolbar) via the AX tree; the rendered web-page DOM is out of scope (use agent-browser). Treat navigation as nondeterministic — act, then observe. See `references/browser-and-apps.md`.
+15. **Escape hatch is opt-in and audited.** `run-shell`/`run-applescript`/`run-jxa`/`open-url`/`open-path` stay disabled unless `AGENT_DESKTOP_ENABLE_EXEC=1`, and every call is logged to `~/.agent-desktop/exec_audit.log`. Prefer AX commands; reach for the hatch only when nothing else expresses the task.
