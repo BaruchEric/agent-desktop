@@ -1,6 +1,23 @@
 use clap::Parser;
 use serde::Deserialize;
 
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AppearanceArgs {
+    #[arg(long, help = "Print current appearance (dark/light)")]
+    #[serde(default)]
+    pub get: bool,
+    #[arg(long, help = "Switch to Dark mode")]
+    #[serde(default)]
+    pub dark: bool,
+    #[arg(long, help = "Switch to Light mode")]
+    #[serde(default)]
+    pub light: bool,
+    #[arg(long, help = "Toggle Dark/Light")]
+    #[serde(default)]
+    pub toggle: bool,
+}
+
 fn default_step() -> u8 {
     5
 }

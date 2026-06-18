@@ -5,10 +5,10 @@ use agent_desktop_core::{
     PermissionReport,
     adapter::PlatformAdapter,
     commands::{
-        check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app, collapse,
-        double_click, drag, expand, find, focus, focus_window, get, helpers, hover, is_check,
-        key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, menu, minimize,
-        mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
+        appearance, check, clear, click, clipboard_clear, clipboard_get, clipboard_set, close_app,
+        collapse, double_click, drag, expand, find, focus, focus_window, get, helpers, hover,
+        is_check, key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, menu,
+        minimize, mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
         skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, volume, wait,
     },
@@ -366,6 +366,16 @@ pub(crate) fn dispatch(
                 mute: a.mute,
                 unmute: a.unmute,
                 step: a.step,
+            },
+            adapter,
+        ),
+
+        Commands::Appearance(a) => appearance::execute(
+            appearance::AppearanceArgs {
+                get: a.get,
+                dark: a.dark,
+                light: a.light,
+                toggle: a.toggle,
             },
             adapter,
         ),

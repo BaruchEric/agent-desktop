@@ -7,7 +7,7 @@ use crate::cli_args::{
         DragCliArgs, HoverArgs, KeyComboArgs, MenuArgs, MouseClickArgs, MouseMoveArgs,
         MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
-    control::VolumeArgs as VolumeCliArgs,
+    control::{AppearanceArgs as AppearanceCliArgs, VolumeArgs as VolumeCliArgs},
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
@@ -183,6 +183,8 @@ pub(crate) enum Commands {
     Skills(SkillsArgs),
     #[command(about = "Get or set system output volume")]
     Volume(VolumeCliArgs),
+    #[command(about = "Get or set Dark/Light appearance")]
+    Appearance(AppearanceCliArgs),
 }
 
 impl Commands {
@@ -244,6 +246,7 @@ impl Commands {
             Self::Batch(_) => "batch",
             Self::Skills(_) => "skills",
             Self::Volume(_) => "volume",
+            Self::Appearance(_) => "appearance",
         }
     }
 }

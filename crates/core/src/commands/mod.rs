@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod batch;
 pub mod check;
 pub mod clear;

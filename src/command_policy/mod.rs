@@ -75,6 +75,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         | Commands::Menu(_) => Accessibility,
 
         Commands::Volume(_) => None,
+        Commands::Appearance(_) => None,
     }
 }
 
@@ -195,6 +196,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::Permissions(_)
         | Commands::Version(_)
         | Commands::Volume(_)
+        | Commands::Appearance(_)
         | Commands::Batch(_)
         | Commands::Skills(_)
         | Commands::Menu(_) => {}

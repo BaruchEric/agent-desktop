@@ -76,6 +76,7 @@ fn command_name_is_covered(name: &str) -> bool {
             | "batch"
             | "skills"
             | "volume"
+            | "appearance"
     )
 }
 

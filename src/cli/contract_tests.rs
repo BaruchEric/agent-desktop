@@ -47,7 +47,7 @@ const SHARED_REF_ACTION_TESTS: &[&str] = &[
 
 const BINARY_CONTRACT_TESTS: &[&str] = &["batch", "permissions", "version"];
 
-const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume"];
+const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume", "appearance"];
 
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",
