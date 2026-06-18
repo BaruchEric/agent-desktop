@@ -6,6 +6,56 @@
 
 * **ffi:** `AdRefEntry` carries additional reliability metadata in this branch; C ABI consumers must rebuild against the updated `agent_desktop.h` header.
 
+## [0.2.4](https://github.com/BaruchEric/agent-desktop/compare/v0.2.3...v0.2.4) (2026-06-18)
+
+
+### Features
+
+* add app-tree and menu-path adapter trait methods ([12c361d](https://github.com/BaruchEric/agent-desktop/commit/12c361d5dfdd3358a03af3087262ba40dc29b48b))
+* add appearance system-control command ([16bd86d](https://github.com/BaruchEric/agent-desktop/commit/16bd86d0c1284591df6a203621a4484e87ea535f))
+* add applescript/jxa/open-url/open-path escape-hatch commands ([bc05106](https://github.com/BaruchEric/agent-desktop/commit/bc05106d47d978efcbede9bf6bbab854cb9a3625))
+* add extras-menubar and dock snapshot surfaces ([701c802](https://github.com/BaruchEric/agent-desktop/commit/701c802109dd5a399ed9355f263981e7ce49c4d2))
+* add gated run-shell escape hatch with audit log ([ac66bc9](https://github.com/BaruchEric/agent-desktop/commit/ac66bc9ada1bc4a54e2a1c294cd0ff35fbf8cd69))
+* add macOS menu title-path walk with AXPress activation ([47600ea](https://github.com/BaruchEric/agent-desktop/commit/47600eadb3600a4042a4df25b77a8ab632045a0d))
+* add menu command for title-path activation ([d47efac](https://github.com/BaruchEric/agent-desktop/commit/d47efaccb7f03fcdefb9e8a98618c2a77737bc3b))
+* add session-scoped reliability diagnostics ([53b2ec4](https://github.com/BaruchEric/agent-desktop/commit/53b2ec4e355ac037c34016e2a9ef1f01d730e988))
+* add strict ref reliability core ([c25f8b3](https://github.com/BaruchEric/agent-desktop/commit/c25f8b3b66e35235b71c5fe28c55f6892fff8745))
+* add system-control domain types ([71d9487](https://github.com/BaruchEric/agent-desktop/commit/71d94876c619cde79fd7f5f70f326ade68559eab))
+* add SystemController trait and adapter accessor ([ebeefc5](https://github.com/BaruchEric/agent-desktop/commit/ebeefc5f5be2d034cc1059ac15e5647a15557fb8))
+* add volume system-control command ([1657643](https://github.com/BaruchEric/agent-desktop/commit/16576433356e2ae26a4e83c87f521329df34aae1))
+* add wifi system-control command ([9a453c6](https://github.com/BaruchEric/agent-desktop/commit/9a453c6fb627ed3b4ba9b32e45f9e12bbea7cda8))
+* implement macOS appearance control via osascript ([5dba741](https://github.com/BaruchEric/agent-desktop/commit/5dba7419658d1fe8d680dc81fa79da43bbcbfcb2))
+* implement macOS CoreAudio volume control ([ecc7c63](https://github.com/BaruchEric/agent-desktop/commit/ecc7c63b33a077649861669945411af326efd7a6))
+* implement macOS external execution with timeout and capture ([0e074d8](https://github.com/BaruchEric/agent-desktop/commit/0e074d8bc53e571d4921f750e5c24dbab454422d))
+* implement macOS wifi power control via networksetup ([ac55acf](https://github.com/BaruchEric/agent-desktop/commit/ac55acf661ffa48609f518a70f4dc5cbce8797b4))
+* snapshot windowless apps via app-root tree ([59f6d62](https://github.com/BaruchEric/agent-desktop/commit/59f6d62ab81948b23972325d7b78743aa7cf0a4e))
+
+
+### Bug Fixes
+
+* address reliability follow-ups ([2b1cf07](https://github.com/BaruchEric/agent-desktop/commit/2b1cf07561e2fb13005e6c985559b5a516d81e5a))
+* close final reliability edge cases ([76c5075](https://github.com/BaruchEric/agent-desktop/commit/76c50756a3bb22a4e555082a989d09be92c5009f))
+* close reliability review findings ([7bcf9ab](https://github.com/BaruchEric/agent-desktop/commit/7bcf9ab38db26d5fa127c4eaf78294dfb1fc2aea))
+* drain external-exec output via run_with_timeout to prevent pipe deadlock ([bfd662e](https://github.com/BaruchEric/agent-desktop/commit/bfd662eb3a53ea327310689aff929ffc236131e3))
+* fail closed on uncertain ref fallback ([f037a84](https://github.com/BaruchEric/agent-desktop/commit/f037a8460c9c8ad75e0012f52c48dc47665c0402))
+* harden ref action reliability ([5ba88d5](https://github.com/BaruchEric/agent-desktop/commit/5ba88d5af35dac7afceac4e8ce0396125a89ca60))
+* harden ref action reliability ([2f0dda9](https://github.com/BaruchEric/agent-desktop/commit/2f0dda920eccb94c9c70c2f7534d040c4c916c42))
+* harden ref action reliability ([81685ba](https://github.com/BaruchEric/agent-desktop/commit/81685babdd07901e9f8b7a410fa1d124c163c659))
+* harden ref fallback resolution ([57cc87b](https://github.com/BaruchEric/agent-desktop/commit/57cc87b2604cc8fb537d9418cce0f43c35b55086))
+* harden ref reliability edge cases ([5b1c4b9](https://github.com/BaruchEric/agent-desktop/commit/5b1c4b98e6906964af431d348e619524355553a4))
+* harden reliability edge cases ([19b5c6a](https://github.com/BaruchEric/agent-desktop/commit/19b5c6a54b1fd0ff027a422f7edef5efa3dd1c79))
+* harden source-window ref resolution ([872e395](https://github.com/BaruchEric/agent-desktop/commit/872e395e519d27170617a8780d1f1a1e6d6518a0))
+* harden wait and ref action reliability ([86bcef2](https://github.com/BaruchEric/agent-desktop/commit/86bcef27b2b7b15d1ded8006499d1966ea9eb090))
+* make explicit snapshots session-independent ([0fc858c](https://github.com/BaruchEric/agent-desktop/commit/0fc858c3662be209dc4d20088765b5ddcbb818ac))
+* preserve safe window title fallback ([eeb4303](https://github.com/BaruchEric/agent-desktop/commit/eeb4303e74e3c9fb405c58026eb045c29e086ee9))
+* register menu command in batch, policy, and coverage contracts ([4835409](https://github.com/BaruchEric/agent-desktop/commit/48354094f0902aee5caf28e37fbdfa0d6dd57832))
+* report wait and trace failure context ([bd75878](https://github.com/BaruchEric/agent-desktop/commit/bd758788cd38879a8685c6c6773eb323e11127f4))
+* resolve menu and dock item refs by identity, not bounds ([6761a5d](https://github.com/BaruchEric/agent-desktop/commit/6761a5dc01f852aa505998bd02b89d75717a1004))
+* resolve refs by CGWindowID bridge instead of AXWindowNumber ([320b078](https://github.com/BaruchEric/agent-desktop/commit/320b078d96d455adec87ab64260ab9f9ed3d6675))
+* scope-verify menu-bar and dock surface roots for ref resolution ([a215a92](https://github.com/BaruchEric/agent-desktop/commit/a215a92b7e53ccbbff334e4576662b00b89a2d60))
+* skip finder pseudo windows for snapshots ([4fc097b](https://github.com/BaruchEric/agent-desktop/commit/4fc097b9948bf481421039bb85e9de9669101a3a))
+* stabilize macos ref resolution ([a4c8c55](https://github.com/BaruchEric/agent-desktop/commit/a4c8c55b47f5688d0639a6183f62fb16494e1636))
+
 ## [0.2.3](https://github.com/lahfir/agent-desktop/compare/v0.2.2...v0.2.3) (2026-06-06)
 
 
