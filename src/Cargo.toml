@@ -34,5 +34,9 @@ path = "tests/snapshot_test.rs"
 name = "conformance"
 path = "tests/conformance.rs"
 
+[[test]]
+name = "system_control_test"
+path = "tests/system_control_test.rs"
+
 [lints]
 workspace = true
