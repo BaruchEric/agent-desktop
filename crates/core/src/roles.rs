@@ -43,6 +43,12 @@ pub fn is_mutable_value_role(role: &str) -> bool {
     matches!(role, "combobox" | "incrementor" | "slider" | "textfield")
 }
 
+/// Returns true for roles whose on-screen bounds shift between snapshots (menu
+/// and dock items reflow), so bounds must not anchor ref identity.
+pub fn is_bounds_unstable_role(role: &str) -> bool {
+    matches!(role, "menuitem" | "dockitem")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +122,15 @@ mod tests {
         }
         assert!(!is_mutable_value_role("cell"));
         assert!(!is_mutable_value_role("button"));
+    }
+
+    #[test]
+    fn bounds_unstable_roles_are_interactive() {
+        for role in ["menuitem", "dockitem"] {
+            assert!(is_bounds_unstable_role(role));
+            assert!(is_interactive_role(role));
+        }
+        assert!(!is_bounds_unstable_role("button"));
+        assert!(!is_bounds_unstable_role("cell"));
     }
 }

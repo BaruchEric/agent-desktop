@@ -13,7 +13,7 @@ pub(crate) fn ref_entry_from_node(
     root_ref: Option<String>,
     path: &[usize],
 ) -> RefEntry {
-    let bounds_unstable = matches!(node.role.as_str(), "menuitem" | "dockitem");
+    let bounds_unstable = crate::roles::is_bounds_unstable_role(&node.role);
     let entry_bounds = if bounds_unstable { None } else { node.bounds };
     RefEntry {
         pid,

@@ -22,7 +22,10 @@ pub fn build_app_tree(pid: i32, opts: &TreeOptions) -> Result<AccessibilityNode,
     build_tree_from_root(pid, &root, opts)
 }
 
-fn surface_root_for_pid(pid: i32, surface: SnapshotSurface) -> Result<AXElement, AdapterError> {
+pub(crate) fn surface_root_for_pid(
+    pid: i32,
+    surface: SnapshotSurface,
+) -> Result<AXElement, AdapterError> {
     match surface {
         SnapshotSurface::Window => Ok(element_for_pid(pid)),
         SnapshotSurface::Focused => focused_surface_for_pid(pid)
@@ -46,7 +49,7 @@ fn surface_root_for_pid(pid: i32, surface: SnapshotSurface) -> Result<AXElement,
     }
 }
 
-fn build_tree_from_root(
+pub(crate) fn build_tree_from_root(
     pid: i32,
     root: &AXElement,
     opts: &TreeOptions,
@@ -62,5 +65,5 @@ fn build_tree_from_root(
         opts.skeleton,
         &context,
     )
-    .ok_or_else(|| AdapterError::internal("Empty AX tree for app root"))
+    .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
 }

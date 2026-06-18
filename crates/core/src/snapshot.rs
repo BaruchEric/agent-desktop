@@ -43,16 +43,13 @@ pub fn build(
 
     if let Some(app) = app_name {
         let window = windows
-            .into_iter()
+            .iter()
             .find(|w| w.app.eq_ignore_ascii_case(app) && w.is_focused)
+            .cloned()
             .or_else(|| {
-                adapter
-                    .list_windows(&WindowFilter {
-                        focused_only: false,
-                        app: Some(app.to_string()),
-                    })
-                    .ok()
-                    .and_then(|ws| ws.into_iter().next())
+                windows
+                    .into_iter()
+                    .find(|w| w.app.eq_ignore_ascii_case(app))
             });
         return match window {
             Some(w) => snapshot_from_window(adapter, &w, opts),
@@ -95,27 +92,7 @@ fn snapshot_from_window(
     opts: &TreeOptions,
 ) -> Result<SnapshotResult, AppError> {
     let raw_tree = adapter.get_tree(window, &opts.with_ref_identity_bounds())?;
-    let mut refmap = RefMap::new();
-    let config = RefAllocConfig {
-        include_bounds: opts.include_bounds,
-        interactive_only: opts.interactive_only,
-        compact: opts.compact,
-        pid: window.pid,
-        source_app: Some(window.app.as_str()),
-        source_window_id: Some(window.id.as_str()),
-        source_window_title: Some(window.title.as_str()),
-        source_surface: opts.surface,
-        root_ref_id: None,
-        path_prefix: &[],
-    };
-    let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
-    crate::hints::add_structural_hints(&mut tree);
-    Ok(SnapshotResult {
-        tree,
-        refmap,
-        window: window.clone(),
-        snapshot_id: None,
-    })
+    Ok(finalize_snapshot(raw_tree, window.clone(), opts))
 }
 
 fn snapshot_from_app(
@@ -133,27 +110,35 @@ fn snapshot_from_app(
         bounds: None,
         is_focused: false,
     };
+    Ok(finalize_snapshot(raw_tree, synthetic_window, opts))
+}
+
+fn finalize_snapshot(
+    raw_tree: AccessibilityNode,
+    window: WindowInfo,
+    opts: &TreeOptions,
+) -> SnapshotResult {
     let mut refmap = RefMap::new();
     let config = RefAllocConfig {
         include_bounds: opts.include_bounds,
         interactive_only: opts.interactive_only,
         compact: opts.compact,
-        pid,
-        source_app: Some(app),
-        source_window_id: Some(synthetic_window.id.as_str()),
-        source_window_title: Some(app),
+        pid: window.pid,
+        source_app: Some(window.app.as_str()),
+        source_window_id: Some(window.id.as_str()),
+        source_window_title: Some(window.title.as_str()),
         source_surface: opts.surface,
         root_ref_id: None,
         path_prefix: &[],
     };
     let mut tree = ref_alloc::allocate_refs(raw_tree, &mut refmap, &config);
     crate::hints::add_structural_hints(&mut tree);
-    Ok(SnapshotResult {
+    SnapshotResult {
         tree,
         refmap,
-        window: synthetic_window,
+        window,
         snapshot_id: None,
-    })
+    }
 }
 
 #[cfg(test)]

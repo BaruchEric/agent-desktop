@@ -6,16 +6,8 @@ mod imp {
     use crate::tree::{
         AXElement,
         attributes::{copy_ax_array, copy_bool_attr, copy_string_attr},
-        element::element_for_pid,
     };
     use agent_desktop_core::error::ErrorCode;
-
-    fn menubar_root(pid: i32) -> Option<AXElement> {
-        let app = element_for_pid(pid);
-        copy_ax_array(&app, "AXChildren")?
-            .into_iter()
-            .find(|ch| copy_string_attr(ch, "AXRole").as_deref() == Some("AXMenuBar"))
-    }
 
     fn unwrap_menu(children: Vec<AXElement>) -> Vec<AXElement> {
         if let Some(first) = children.first() {
@@ -35,7 +27,7 @@ mod imp {
     }
 
     fn resolve_path(pid: i32, path: &[String]) -> Result<AXElement, AdapterError> {
-        let menubar = menubar_root(pid).ok_or_else(|| {
+        let menubar = crate::tree::menubar_for_pid(pid).ok_or_else(|| {
             AdapterError::new(ErrorCode::ElementNotFound, "Application has no menu bar")
                 .with_suggestion("Verify the app is running and owns a standard menu bar.")
         })?;
@@ -102,7 +94,7 @@ mod imp {
     }
 
     pub fn list_menu_paths(pid: i32) -> Result<Vec<String>, AdapterError> {
-        let menubar = menubar_root(pid).ok_or_else(|| {
+        let menubar = crate::tree::menubar_for_pid(pid).ok_or_else(|| {
             AdapterError::new(ErrorCode::ElementNotFound, "Application has no menu bar")
         })?;
         let mut out = Vec::new();

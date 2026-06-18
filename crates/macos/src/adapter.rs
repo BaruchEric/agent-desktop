@@ -49,37 +49,9 @@ impl PlatformAdapter for MacOSAdapter {
     ) -> Result<AccessibilityNode, AdapterError> {
         let el = match opts.surface {
             SnapshotSurface::Window => crate::tree::window_element_for(win.pid, &win.title),
-            SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::internal("No focused surface found"))?,
-            SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
-            SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
-            SnapshotSurface::ExtrasMenubar => {
-                crate::tree::surfaces::extras_menubar_for_pid(win.pid)
-                    .ok_or_else(|| AdapterError::element_not_found("No extras menu bar found"))?
-            }
-            SnapshotSurface::Dock => crate::tree::surfaces::dock_root_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No dock list element found"))?,
-            SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
-            SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
-            SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(win.pid)
-                .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
+            other => crate::tree::app_tree::surface_root_for_pid(win.pid, other)?,
         };
-        let mut visited = FxHashSet::default();
-        let context = crate::tree::TreeBuildContext::for_pid(win.pid, opts.include_bounds);
-        crate::tree::build_subtree(
-            &el,
-            0,
-            0,
-            opts.max_depth,
-            &mut visited,
-            opts.skeleton,
-            &context,
-        )
-        .ok_or_else(|| AdapterError::internal("Empty AX tree for surface"))
+        crate::tree::app_tree::build_tree_from_root(win.pid, &el, opts)
     }
 
     fn execute_action(
