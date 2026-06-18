@@ -10,7 +10,7 @@ use agent_desktop_core::{
         key_down, key_up, launch, list_apps, list_surfaces, list_windows, maximize, menu, minimize,
         mouse_click, mouse_down, mouse_move, mouse_up, move_window, permissions, press,
         resize_window, restore, right_click, screenshot, scroll, scroll_to, select, set_value,
-        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, wait,
+        skills, snapshot, status, toggle, triple_click, type_text, uncheck, version, volume, wait,
     },
     context::CommandContext,
     error::AppError,
@@ -356,6 +356,19 @@ pub(crate) fn dispatch(
                 reference: g.reference,
             }),
         },
+
+        Commands::Volume(a) => volume::execute(
+            volume::VolumeArgs {
+                get: a.get,
+                set: a.set,
+                up: a.up,
+                down: a.down,
+                mute: a.mute,
+                unmute: a.unmute,
+                step: a.step,
+            },
+            adapter,
+        ),
 
         Commands::Batch(a) => crate::batch::execute(a, adapter, permission_report, context),
     }

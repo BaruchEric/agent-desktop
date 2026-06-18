@@ -47,6 +47,8 @@ const SHARED_REF_ACTION_TESTS: &[&str] = &[
 
 const BINARY_CONTRACT_TESTS: &[&str] = &["batch", "permissions", "version"];
 
+const SYSTEM_CONTROL_COMMANDS: &[&str] = &["volume"];
+
 const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "clipboard-clear",
     "clipboard-get",
@@ -185,6 +187,7 @@ fn coverage_names() -> BTreeSet<&'static str> {
         .chain(SHARED_REF_ACTION_TESTS)
         .chain(BINARY_CONTRACT_TESTS)
         .chain(ADAPTER_PASSTHROUGH_COMMANDS)
+        .chain(SYSTEM_CONTROL_COMMANDS)
         .copied()
         .collect()
 }

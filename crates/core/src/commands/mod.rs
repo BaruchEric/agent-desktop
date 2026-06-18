@@ -53,6 +53,7 @@ pub mod triple_click;
 pub mod type_text;
 pub mod uncheck;
 pub mod version;
+pub mod volume;
 pub mod wait;
 pub(crate) mod wait_latest_ref_cache;
 pub(crate) mod wait_mode;

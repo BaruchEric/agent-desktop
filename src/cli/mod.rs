@@ -7,6 +7,7 @@ use crate::cli_args::{
         DragCliArgs, HoverArgs, KeyComboArgs, MenuArgs, MouseClickArgs, MouseMoveArgs,
         MousePointArgs, PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
+    control::VolumeArgs as VolumeCliArgs,
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
         NotificationActionCliArgs,
@@ -180,6 +181,8 @@ pub(crate) enum Commands {
     Batch(BatchArgs),
     #[command(about = "Bundled skill docs for AI agents (list, get, path)")]
     Skills(SkillsArgs),
+    #[command(about = "Get or set system output volume")]
+    Volume(VolumeCliArgs),
 }
 
 impl Commands {
@@ -240,6 +243,7 @@ impl Commands {
             Self::Version(_) => "version",
             Self::Batch(_) => "batch",
             Self::Skills(_) => "skills",
+            Self::Volume(_) => "volume",
         }
     }
 }

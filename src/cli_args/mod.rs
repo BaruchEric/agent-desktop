@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 
 pub(crate) mod actions;
+pub(crate) mod control;
 pub(crate) mod notifications;
 pub(crate) mod skills;
 pub(crate) mod system;
