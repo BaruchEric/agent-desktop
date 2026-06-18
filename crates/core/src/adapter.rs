@@ -283,6 +283,22 @@ pub trait PlatformAdapter: Send + Sync {
         Err(AdapterError::not_supported("wait_for_menu"))
     }
 
+    fn get_app_tree(
+        &self,
+        _pid: i32,
+        _opts: &TreeOptions,
+    ) -> Result<AccessibilityNode, AdapterError> {
+        Err(AdapterError::not_supported("get_app_tree"))
+    }
+
+    fn select_menu_path(&self, _pid: i32, _path: &[String]) -> Result<ActionResult, AdapterError> {
+        Err(AdapterError::not_supported("select_menu_path"))
+    }
+
+    fn list_menu_paths(&self, _pid: i32) -> Result<Vec<String>, AdapterError> {
+        Err(AdapterError::not_supported("list_menu_paths"))
+    }
+
     fn list_surfaces(&self, _pid: i32) -> Result<Vec<SurfaceInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_surfaces"))
     }
