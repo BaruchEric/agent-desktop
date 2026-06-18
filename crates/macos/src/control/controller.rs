@@ -4,6 +4,7 @@ use agent_desktop_core::{
         appearance::{AppearanceRequest, AppearanceState},
         audio::{AudioRequest, AudioState},
         controller::SystemController,
+        network::{NetworkRequest, NetworkState},
     },
 };
 
@@ -28,5 +29,9 @@ impl SystemController for MacSystemController {
 
     fn appearance(&self, req: AppearanceRequest) -> Result<AppearanceState, AdapterError> {
         crate::control::appearance::handle(req)
+    }
+
+    fn network(&self, req: NetworkRequest) -> Result<NetworkState, AdapterError> {
+        crate::control::network::handle(req)
     }
 }
